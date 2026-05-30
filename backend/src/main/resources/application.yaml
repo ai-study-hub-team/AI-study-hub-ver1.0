@@ -17,3 +17,15 @@ spring:
     properties:
       hibernate:
         format_sql: true
+
+  # ── File upload limits ───────────────────────────────────────────────────────
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB      # Maximum size per uploaded file
+      max-request-size: 50MB   # Maximum total request size
+
+# ── Custom app settings ────────────────────────────────────────────────────────
+app:
+  upload:
+    dir: uploads   # Files will be saved to a folder named "uploads" in the project root

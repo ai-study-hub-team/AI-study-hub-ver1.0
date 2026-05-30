@@ -30,10 +30,12 @@ public class DocumentResponse {
 
     // File metadata (null if no file attached)
     private Long cloudFileId;
-    private String originalName;
-    private String fileUrl;
-    private String fileType;
-    private Long fileSize;
+    private String fileName;          // stored file name on disk
+    private String originalName;      // original file name from user
+    private String fileUrl;           // path/URL to the file
+    private String fileType;          // MIME type
+    private Long fileSize;            // size in bytes
+    private String storageProvider;   // e.g. LOCAL, FIREBASE
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

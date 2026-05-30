@@ -10,8 +10,12 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -68,5 +72,33 @@ public class DocumentController {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         return ResponseEntity.ok(documentService.search(keyword, pageable));
+    }
+
+    // ─── POST /api/documents/upload ─────────────────────────────────────────────
+    // Accepts multipart/form-data with the actual file + metadata fields
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<DocumentResponse> upload(
+            @RequestParam("file")         MultipartFile file,
+            @RequestParam("title")        String title,
+            @RequestParam(value = "description",   required = false) String description,
+            @RequestParam(value = "documentType",  required = false) String documentType,
+            @RequestParam(value = "visibility",    required = false) String visibility,
+            @RequestParam("userId")       Long userId,
+            @RequestParam(value = "categoryId",    required = false) Long categoryId) {
+
+        try {
+            DocumentResponse response = documentService.uploadDocument(
+                    file, title, description, documentType, visibility, userId, categoryId
+            );
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+
+        } catch (IllegalArgumentException e) {
+            // Unsupported file type — return 400 Bad Request
+            return ResponseEntity.badRequest().build();
+
+        } catch (IOException e) {
+            // Disk / IO error — return 500 Internal Server Error
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }

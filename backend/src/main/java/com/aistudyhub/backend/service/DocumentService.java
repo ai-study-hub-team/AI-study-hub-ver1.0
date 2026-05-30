@@ -7,10 +7,13 @@ import com.aistudyhub.backend.repository.CategoryRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 
 @Service
@@ -20,6 +23,11 @@ public class DocumentService {
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
+    private final FileStorageService fileStorageService;
+
+    // Read upload dir from config (same value used in FileStorageService)
+    @Value("${app.upload.dir:uploads}")
+    private String uploadDir;
 
     // ─── Create ────────────────────────────────────────────────────────────────
 
@@ -49,6 +57,77 @@ public class DocumentService {
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .tags(request.getTags())
+                .status(DocumentStatus.ACTIVE)
+                .user(user)
+                .category(category)
+                .cloudFile(cloudFile)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        Document saved = documentRepository.save(document);
+        return toResponse(saved);
+    }
+
+    // ─── Upload Document (with real file) ──────────────────────────────────────
+
+    /**
+     * Uploads a file and saves both Document and CloudFile metadata.
+     *
+     * @param file        the actual file from the multipart request
+     * @param title       document title
+     * @param description short description
+     * @param documentType type label (e.g. "LECTURE", "EXERCISE") — stored in tags for now
+     * @param visibility  visibility label (e.g. "PUBLIC", "PRIVATE") — stored in tags for now
+     * @param userId      owner's user ID
+     * @param categoryId  optional category ID
+     */
+    public DocumentResponse uploadDocument(
+            MultipartFile file,
+            String title,
+            String description,
+            String documentType,
+            String visibility,
+            Long userId,
+            Long categoryId) throws IOException {
+
+        // 1. Validate user
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+
+        // 2. Validate category (optional)
+        Category category = null;
+        if (categoryId != null) {
+            category = categoryRepository.findById(categoryId)
+                    .orElseThrow(() -> new RuntimeException("Category not found with id: " + categoryId));
+        }
+
+        // 3. Save the file to the local "uploads/" directory
+        //    fileStorageService will throw IllegalArgumentException for unsupported file types
+        String savedFileName = fileStorageService.saveFile(file);
+
+        // 4. Build the relative file path (e.g. "uploads/a1b2c3_lecture1.pdf")
+        String filePath = uploadDir + "/" + savedFileName;
+
+        // 5. Build CloudFile record
+        CloudFile cloudFile = CloudFile.builder()
+                .fileName(savedFileName)                                  // stored name on disk
+                .originalName(file.getOriginalFilename())                 // name from user's computer
+                .fileType(fileStorageService.detectMimeType(file))        // MIME type
+                .fileSize(file.getSize())                                 // size in bytes
+                .fileUrl(filePath)                                        // local path
+                .storageProvider("LOCAL")                                 // storage type
+                .uploadedAt(LocalDateTime.now())
+                .build();
+
+        // 6. Combine documentType and visibility into tags field (simple approach for now)
+        String tags = buildTags(documentType, visibility);
+
+        // 7. Build Document record
+        Document document = Document.builder()
+                .title(title)
+                .description(description)
+                .tags(tags)
                 .status(DocumentStatus.ACTIVE)
                 .user(user)
                 .category(category)
@@ -157,12 +236,32 @@ public class DocumentService {
         if (document.getCloudFile() != null) {
             CloudFile cf = document.getCloudFile();
             builder.cloudFileId(cf.getId());
+            builder.fileName(cf.getFileName());
             builder.originalName(cf.getOriginalName());
             builder.fileUrl(cf.getFileUrl());
             builder.fileType(cf.getFileType());
             builder.fileSize(cf.getFileSize());
+            builder.storageProvider(cf.getStorageProvider());
         }
 
         return builder.build();
+    }
+
+    // ─── Helper ────────────────────────────────────────────────────────────────
+
+    /**
+     * Combines documentType and visibility into a comma-separated tags string.
+     * Example: "LECTURE,PUBLIC"
+     */
+    private String buildTags(String documentType, String visibility) {
+        StringBuilder sb = new StringBuilder();
+        if (documentType != null && !documentType.isBlank()) {
+            sb.append(documentType.toUpperCase());
+        }
+        if (visibility != null && !visibility.isBlank()) {
+            if (!sb.isEmpty()) sb.append(",");
+            sb.append(visibility.toUpperCase());
+        }
+        return sb.isEmpty() ? null : sb.toString();
     }
 }
