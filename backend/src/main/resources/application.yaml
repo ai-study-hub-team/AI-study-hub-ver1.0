@@ -29,3 +29,7 @@ spring:
 app:
   upload:
     dir: uploads   # Files will be saved to a folder named "uploads" in the project root
+
+ai:
+  service:
+    base-url: http://localhost:8000

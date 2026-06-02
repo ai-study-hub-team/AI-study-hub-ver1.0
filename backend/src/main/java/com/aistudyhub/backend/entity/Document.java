@@ -32,6 +32,11 @@ public class Document {
     @Builder.Default
     private DocumentStatus status = DocumentStatus.ACTIVE;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private DocumentProcessStatus processStatus = DocumentProcessStatus.UPLOADED;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

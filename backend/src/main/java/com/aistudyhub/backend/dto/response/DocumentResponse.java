@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.dto.response;
 
+import com.aistudyhub.backend.entity.DocumentProcessStatus;
 import com.aistudyhub.backend.entity.DocumentStatus;
 import lombok.Builder;
 import lombok.Getter;
@@ -20,6 +21,7 @@ public class DocumentResponse {
     private String description;
     private String tags;
     private DocumentStatus status;
+    private DocumentProcessStatus processStatus;
 
     // Owner info
     private Long userId;

@@ -3,12 +3,16 @@ package com.aistudyhub.backend.controller;
 import com.aistudyhub.backend.dto.request.DocumentRequest;
 import com.aistudyhub.backend.dto.response.DocumentResponse;
 import com.aistudyhub.backend.service.DocumentService;
+import com.aistudyhub.backend.service.FileStorageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -23,6 +28,7 @@ import java.io.IOException;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final FileStorageService fileStorageService;
 
     // POST /api/documents
     @PostMapping
@@ -100,5 +106,69 @@ public class DocumentController {
             // Disk / IO error — return 500 Internal Server Error
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    // ─── GET /api/documents/{id}/file ────────────────────────────────────────────
+    // Streams the file inline so the browser can display/preview it directly.
+    @GetMapping("/{id}/file")
+    public ResponseEntity<Resource> viewFile(@PathVariable Long id) {
+        // 1. Load document metadata to get fileName and fileType
+        var docResponse = documentService.getById(id);
+        String fileName = docResponse.getFileName();
+        if (fileName == null || fileName.isBlank()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        // 2. Load the actual file bytes from disk
+        Resource resource = fileStorageService.loadFileAsResource(fileName);
+
+        // 3. Determine Content-Type (use stored value, fall back to extension detection)
+        String mimeType = docResponse.getFileType() != null
+                ? docResponse.getFileType()
+                : fileStorageService.getMimeTypeFromFileName(fileName);
+
+        // 4. inline → browser will try to display (PDF renders in-tab, TXT shows as text)
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentDisposition(
+            ContentDisposition.inline().filename(fileName, StandardCharsets.UTF_8).build()
+        );
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .contentType(MediaType.parseMediaType(mimeType))
+                .body(resource);
+    }
+
+    // ─── GET /api/documents/{id}/download ────────────────────────────────────────
+    // Forces a browser download with the original file name.
+    @GetMapping("/{id}/download")
+    public ResponseEntity<Resource> downloadFile(@PathVariable Long id) {
+        // 1. Load document metadata
+        var docResponse = documentService.getById(id);
+        String fileName     = docResponse.getFileName();       // stored on disk
+        String originalName = docResponse.getOriginalName();   // shown to user
+        if (fileName == null || fileName.isBlank()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        // 2. Load file from disk
+        Resource resource = fileStorageService.loadFileAsResource(fileName);
+
+        // 3. Content-Type for download (generic binary is fine, but we keep the real type)
+        String mimeType = docResponse.getFileType() != null
+                ? docResponse.getFileType()
+                : fileStorageService.getMimeTypeFromFileName(fileName);
+
+        // 4. attachment → browser will save the file using originalName
+        String downloadName = (originalName != null && !originalName.isBlank()) ? originalName : fileName;
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentDisposition(
+            ContentDisposition.attachment().filename(downloadName, StandardCharsets.UTF_8).build()
+        );
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .contentType(MediaType.parseMediaType(mimeType))
+                .body(resource);
     }
 }

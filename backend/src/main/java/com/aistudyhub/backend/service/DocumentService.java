@@ -24,6 +24,7 @@ public class DocumentService {
     private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
     private final FileStorageService fileStorageService;
+    private final AiIntegrationService aiIntegrationService;
 
     // Read upload dir from config (same value used in FileStorageService)
     @Value("${app.upload.dir:uploads}")
@@ -137,6 +138,17 @@ public class DocumentService {
                 .build();
 
         Document saved = documentRepository.save(document);
+        
+        // 8. Call AI service to process the document
+        DocumentProcessStatus processStatus = aiIntegrationService.processDocument(
+                saved.getId(),
+                cloudFile.getFileName(),
+                cloudFile.getOriginalName(),
+                cloudFile.getFileUrl(),
+                cloudFile.getFileType()
+        );
+        saved.setProcessStatus(processStatus);
+
         return toResponse(saved);
     }
 
@@ -222,6 +234,7 @@ public class DocumentService {
                 .description(document.getDescription())
                 .tags(document.getTags())
                 .status(document.getStatus())
+                .processStatus(document.getProcessStatus())
                 .userId(document.getUser() != null ? document.getUser().getId() : null)
                 .createdAt(document.getCreatedAt())
                 .updatedAt(document.getUpdatedAt());

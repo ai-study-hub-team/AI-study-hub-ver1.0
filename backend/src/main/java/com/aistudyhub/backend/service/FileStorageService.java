@@ -1,10 +1,13 @@
 package com.aistudyhub.backend.service;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -93,5 +96,46 @@ public class FileStorageService {
             return "";
         }
         return fileName.substring(fileName.lastIndexOf('.') + 1);
+    }
+
+    /**
+     * Loads a stored file from the uploads directory as a Spring Resource.
+     * The controller can then stream this directly to the browser.
+     *
+     * @param fileName the stored file name (as saved on disk, e.g. "a1b2c3_lecture.pdf")
+     * @return a Resource pointing to the file
+     * @throws RuntimeException if the file does not exist or cannot be read
+     */
+    public Resource loadFileAsResource(String fileName) {
+        try {
+            Path filePath = Paths.get(uploadDir).resolve(fileName).normalize();
+            Resource resource = new UrlResource(filePath.toUri());
+
+            if (resource.exists() && resource.isReadable()) {
+                return resource;
+            } else {
+                throw new RuntimeException("File not found or not readable: " + fileName);
+            }
+        } catch (MalformedURLException e) {
+            throw new RuntimeException("Invalid file path: " + fileName, e);
+        }
+    }
+
+    /**
+     * Returns a MIME type string derived from the file extension.
+     * Used when the stored fileType metadata is unavailable.
+     *
+     * @param fileName the file name (stored or original)
+     * @return MIME type string
+     */
+    public String getMimeTypeFromFileName(String fileName) {
+        String ext = getExtension(fileName).toLowerCase();
+        return switch (ext) {
+            case "pdf"  -> "application/pdf";
+            case "txt"  -> "text/plain";
+            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            default     -> "application/octet-stream";
+        };
     }
 }
