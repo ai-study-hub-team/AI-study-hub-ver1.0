@@ -3,6 +3,9 @@ package com.aistudyhub.backend.service;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentProcessStatus;
 import com.aistudyhub.backend.repository.DocumentRepository;
+import com.aistudyhub.backend.entity.DocumentChunk;
+import com.aistudyhub.backend.repository.DocumentChunkRepository;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,7 +17,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.nio.file.Paths;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +27,7 @@ import java.util.Map;
 public class AiIntegrationService {
 
     private final DocumentRepository documentRepository;
+    private final DocumentChunkRepository documentChunkRepository;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
@@ -33,6 +39,10 @@ public class AiIntegrationService {
         try {
             updateDocumentStatus(documentId, DocumentProcessStatus.PROCESSING);
             
+            String absoluteFilePath = Paths.get(filePath).toAbsolutePath().toString();
+            log.info("Original stored file path: {}", filePath);
+            log.info("Sending absolute file path to AI service: {}", absoluteFilePath);
+            
             String url = aiServiceBaseUrl + "/process-document";
             
             HttpHeaders headers = new HttpHeaders();
@@ -42,7 +52,7 @@ public class AiIntegrationService {
             requestBody.put("documentId", documentId);
             requestBody.put("fileName", fileName);
             requestBody.put("originalFileName", originalFileName);
-            requestBody.put("filePath", filePath);
+            requestBody.put("filePath", absoluteFilePath);
             requestBody.put("fileType", fileType);
             
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
@@ -57,6 +67,13 @@ public class AiIntegrationService {
                     log.info("Successfully processed document ID: {} with AI service", documentId);
                     log.info("Extracted text length: {}", body.get("textLength"));
                     log.info("Preview text: {}", body.get("previewText"));
+                    if (body.containsKey("chunkCount")) {
+                        log.info("Created {} chunks", body.get("chunkCount"));
+                    }
+                    
+                    if (body.containsKey("chunks")) {
+                        saveChunks(documentId, (List<Map<String, Object>>) body.get("chunks"));
+                    }
                     
                     updateDocumentStatus(documentId, DocumentProcessStatus.PROCESSED);
                     return DocumentProcessStatus.PROCESSED;
@@ -82,6 +99,28 @@ public class AiIntegrationService {
         documentRepository.findById(documentId).ifPresent(doc -> {
             doc.setProcessStatus(status);
             documentRepository.save(doc);
+        });
+    }
+
+    @Transactional
+    protected void saveChunks(Long documentId, List<Map<String, Object>> chunksData) {
+        documentRepository.findById(documentId).ifPresent(document -> {
+            // Delete old chunks if any
+            documentChunkRepository.deleteByDocumentId(documentId);
+            
+            // Save new chunks
+            for (Map<String, Object> chunkData : chunksData) {
+                DocumentChunk chunk = DocumentChunk.builder()
+                        .document(document)
+                        .chunkIndex((Integer) chunkData.get("chunkIndex"))
+                        .chunkText((String) chunkData.get("chunkText"))
+                        .charStart((Integer) chunkData.get("charStart"))
+                        .charEnd((Integer) chunkData.get("charEnd"))
+                        .textLength((Integer) chunkData.get("textLength"))
+                        .build();
+                documentChunkRepository.save(chunk);
+            }
+            log.info("Successfully saved {} chunks to the database for document ID: {}", chunksData.size(), documentId);
         });
     }
 }

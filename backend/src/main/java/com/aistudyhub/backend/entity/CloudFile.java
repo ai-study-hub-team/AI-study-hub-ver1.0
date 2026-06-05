@@ -17,10 +17,10 @@ public class CloudFile {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // The name used when saving the file on disk (e.g. "uuid_lecture1.pdf")
+    // The name used when saving the file on disk
     private String fileName;
 
-    // The original file name as uploaded by the user (e.g. "lecture1.pdf")
+    // The original file name as uploaded by the user
     private String originalName;
 
     // File type / MIME type, e.g. "application/pdf"
@@ -30,11 +30,9 @@ public class CloudFile {
     private Long fileSize;
 
     // Path or URL where the file can be accessed
-    // For LOCAL storage: relative path like "uploads/uuid_lecture1.pdf"
     private String fileUrl;
 
-    // Where the file is stored: LOCAL, FIREBASE, S3, etc.
-    // Currently only LOCAL is supported
+    // Where the file is stored: LOCAL, FIREBASE, S3.
     private String storageProvider;
 
     private LocalDateTime uploadedAt;

@@ -27,35 +27,55 @@ async def process_document(request: DocumentRequest):
     try:
         import os
         from text_extractor import extract_text
+        from text_chunker import chunk_text
         
-        if not os.path.exists(request.filePath):
-            logger.error(f"File not found: {request.filePath}")
+        received_path = request.filePath
+        abs_file_path = os.path.abspath(received_path)
+        logger.info(f"Received file path: {received_path}")
+        logger.info(f"Resolved absolute path: {abs_file_path}")
+        
+        file_exists = os.path.exists(abs_file_path)
+        logger.info(f"File exists: {file_exists}")
+        
+        if not file_exists:
+            logger.error(f"File not found: {abs_file_path}")
             return {
                 "documentId": request.documentId,
                 "status": "FAILED",
                 "message": "File not found"
             }
             
-        text = extract_text(request.filePath, request.fileType)
+        text = extract_text(abs_file_path, request.fileType)
         text_length = len(text)
         preview_text = text[:500]
         
-        logger.info(f"Extracted {text_length} characters from document ID: {request.documentId}")
-        logger.info(f"Preview: {preview_text}")
+        chunks = chunk_text(text)
+        chunk_count = len(chunks)
+        preview_chunks = chunks[:3]
         
+        logger.info(f"Extracted {text_length} characters from document ID: {request.documentId}")
+        logger.info(f"Created {chunk_count} chunks")
+        if preview_chunks:
+            logger.info(f"First chunk preview: {preview_chunks[0]['chunkText'][:100]}...")
+        else:
+            logger.info("Preview: " + preview_text)
+            
         return {
             "documentId": request.documentId,
             "status": "PROCESSED",
-            "message": "Text extracted successfully",
+            "message": "Text extracted and chunked successfully",
             "textLength": text_length,
-            "previewText": preview_text
+            "chunkCount": chunk_count,
+            "previewText": preview_text,
+            "previewChunks": preview_chunks,
+            "chunks": chunks
         }
     except Exception as e:
         logger.error(f"Error processing document ID {request.documentId}: {str(e)}")
         return {
             "documentId": request.documentId,
             "status": "FAILED",
-            "message": f"Extraction error: {str(e)}"
+            "message": f"Extraction/chunking error: {str(e)}"
         }
 
 if __name__ == "__main__":
