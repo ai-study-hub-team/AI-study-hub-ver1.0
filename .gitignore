@@ -2,5 +2,4 @@ __pycache__/
 *.pyc
 backend/uploads/
 
-frontend/*
-!frontend/.gitkeep
+frontend/node_modules/
