@@ -2,5 +2,5 @@ __pycache__/
 *.pyc
 backend/uploads/
 
-frontend/*
-!frontend/.gitkeep
+node_modules/
+frontend_old/
