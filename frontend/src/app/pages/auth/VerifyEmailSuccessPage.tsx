@@ -61,15 +61,13 @@ export function VerifyEmailSuccessPage() {
           </div>
         </motion.div>
 
-        <motion.button
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          onClick={() => navigate("/app/dashboard")}
-          className="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 text-lg"
-        >
-          Go to Dashboard <ArrowRight className="w-5 h-5" />
-        </motion.button>
+       <button
+            onClick={() => navigate("/login")}
+            className="w-full max-w-xl py-5 bg-blue-600 text-white text-2xl font-bold rounded-2xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all flex items-center justify-center gap-3"
+>
+              Go to Login
+             <ArrowRight className="w-6 h-6" />
+        </button>
       </div>
     </div>
   );

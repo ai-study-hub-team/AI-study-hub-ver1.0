@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from "react-router";
+import { FcGoogle } from "react-icons/fc";
 import {
   Mail,
   Lock,
@@ -96,12 +97,9 @@ export function LoginPage() {
                   Password
                 </label>
 
-                <a
-                  href="#"
-                  className="text-sm font-semibold text-blue-600 hover:text-blue-700"
-                >
-                  Forgot password?
-                </a>
+                <NavLink to="/forgot-password">
+                    Forgot password?
+                 </NavLink>
               </div>
 
               <div className="relative group">
@@ -151,21 +149,14 @@ export function LoginPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                className="flex items-center justify-center gap-2 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors font-semibold text-slate-700"
-              >
-                Google
-              </button>
-
-              <button
-                type="button"
-                className="flex items-center justify-center gap-2 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors font-semibold text-slate-700"
-              >
-                <Github className="w-5 h-5" />
-                GitHub
-              </button>
+            <div>
+         <button
+            type="button"
+            className="w-full flex items-center justify-center gap-3 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors font-semibold text-slate-700"
+  >
+             <FcGoogle className="w-5 h-5" />
+                   Continue with Google
+         </button>
             </div>
           </form>
         </div>

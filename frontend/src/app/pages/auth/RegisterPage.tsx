@@ -18,7 +18,7 @@ export function RegisterPage() {
     setTimeout(() => {
       setIsLoading(false);
       toast.success("Account created successfully!");
-      navigate("/app/dashboard");
+      navigate("/verify-email");
     }, 1000);
   };
 

@@ -8,16 +8,21 @@ export function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [email, setEmail] = useState("");
+  const navigate = useNavigate();
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      setEmailSent(true);
-      toast.success("Reset link sent to your email!");
-    }, 1500);
-  };
+  e.preventDefault();
+  setIsLoading(true);
+
+  setTimeout(() => {
+    setIsLoading(false);
+    setEmailSent(true);
+
+    toast.success("Verification code sent to your email!");
+
+    navigate("/verify-reset-code");
+  }, 1500);
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
