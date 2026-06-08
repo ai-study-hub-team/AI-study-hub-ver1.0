@@ -1,5 +1,5 @@
 import { createBrowserRouter, Navigate } from "react-router";
-import { RootLayout } from "./components/RootLayout";
+import { RootLayout } from "../layouts/RootLayout";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
@@ -7,13 +7,13 @@ import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { EmailVerificationPage } from "./pages/auth/EmailVerificationPage";
 import { VerifyEmailSuccessPage } from "./pages/auth/VerifyEmailSuccessPage";
-import { DashboardLayout } from "./components/DashboardLayout";
+import { DashboardLayout } from "../layouts/DashboardLayout";
 import { StudentDashboard } from "./pages/dashboard/StudentDashboard";
-import { DocumentManagement } from "./pages/documents/DocumentManagement";
+import { DocumentsPage } from "./pages/documents/DocumentsPage";
 import { MyLibrary } from "./pages/library/MyLibrary";
-import { AIChatbot } from "./pages/chat/AIChatbot";
-import { AISummary } from "./pages/summary/AISummary";
-import { QuizGenerator } from "./pages/quiz/QuizGenerator";
+import { AIChatPage } from "./pages/chat/AIChatPage";
+import { AISummaryPage } from "./pages/summary/AISummaryPage";
+import { QuizGeneratorPage } from "./pages/quiz/QuizGeneratorPage";
 import { ProfilePage } from "./pages/profile/ProfilePage";
 import { StorageDashboard } from "./pages/storage/StorageDashboard";
 import { PricingPage } from "./pages/subscription/PricingPage";
@@ -45,11 +45,11 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="dashboard" replace /> },
           { path: "dashboard", element: <StudentDashboard /> },
-          { path: "documents", element: <DocumentManagement /> },
+          { path: "documents", element: <DocumentsPage /> },
           { path: "library", element: <MyLibrary /> },
-          { path: "chat", element: <AIChatbot /> },
-          { path: "summary", element: <AISummary /> },
-          { path: "quiz", element: <QuizGenerator /> },
+          { path: "chat", element: <AIChatPage /> },
+          { path: "summary", element: <AISummaryPage /> },
+          { path: "quiz", element: <QuizGeneratorPage /> },
           { path: "profile", element: <ProfilePage /> },
           { path: "storage", element: <StorageDashboard /> },
           { path: "subscription", element: <SubscriptionDashboard /> },
