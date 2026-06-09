@@ -11,4 +11,7 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
     List<DocumentChunk> findByDocumentIdOrderByChunkIndexAsc(Long documentId);
     void deleteByDocumentId(Long documentId);
     long countByDocumentId(Long documentId);
+
+    List<DocumentChunk> findByDocumentIdAndChunkTextContainingIgnoreCaseOrderByChunkIndexAsc(Long documentId, String keyword);
+    org.springframework.data.domain.Page<DocumentChunk> findByChunkTextContainingIgnoreCase(String keyword, org.springframework.data.domain.Pageable pageable);
 }
