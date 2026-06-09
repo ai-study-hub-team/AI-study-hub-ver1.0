@@ -86,6 +86,25 @@ def _get_pinecone_index():
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
+def delete_document_vectors(document_id: int):
+    """
+    Deletes all Pinecone vectors associated with the given documentId.
+    Prevents stale vectors from remaining when a document is reprocessed.
+    """
+    try:
+        index = _get_pinecone_index()
+        logger.info(f"Starting deletion of old vectors for document ID: {document_id}")
+        
+        index.delete(
+            filter={"documentId": {"$eq": document_id}},
+            namespace=NAMESPACE
+        )
+        
+        logger.info(f"Completed deletion of old vectors for document ID: {document_id}")
+    except Exception as e:
+        logger.error(f"Failed to delete old vectors for document ID {document_id}: {e}")
+        raise RuntimeError(f"Pinecone deletion error: {e}") from e
+
 def upsert_document_chunks(document_id: int, original_file_name: str, chunks: list) -> dict:
     """
     Embed each chunk and upsert into Pinecone.
@@ -109,6 +128,9 @@ def upsert_document_chunks(document_id: int, original_file_name: str, chunks: li
     try:
         model = _get_embedding_model()
         index = _get_pinecone_index()
+
+        # Step 1: Delete old vectors to prevent staleness on reprocess
+        delete_document_vectors(document_id)
 
         # Extract just the text for batch embedding
         texts = [chunk["chunkText"] for chunk in chunks]
