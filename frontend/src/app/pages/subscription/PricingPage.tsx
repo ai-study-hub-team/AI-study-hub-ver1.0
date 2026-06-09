@@ -112,16 +112,16 @@ export function PricingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       {/* Header */}
-      <div className="bg-white border-b border-slate-100 py-4 px-6">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 py-4 px-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button onClick={() => navigate("/")} className="flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">A</div>
-            <span className="font-bold text-slate-900">AI Study Hub</span>
+            <span className="font-bold text-slate-900 dark:text-white">AI Study Hub</span>
           </button>
           <div className="flex items-center gap-4">
-            <button onClick={() => navigate("/login")} className="text-slate-600 font-semibold hover:text-slate-900 transition-colors">Login</button>
+            <button onClick={() => navigate("/login")} className="text-slate-700 dark:text-slate-300 font-semibold hover:text-slate-900 dark:hover:text-white transition-colors">Login</button>
             <button onClick={() => navigate("/register")} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors">Get Started</button>
           </div>
         </div>
@@ -130,28 +130,28 @@ export function PricingPage() {
       <div className="max-w-7xl mx-auto px-6 py-20">
         {/* Hero */}
         <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-full text-sm font-bold mb-6 border border-blue-100">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 rounded-full text-sm font-bold mb-6 border border-blue-100 dark:border-blue-500/30">
             <Zap className="w-4 h-4" /> Simple, transparent pricing
           </div>
-          <h1 className="text-5xl font-extrabold text-slate-900 mb-5">
+          <h1 className="text-5xl font-extrabold text-slate-900 dark:text-white mb-5">
             Study smarter,<br />
             <span className="text-blue-600">not harder</span>
           </h1>
-          <p className="text-xl text-slate-500 max-w-2xl mx-auto mb-10">
+          <p className="text-xl text-slate-500 dark:text-slate-400 max-w-2xl mx-auto mb-10">
             Choose the plan that fits your study goals. Upgrade or downgrade anytime.
           </p>
 
           {/* Billing Toggle */}
-          <div className="inline-flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-2">
+          <div className="inline-flex items-center gap-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-2">
             <button
               onClick={() => setIsAnnual(false)}
-              className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${!isAnnual ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"}`}
+              className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${!isAnnual ? "bg-blue-600 text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"}`}
             >
               Monthly
             </button>
             <button
               onClick={() => setIsAnnual(true)}
-              className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 ${isAnnual ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"}`}
+              className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 ${isAnnual ? "bg-blue-600 text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"}`}
             >
               Annual
               <span className="px-2 py-0.5 bg-emerald-500 text-white text-xs rounded-lg font-bold">-20%</span>
@@ -171,8 +171,8 @@ export function PricingPage() {
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
-                className={`relative bg-white rounded-[2rem] border-2 p-8 shadow-sm transition-all hover:shadow-xl hover:-translate-y-1 ${
-                  isPopular ? "border-blue-500 shadow-blue-100 shadow-xl" : "border-slate-100"
+                className={`relative bg-white dark:bg-slate-900 rounded-[2rem] border-2 p-8 shadow-sm transition-all hover:shadow-xl hover:-translate-y-1 ${
+                  isPopular ? "border-blue-500 shadow-blue-100 shadow-xl" : "border-slate-200 dark:border-slate-700"
                 }`}
               >
                 {plan.badge && (
@@ -184,23 +184,23 @@ export function PricingPage() {
                 )}
 
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-5 ${
-                  plan.color === "blue" ? "bg-blue-50" : plan.color === "purple" ? "bg-purple-50" : "bg-slate-50"
+                  plan.color === "blue" ? "bg-blue-50 dark:bg-blue-500/10" : plan.color === "purple" ? "bg-purple-50 dark:bg-purple-500/10" : "bg-slate-50 dark:bg-slate-800"
                 }`}>
                   <plan.icon className={`w-6 h-6 ${
-                    plan.color === "blue" ? "text-blue-600" : plan.color === "purple" ? "text-purple-600" : "text-slate-500"
+                    plan.color === "blue" ? "text-blue-600 dark:text-blue-300" : plan.color === "purple" ? "text-purple-600 dark:text-purple-300" : "text-slate-500 dark:text-slate-400"
                   }`} />
                 </div>
 
-                <h3 className="text-xl font-extrabold text-slate-900 mb-1">{plan.name}</h3>
-                <p className="text-sm text-slate-500 mb-5">{plan.description}</p>
+                <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mb-1">{plan.name}</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">{plan.description}</p>
 
                 <div className="mb-6">
                   <div className="flex items-end gap-1">
-                    <span className="text-5xl font-extrabold text-slate-900">${price}</span>
-                    <span className="text-slate-400 mb-2">/mo</span>
+                    <span className="text-5xl font-extrabold text-slate-900 dark:text-white">${price}</span>
+                    <span className="text-slate-500 dark:text-slate-400 mb-2">/mo</span>
                   </div>
                   {isAnnual && plan.price.monthly > 0 && (
-                    <p className="text-sm text-slate-400 line-through">${plan.price.monthly}/mo billed monthly</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 line-through">${plan.price.monthly}/mo billed monthly</p>
                   )}
                 </div>
 
@@ -211,7 +211,7 @@ export function PricingPage() {
                       ? "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20"
                       : plan.color === "purple"
                       ? "bg-purple-600 text-white hover:bg-purple-700 shadow-lg shadow-purple-500/20"
-                      : "bg-slate-50 text-slate-800 hover:bg-slate-100 border border-slate-200"
+                      : "bg-white dark:bg-slate-800 text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700"
                   }`}
                 >
                   {plan.cta} <ArrowRight className="w-4 h-4" />
@@ -220,12 +220,12 @@ export function PricingPage() {
                 <div className="space-y-3">
                   {plan.features.map((feat) => (
                     <div key={feat.label} className="flex items-center gap-3">
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${feat.included ? "bg-emerald-50" : "bg-slate-50"}`}>
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${feat.included ? "bg-emerald-50 dark:bg-emerald-500/10" : "bg-slate-50 dark:bg-slate-800"}`}>
                         {feat.included
                           ? <Check className="w-3 h-3 text-emerald-500" />
-                          : <X className="w-3 h-3 text-slate-300" />}
+                          : <X className="w-3 h-3 text-slate-400 dark:text-slate-500" />}
                       </div>
-                      <span className={`text-sm ${feat.included ? "text-slate-700" : "text-slate-400 line-through"}`}>
+                      <span className={`text-sm ${feat.included ? "text-slate-700 dark:text-slate-300" : "text-slate-500 dark:text-slate-400 line-through"}`}>
                         {feat.label}
                       </span>
                     </div>
@@ -239,18 +239,18 @@ export function PricingPage() {
         {/* FAQ */}
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-10">
-            <h2 className="text-3xl font-extrabold text-slate-900 mb-3">Frequently Asked Questions</h2>
-            <p className="text-slate-500">Everything you need to know about our pricing</p>
+            <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-3">Frequently Asked Questions</h2>
+            <p className="text-slate-500 dark:text-slate-400">Everything you need to know about our pricing</p>
           </div>
           <div className="space-y-3">
             {faqs.map((faq, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+              <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                 <button
                   onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  className="w-full flex items-center justify-between p-6 text-left"
+                  className="w-full flex items-center justify-between p-6 text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
-                  <span className="font-bold text-slate-900 pr-4">{faq.q}</span>
-                  {openFaq === i ? <ChevronUp className="w-5 h-5 text-slate-400 shrink-0" /> : <ChevronDown className="w-5 h-5 text-slate-400 shrink-0" />}
+                  <span className="font-bold text-slate-900 dark:text-white pr-4">{faq.q}</span>
+                  {openFaq === i ? <ChevronUp className="w-5 h-5 text-slate-500 dark:text-slate-400 shrink-0" /> : <ChevronDown className="w-5 h-5 text-slate-500 dark:text-slate-400 shrink-0" />}
                 </button>
                 <AnimatePresence>
                   {openFaq === i && (
@@ -261,7 +261,7 @@ export function PricingPage() {
                       transition={{ duration: 0.2 }}
                       className="overflow-hidden"
                     >
-                      <p className="px-6 pb-6 text-slate-500 leading-relaxed">{faq.a}</p>
+                      <p className="px-6 pb-6 text-slate-500 dark:text-slate-400 leading-relaxed">{faq.a}</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -270,10 +270,10 @@ export function PricingPage() {
           </div>
 
           <div className="mt-10 text-center">
-            <p className="text-slate-500 mb-4">Still have questions?</p>
+            <p className="text-slate-500 dark:text-slate-400 mb-4">Still have questions?</p>
             <button
               onClick={() => toast.success("Opening support chat...")}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-700 font-bold rounded-2xl hover:bg-slate-50 transition-colors"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <HelpCircle className="w-5 h-5" /> Contact Support
             </button>

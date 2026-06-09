@@ -60,19 +60,19 @@ export function AnalyticsDashboard() {
   const [period, setPeriod] = useState("30 days");
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 bg-slate-50 dark:bg-slate-950">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900">Platform Analytics</h1>
-          <p className="text-slate-500">Comprehensive platform metrics and usage insights</p>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Platform Analytics</h1>
+          <p className="text-slate-500 dark:text-slate-400">Comprehensive platform metrics and usage insights</p>
         </div>
-        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl p-1.5">
+        <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-1.5">
           {periods.map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
               className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                period === p ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"
+                period === p ? "bg-blue-600 text-white hover:bg-blue-700" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               }`}
             >
               {p}
@@ -89,10 +89,10 @@ export function AnalyticsDashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.07 }}
-            className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm"
+            className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm"
           >
             <div className="flex items-start justify-between mb-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-${kpi.color}-50`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-${kpi.color}-50 dark:bg-slate-800`}>
                 <kpi.icon className={`w-5 h-5 text-${kpi.color}-600`} />
               </div>
               <div className={`flex items-center gap-1 text-xs font-bold ${kpi.positive ? "text-emerald-500" : "text-red-500"}`}>
@@ -100,21 +100,21 @@ export function AnalyticsDashboard() {
                 {kpi.growth}
               </div>
             </div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{kpi.label}</p>
-            <p className="text-2xl font-extrabold text-slate-900">{kpi.value}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{kpi.sub}</p>
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">{kpi.label}</p>
+            <p className="text-2xl font-extrabold text-slate-900 dark:text-white">{kpi.value}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{kpi.sub}</p>
           </motion.div>
         ))}
       </div>
 
       {/* User Growth Chart */}
-      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6">
+      <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 dark:[&_.recharts-cartesian-axis-tick_text]:fill-slate-400 dark:[&_.recharts-cartesian-grid_line]:stroke-slate-800 dark:[&_.recharts-default-tooltip]:!bg-slate-900 dark:[&_.recharts-default-tooltip]:!border-slate-700 dark:[&_.recharts-tooltip-label]:!text-white dark:[&_.recharts-tooltip-item]:!text-slate-300">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">User Growth</h2>
-            <p className="text-sm text-slate-500">Total registered vs. daily active users</p>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">User Growth</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Total registered vs. daily active users</p>
           </div>
-          <div className="flex items-center gap-4 text-xs font-semibold text-slate-500">
+          <div className="flex items-center gap-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
             <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-600" /> Total Users</div>
             <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-emerald-500" /> Active Users</div>
           </div>
@@ -143,8 +143,8 @@ export function AnalyticsDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* AI Usage */}
-        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6">
-          <h2 className="text-lg font-bold text-slate-900 mb-5">AI Feature Usage (This Week)</h2>
+        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 dark:[&_.recharts-cartesian-axis-tick_text]:fill-slate-400 dark:[&_.recharts-cartesian-grid_line]:stroke-slate-800 dark:[&_.recharts-default-tooltip]:!bg-slate-900 dark:[&_.recharts-default-tooltip]:!border-slate-700 dark:[&_.recharts-tooltip-label]:!text-white dark:[&_.recharts-tooltip-item]:!text-slate-300">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-5">AI Feature Usage (This Week)</h2>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={aiUsage} barSize={16}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
@@ -159,8 +159,8 @@ export function AnalyticsDashboard() {
         </div>
 
         {/* Document Distribution */}
-        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6">
-          <h2 className="text-lg font-bold text-slate-900 mb-5">Documents by Subject</h2>
+        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 dark:[&_.recharts-cartesian-axis-tick_text]:fill-slate-400 dark:[&_.recharts-default-tooltip]:!bg-slate-900 dark:[&_.recharts-default-tooltip]:!border-slate-700 dark:[&_.recharts-tooltip-label]:!text-white dark:[&_.recharts-tooltip-item]:!text-slate-300">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-5">Documents by Subject</h2>
           <div className="flex items-center gap-6">
             <ResponsiveContainer width={160} height={160}>
               <PieChart>
@@ -184,16 +184,16 @@ export function AnalyticsDashboard() {
                 <div key={s.name} className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: s.fill }} />
                   <div className="flex-1 flex justify-between text-sm">
-                    <span className="font-medium text-slate-700">{s.name}</span>
-                    <span className="font-bold text-slate-900">{s.value}%</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-300">{s.name}</span>
+                    <span className="font-bold text-slate-900 dark:text-white">{s.value}%</span>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="mt-5 pt-4 border-t border-slate-100">
-            <h3 className="text-sm font-bold text-slate-700 mb-3">Monthly Document Uploads</h3>
+          <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Monthly Document Uploads</h3>
             <ResponsiveContainer width="100%" height={80}>
               <BarChart data={docUploads} barSize={20}>
                 <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />

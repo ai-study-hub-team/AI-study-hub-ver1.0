@@ -48,13 +48,13 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+   <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       {/* Sidebar */}
       <motion.aside
         initial={false}
         animate={{ width: isSidebarOpen ? 260 : 80 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="relative z-20 flex flex-col h-full bg-white border-r border-slate-200 shadow-sm"
+        className="relative z-20 flex flex-col h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-sm"
       >
         {/* Logo */}
         <div className="flex items-center h-16 px-4 border-b border-slate-100 shrink-0">
@@ -95,12 +95,12 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
                 className={`
                   flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group
                   ${active
-                    ? "bg-blue-50 text-blue-600 font-medium"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}
+                    ? "bg-blue-600 text-white font-medium hover:bg-blue-700"
+                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}
                 `}
                 title={!isSidebarOpen ? link.label : undefined}
               >
-                <link.icon className={`w-5 h-5 shrink-0 transition-colors ${active ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"}`} />
+                <link.icon className={`w-5 h-5 shrink-0 transition-colors ${active ? "text-white" : "text-slate-400 group-hover:text-slate-600 dark:group-hover:text-white"}`} />
                 {isSidebarOpen && (
                   <motion.span
                     initial={{ opacity: 0 }}
@@ -134,14 +134,14 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Header */}
-        <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-slate-200 shrink-0">
+        <header className="h-16 flex items-center justify-between px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div className="flex items-center flex-1 max-w-xl">
             <div className="relative w-full group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400 group-focus-within:text-blue-500" />
               <input
                 type="text"
                 placeholder="Search documents, quizzes, or chat history..."
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               />
             </div>
           </div>
@@ -159,25 +159,25 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
 
             <button
               onClick={toggleTheme}
-              className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors"
+              className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
               title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
             >
               {theme === "light" ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
             </button>
 
-            <button className="relative p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors">
+            <button className="relative p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
               <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 border-2 border-white rounded-full"></span>
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 border-2 border-white dark:border-slate-900 rounded-full"></span>
             </button>
 
-            <div className="h-8 w-px bg-slate-200"></div>
+            <div className="h-8 w-px bg-slate-200 dark:bg-slate-700"></div>
 
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium text-slate-900 leading-none">Alex Johnson</p>
-                <p className="text-xs text-slate-500 mt-1">{isAdmin ? "Administrator" : "Student · Pro"}</p>
+                <p className="text-sm font-medium text-slate-900 dark:text-white leading-none">Alex Johnson</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{isAdmin ? "Administrator" : "Student · Pro"}</p>
               </div>
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 border-2 border-white shadow-sm flex items-center justify-center text-white font-bold text-sm">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 border-2 border-white dark:border-slate-900 shadow-sm flex items-center justify-center text-white font-bold text-sm">
                 AJ
               </div>
             </div>
@@ -185,7 +185,7 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-6 md:p-8">
+        <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50 dark:bg-slate-950">
           <div className="max-w-7xl mx-auto">
             <Outlet />
           </div>

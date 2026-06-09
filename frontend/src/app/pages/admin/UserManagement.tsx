@@ -22,19 +22,19 @@ type Status = "all" | "active" | "suspended" | "pending";
 
 const StatusBadge = ({ status }: { status: string }) => {
   const config: Record<string, { label: string; className: string }> = {
-    active: { label: "Active", className: "bg-emerald-50 text-emerald-600" },
-    suspended: { label: "Suspended", className: "bg-red-50 text-red-600" },
-    pending: { label: "Pending", className: "bg-amber-50 text-amber-600" },
+    active: { label: "Active", className: "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" },
+    suspended: { label: "Suspended", className: "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-300" },
+    pending: { label: "Pending", className: "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-300" },
   };
-  const { label, className } = config[status] || { label: status, className: "bg-slate-50 text-slate-500" };
+  const { label, className } = config[status] || { label: status, className: "bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400" };
   return <span className={`px-2.5 py-1 text-xs font-bold rounded-lg ${className}`}>{label}</span>;
 };
 
 const PlanBadge = ({ plan }: { plan: string }) => {
   const colors: Record<string, string> = {
-    Free: "bg-slate-100 text-slate-600",
-    Pro: "bg-blue-50 text-blue-600",
-    Enterprise: "bg-purple-50 text-purple-600",
+    Free: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
+    Pro: "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300",
+    Enterprise: "bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-300",
   };
   return <span className={`px-2.5 py-1 text-xs font-bold rounded-lg ${colors[plan] || ""}`}>{plan}</span>;
 };
@@ -73,16 +73,16 @@ export function UserManagement() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 bg-slate-50 dark:bg-slate-950">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900">User Management</h1>
-          <p className="text-slate-500">Manage all registered users and their accounts</p>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">User Management</h1>
+          <p className="text-slate-500 dark:text-slate-400">Manage all registered users and their accounts</p>
         </div>
         <div className="flex items-center gap-3">
           <button
             onClick={() => toast.success("Exporting user list...")}
-            className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 text-slate-600 font-semibold rounded-xl hover:bg-slate-50 transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <Download className="w-4 h-4" /> Export
           </button>
@@ -103,27 +103,27 @@ export function UserManagement() {
           { label: "Suspended", value: statCounts.suspended, icon: XCircle, color: "red" },
           { label: "Pending", value: statCounts.pending, icon: Clock, color: "amber" },
         ].map((stat, i) => (
-          <div key={i} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-            <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center bg-${stat.color}-50`}>
+          <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+            <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center bg-${stat.color}-50 dark:bg-slate-800`}>
               <stat.icon className={`w-5 h-5 text-${stat.color}-600`} />
             </div>
-            <p className="text-2xl font-extrabold text-slate-900">{stat.value}</p>
-            <p className="text-sm text-slate-500">{stat.label}</p>
+            <p className="text-2xl font-extrabold text-slate-900 dark:text-white">{stat.value}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{stat.label}</p>
           </div>
         ))}
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6">
+      <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
         <div className="flex flex-col lg:flex-row gap-4 items-center mb-6">
           <div className="relative w-full lg:max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400" />
             <input
               type="text"
               placeholder="Search by name or email..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
           </div>
           <div className="flex items-center gap-2 overflow-x-auto">
@@ -132,7 +132,7 @@ export function UserManagement() {
                 key={s}
                 onClick={() => setStatusFilter(s)}
                 className={`px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap capitalize transition-all ${
-                  statusFilter === s ? "bg-blue-600 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                  statusFilter === s ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}
               >
                 {s === "all" ? "All Users" : s}
@@ -145,7 +145,7 @@ export function UserManagement() {
         <div className="overflow-x-auto">
           <table className="w-full border-separate border-spacing-y-2">
             <thead>
-              <tr className="text-left text-slate-400 text-xs font-bold uppercase tracking-widest">
+              <tr className="text-left text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-widest bg-slate-50 dark:bg-slate-800">
                 <th className="px-4 py-2">User</th>
                 <th className="px-4 py-2">Plan</th>
                 <th className="px-4 py-2">Status</th>
@@ -164,7 +164,7 @@ export function UserManagement() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="group bg-white hover:bg-slate-50 transition-colors"
+                    className="group bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                   >
                     <td className="px-4 py-3 rounded-l-2xl">
                       <div className="flex items-center gap-3">
@@ -172,21 +172,21 @@ export function UserManagement() {
                           {user.avatar}
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900 text-sm">{user.name}</p>
-                          <p className="text-xs text-slate-400">{user.email}</p>
+                          <p className="font-bold text-slate-900 dark:text-white text-sm">{user.name}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-4 py-3"><PlanBadge plan={user.plan} /></td>
                     <td className="px-4 py-3"><StatusBadge status={user.status} /></td>
-                    <td className="px-4 py-3 text-sm font-bold text-slate-700">{user.docs}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500">{user.lastActive}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500">{user.joined}</td>
+                    <td className="px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-300">{user.docs}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{user.lastActive}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{user.joined}</td>
                     <td className="px-4 py-3 rounded-r-2xl text-right">
                       <div className="relative inline-block">
                         <button
                           onClick={() => setOpenMenu(openMenu === user.id ? null : user.id)}
-                          className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"
+                          className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
                         >
                           <MoreVertical className="w-4 h-4" />
                         </button>
@@ -196,17 +196,17 @@ export function UserManagement() {
                               initial={{ opacity: 0, scale: 0.95, y: -5 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
                               exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                              className="absolute right-0 top-full mt-1 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 w-48 py-2 overflow-hidden"
+                              className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-20 w-48 py-2 overflow-hidden"
                             >
                               <button
                                 onClick={() => { toast.success(`Viewing ${user.name}'s profile`); setOpenMenu(null); }}
-                                className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                               >
                                 <Eye className="w-4 h-4" /> View Profile
                               </button>
                               <button
                                 onClick={() => { toast.success(`Email sent to ${user.email}`); setOpenMenu(null); }}
-                                className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                               >
                                 <Mail className="w-4 h-4" /> Send Email
                               </button>
@@ -214,17 +214,17 @@ export function UserManagement() {
                                 onClick={() => suspendUser(user.id)}
                                 className={`flex items-center gap-2 w-full px-4 py-2.5 text-sm transition-colors ${
                                   user.status === "suspended"
-                                    ? "text-emerald-600 hover:bg-emerald-50"
-                                    : "text-amber-600 hover:bg-amber-50"
+                                    ? "text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                                    : "text-amber-600 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-500/10"
                                 }`}
                               >
                                 <UserX className="w-4 h-4" />
                                 {user.status === "suspended" ? "Reactivate" : "Suspend"}
                               </button>
-                              <div className="mx-4 my-1 border-t border-slate-100" />
+                              <div className="mx-4 my-1 border-t border-slate-200 dark:border-slate-700" />
                               <button
                                 onClick={() => deleteUser(user.id)}
-                                className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                               >
                                 <Trash2 className="w-4 h-4" /> Delete User
                               </button>
@@ -240,9 +240,9 @@ export function UserManagement() {
           </table>
           {filtered.length === 0 && (
             <div className="py-16 text-center">
-              <Users className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-              <p className="font-bold text-slate-500">No users found</p>
-              <p className="text-sm text-slate-400">Try adjusting your search or filter</p>
+              <Users className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+              <p className="font-bold text-slate-500 dark:text-slate-400">No users found</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Try adjusting your search or filter</p>
             </div>
           )}
         </div>

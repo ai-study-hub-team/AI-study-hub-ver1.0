@@ -52,8 +52,8 @@ export function SubscriptionDashboard() {
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900">Subscription</h1>
-          <p className="text-slate-500">Manage your plan, billing, and payment methods</p>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Subscription</h1>
+          <p className="text-slate-500 dark:text-slate-400">Manage your plan, billing, and payment methods</p>
         </div>
         <button
           onClick={() => navigate("/app/subscription/upgrade")}
@@ -101,7 +101,7 @@ export function SubscriptionDashboard() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200">
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700">
         {(["overview", "billing", "payment"] as const).map((tab) => (
           <button
             key={tab}
@@ -109,7 +109,7 @@ export function SubscriptionDashboard() {
             className={`px-5 py-3 font-bold text-sm capitalize transition-all border-b-2 -mb-px ${
               activeTab === tab
                 ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+                : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
             }`}
           >
             {tab === "payment" ? "Payment Methods" : tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -126,15 +126,15 @@ export function SubscriptionDashboard() {
               { label: "Documents Uploaded", value: "40", limit: "Unlimited", icon: Download, color: "purple", pct: null },
               { label: "Storage Used", value: "9 GB", limit: "100 GB", icon: Shield, color: "emerald", pct: 9 },
             ].map((stat, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-                <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center bg-${stat.color}-50`}>
+              <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+                <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center bg-${stat.color}-50 dark:bg-slate-800`}>
                   <stat.icon className={`w-5 h-5 text-${stat.color}-600`} />
                 </div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{stat.label}</p>
-                <p className="text-2xl font-extrabold text-slate-900">{stat.value}</p>
-                <p className="text-xs text-slate-400 mt-0.5">of {stat.limit}</p>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">{stat.label}</p>
+                <p className="text-2xl font-extrabold text-slate-900 dark:text-white">{stat.value}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">of {stat.limit}</p>
                 {stat.pct !== null && (
-                  <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5">
+                  <div className="mt-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5">
                     <div className={`h-1.5 rounded-full bg-${stat.color}-500`} style={{ width: `${stat.pct}%` }} />
                   </div>
                 )}
@@ -143,8 +143,8 @@ export function SubscriptionDashboard() {
           </div>
 
           {/* Usage Chart */}
-          <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-slate-900 mb-5">Usage Over Time</h2>
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-5">Usage Over Time</h2>
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={usageData}>
                 <defs>
@@ -168,8 +168,8 @@ export function SubscriptionDashboard() {
           </div>
 
           {/* Pro Features */}
-          <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-slate-900 mb-5">Your Pro Features</h2>
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-5">Your Pro Features</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 "100 GB Cloud Storage",
@@ -183,9 +183,9 @@ export function SubscriptionDashboard() {
                 "Advanced Analytics",
                 "Priority Support",
               ].map((feat) => (
-                <div key={feat} className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl">
+                <div key={feat} className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span className="text-sm font-medium text-slate-700">{feat}</span>
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{feat}</span>
                 </div>
               ))}
             </div>
@@ -195,12 +195,12 @@ export function SubscriptionDashboard() {
 
       {activeTab === "billing" && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-          <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6">
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold text-slate-900">Billing History</h2>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Billing History</h2>
               <button
                 onClick={() => toast.success("Downloading all invoices...")}
-                className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-600 font-semibold rounded-xl hover:bg-slate-50 transition-colors text-sm"
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-sm"
               >
                 <Download className="w-4 h-4" /> Download All
               </button>
@@ -208,7 +208,7 @@ export function SubscriptionDashboard() {
             <div className="overflow-x-auto">
               <table className="w-full border-separate border-spacing-y-2">
                 <thead>
-                  <tr className="text-left text-slate-400 text-xs font-bold uppercase tracking-widest">
+                  <tr className="text-left text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-widest bg-slate-50 dark:bg-slate-800">
                     <th className="px-4 py-2">Invoice</th>
                     <th className="px-4 py-2">Date</th>
                     <th className="px-4 py-2">Plan</th>
@@ -219,19 +219,19 @@ export function SubscriptionDashboard() {
                 </thead>
                 <tbody>
                   {billingHistory.map((inv) => (
-                    <tr key={inv.id} className="group bg-white hover:bg-slate-50 transition-colors">
+                    <tr key={inv.id} className="group bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                       <td className="px-4 py-3 rounded-l-2xl">
                         <div className="flex items-center gap-2">
-                          <Receipt className="w-4 h-4 text-slate-400" />
-                          <span className="font-bold text-slate-800 text-sm">{inv.id}</span>
+                          <Receipt className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                          <span className="font-bold text-slate-700 dark:text-slate-300 text-sm">{inv.id}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-500">{inv.date}</td>
-                      <td className="px-4 py-3 text-sm text-slate-600 font-medium">{inv.plan}</td>
-                      <td className="px-4 py-3 text-sm font-bold text-slate-900">{inv.amount}</td>
+                      <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{inv.date}</td>
+                      <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300 font-medium">{inv.plan}</td>
+                      <td className="px-4 py-3 text-sm font-bold text-slate-900 dark:text-white">{inv.amount}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2.5 py-1 text-xs font-bold rounded-lg ${
-                          inv.status === "paid" ? "bg-emerald-50 text-emerald-600" : "bg-blue-50 text-blue-600"
+                          inv.status === "paid" ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" : "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300"
                         }`}>
                           {inv.status === "paid" ? "Paid" : "Trial"}
                         </span>
@@ -255,9 +255,9 @@ export function SubscriptionDashboard() {
 
       {activeTab === "payment" && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
-          <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6">
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold text-slate-900">Payment Methods</h2>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Payment Methods</h2>
               <button
                 onClick={() => toast.success("Add payment method modal opened")}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors text-sm"
@@ -268,13 +268,13 @@ export function SubscriptionDashboard() {
             <div className="space-y-3">
               {paymentMethods.map((card) => (
                 <div key={card.id} className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
-                  card.isDefault ? "border-blue-500 bg-blue-50/30" : "border-slate-100 bg-slate-50"
+                  card.isDefault ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10" : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
                 }`}>
                   <div className="flex items-center gap-4">
                     <CardBrand type={card.type} />
                     <div>
-                      <p className="font-bold text-slate-900 capitalize">{card.type} ending in {card.last4}</p>
-                      <p className="text-sm text-slate-500">Expires {card.expiry}</p>
+                      <p className="font-bold text-slate-900 dark:text-white capitalize">{card.type} ending in {card.last4}</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Expires {card.expiry}</p>
                     </div>
                     {card.isDefault && (
                       <span className="px-2.5 py-1 bg-blue-600 text-white text-xs font-bold rounded-lg">Default</span>
@@ -291,7 +291,7 @@ export function SubscriptionDashboard() {
                     )}
                     <button
                       onClick={() => toast.error("Card removed")}
-                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                      className="p-2 text-slate-500 dark:text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -301,11 +301,11 @@ export function SubscriptionDashboard() {
             </div>
           </div>
 
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex items-center gap-4">
-            <Shield className="w-8 h-8 text-slate-400 shrink-0" />
+          <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 flex items-center gap-4">
+            <Shield className="w-8 h-8 text-slate-500 dark:text-slate-400 shrink-0" />
             <div>
-              <p className="font-bold text-slate-700">Your payment information is secure</p>
-              <p className="text-sm text-slate-500">Payments are encrypted with 256-bit SSL. We never store your full card details.</p>
+              <p className="font-bold text-slate-700 dark:text-slate-300">Your payment information is secure</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Payments are encrypted with 256-bit SSL. We never store your full card details.</p>
             </div>
           </div>
         </motion.div>

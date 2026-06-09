@@ -45,7 +45,7 @@ export default function VerifyResetCodePage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center py-12 px-6">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center py-12 px-6">
 
       <NavLink
         to="/"
@@ -55,28 +55,28 @@ export default function VerifyResetCodePage() {
           A
         </div>
 
-        <span className="text-3xl font-bold text-slate-900">
+        <span className="text-3xl font-bold text-slate-900 dark:text-white">
           AI Study Hub
         </span>
       </NavLink>
 
-      <div className="w-20 h-20 bg-blue-100 rounded-3xl flex items-center justify-center mb-6">
+      <div className="w-20 h-20 bg-blue-100 dark:bg-blue-500/10 rounded-3xl flex items-center justify-center mb-6">
         <Mail className="w-10 h-10 text-blue-600" />
       </div>
 
-      <h1 className="text-4xl font-extrabold text-slate-900 mb-3">
+      <h1 className="text-4xl font-extrabold text-slate-900 dark:text-white mb-3">
         Verify Reset Code
       </h1>
 
-      <p className="text-slate-500 text-center mb-2">
+      <p className="text-slate-500 dark:text-slate-400 text-center mb-2">
         We sent a 6-digit reset code to your email
       </p>
 
-      <p className="font-bold text-slate-900 mb-10">
+      <p className="font-bold text-slate-900 dark:text-white mb-10">
         nguyenvana@gmail.com
       </p>
 
-      <div className="bg-white rounded-[2rem] shadow-xl p-8 w-full max-w-lg">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[2rem] shadow-xl dark:shadow-slate-950/40 p-8 w-full max-w-lg">
 
         <div className="flex justify-center gap-3 mb-8">
           {otp.map((digit, index) => (
@@ -89,12 +89,12 @@ export default function VerifyResetCodePage() {
               onChange={(e) =>
                 handleChange(e.target.value, index)
               }
-              className="w-14 h-16 border-2 border-slate-200 rounded-2xl text-center text-2xl font-bold outline-none focus:border-blue-500"
+              className="w-14 h-16 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-2 border-slate-200 dark:border-slate-700 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-2xl text-center text-2xl font-bold outline-none focus:border-blue-500"
             />
           ))}
         </div>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-xl py-3 text-center text-amber-700 mb-6">
+        <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-xl py-3 text-center text-amber-700 dark:text-amber-300 mb-6">
           Demo: use code <strong>123456</strong>
         </div>
 
@@ -107,11 +107,11 @@ export default function VerifyResetCodePage() {
         </button>
 
         <div className="text-center mt-8">
-          <p className="text-slate-500 mb-3">
+          <p className="text-slate-500 dark:text-slate-400 mb-3">
             Didn't receive the code?
           </p>
 
-          <button className="inline-flex items-center gap-2 text-blue-600 font-bold">
+          <button className="inline-flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold">
             <RefreshCw className="w-4 h-4" />
             Resend Code
           </button>
