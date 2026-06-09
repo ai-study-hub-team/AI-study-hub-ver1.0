@@ -11,10 +11,11 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Long> {
-    
+
     List<DocumentChunk> findByDocumentIdOrderByChunkIndexAsc(Long documentId);
 
     @Modifying
@@ -25,6 +26,10 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
     long countByDocumentId(Long documentId);
 
     List<DocumentChunk> findByDocumentIdAndChunkTextContainingIgnoreCaseOrderByChunkIndexAsc(Long documentId, String keyword);
-    
+
     Page<DocumentChunk> findByChunkTextContainingIgnoreCase(String keyword, Pageable pageable);
+
+    /** Used by semantic search: fetch a single chunk by document + position. */
+    Optional<DocumentChunk> findByDocument_IdAndChunkIndex(Long documentId, Integer chunkIndex);
 }
+

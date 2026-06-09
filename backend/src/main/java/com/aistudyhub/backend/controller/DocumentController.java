@@ -2,8 +2,10 @@ package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.request.DocumentRequest;
 import com.aistudyhub.backend.dto.response.DocumentResponse;
+import com.aistudyhub.backend.dto.response.SemanticSearchResponse;
 import com.aistudyhub.backend.service.DocumentService;
 import com.aistudyhub.backend.service.FileStorageService;
+import com.aistudyhub.backend.service.SemanticSearchService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
@@ -29,6 +31,7 @@ public class DocumentController {
 
     private final DocumentService documentService;
     private final FileStorageService fileStorageService;
+    private final SemanticSearchService semanticSearchService;
 
     // POST /api/documents
     @PostMapping
@@ -89,6 +92,30 @@ public class DocumentController {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         return ResponseEntity.ok(documentService.search(keyword, pageable));
+    }
+
+    // GET /api/documents/semantic-search?query=...&documentId=9&topK=5
+    @GetMapping("/semantic-search")
+    public ResponseEntity<SemanticSearchResponse> semanticSearch(
+            @RequestParam String query,
+            @RequestParam(required = false) Long documentId,
+            @RequestParam(defaultValue = "5") int topK) {
+
+        if (query == null || query.isBlank()) {
+            return ResponseEntity.badRequest().body(
+                    SemanticSearchResponse.builder()
+                            .query(query)
+                            .documentId(documentId)
+                            .topK(0)
+                            .resultCount(0)
+                            .results(java.util.List.of())
+                            .error("Query parameter must not be blank.")
+                            .build()
+            );
+        }
+
+        SemanticSearchResponse response = semanticSearchService.search(query, documentId, topK);
+        return ResponseEntity.ok(response);
     }
 
     // ─── POST /api/documents/upload ─────────────────────────────────────────────

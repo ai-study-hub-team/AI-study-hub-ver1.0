@@ -1,0 +1,29 @@
+package com.aistudyhub.backend.dto.response;
+
+import lombok.Builder;
+import lombok.Getter;
+
+/**
+ * One item in a semantic search result.
+ * chunkText is fetched from MySQL after Pinecone returns documentId + chunkIndex.
+ */
+@Getter
+@Builder
+public class SemanticSearchResultResponse {
+
+    private Integer documentId;
+    private Integer chunkIndex;
+    private Double  score;
+
+    // Fetched from MySQL document_chunks
+    private String  chunkText;       // null if chunk not found in MySQL
+
+    // Metadata from Pinecone
+    private Integer charStart;
+    private Integer charEnd;
+    private Integer textLength;
+    private String  originalFileName;
+
+    // Warning populated when the MySQL chunk cannot be found
+    private String  warning;
+}
