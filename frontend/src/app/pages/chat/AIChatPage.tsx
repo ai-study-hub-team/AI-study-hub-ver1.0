@@ -119,10 +119,10 @@ export function AIChatPage() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-10rem)] gap-0 bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+    <div className="flex h-[calc(100vh-10rem)] gap-0 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
       {/* Sidebar */}
-      <div className="w-72 shrink-0 border-r border-slate-100 flex flex-col bg-slate-50/50">
-        <div className="p-4 border-b border-slate-100">
+      <div className="w-72 shrink-0 border-r border-slate-100 dark:border-slate-800 flex flex-col bg-slate-50/50 dark:bg-slate-950/40">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800">
           <button
             onClick={() => { setMessages([{ id: "new", role: "assistant", content: "Starting a new conversation! What would you like to learn about today?", timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }]); }}
             className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors text-sm"
@@ -131,36 +131,36 @@ export function AIChatPage() {
           </button>
         </div>
 
-        <div className="p-3 border-b border-slate-100">
+        <div className="p-3 border-b border-slate-100 dark:border-slate-800">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
               placeholder="Search conversations..."
               value={chatSearch}
               onChange={(e) => setChatSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-xs"
+              className="w-full pl-8 pr-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
           </div>
         </div>
 
-        <div className="px-3 py-2 flex gap-1.5 overflow-x-auto border-b border-slate-100 no-scrollbar">
+        <div className="px-3 py-2 flex gap-1.5 overflow-x-auto border-b border-slate-100 dark:border-slate-800 no-scrollbar">
           {chatCategories.map((cat) => (
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${activeCategory === cat ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${activeCategory === cat ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
             >
               {cat}
             </button>
           ))}
         </div>
 
-        <div className="px-3 py-2 flex items-center justify-between border-b border-slate-100">
-          <span className="text-xs font-bold text-slate-500">{filteredChats.length} conversations</span>
+        <div className="px-3 py-2 flex items-center justify-between border-b border-slate-100 dark:border-slate-800">
+          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{filteredChats.length} conversations</span>
           <button
             onClick={() => setSavedOnly(!savedOnly)}
-            className={`flex items-center gap-1 text-xs font-bold transition-colors ${savedOnly ? "text-blue-600" : "text-slate-400 hover:text-slate-600"}`}
+            className={`flex items-center gap-1 text-xs font-bold transition-colors ${savedOnly ? "text-blue-600" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
           >
             <Bookmark className="w-3 h-3" fill={savedOnly ? "currentColor" : "none"} /> Saved
           </button>
@@ -171,16 +171,16 @@ export function AIChatPage() {
             <button
               key={chat.id}
               onClick={() => setActiveChat(chat.id)}
-              className={`w-full text-left p-3 rounded-xl transition-all ${activeChat === chat.id ? "bg-blue-50 border border-blue-100" : "hover:bg-white border border-transparent"}`}
+              className={`w-full text-left p-3 rounded-xl transition-all ${activeChat === chat.id ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/30" : "hover:bg-white dark:hover:bg-slate-800 border border-transparent"}`}
             >
               <div className="flex items-start justify-between gap-1 mb-0.5">
-                <span className={`text-sm font-bold truncate ${activeChat === chat.id ? "text-blue-700" : "text-slate-800"}`}>{chat.title}</span>
+                <span className={`text-sm font-bold truncate ${activeChat === chat.id ? "text-blue-700 dark:text-blue-300" : "text-slate-800 dark:text-slate-100"}`}>{chat.title}</span>
                 {chat.saved && <Bookmark className="w-3 h-3 text-blue-500 shrink-0 mt-0.5" fill="currentColor" />}
               </div>
-              <p className="text-xs text-slate-400 truncate mb-1">{chat.preview}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate mb-1">{chat.preview}</p>
               <div className="flex items-center gap-1.5">
-                <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-xs rounded-md font-medium">{chat.category}</span>
-                <span className="text-slate-300 text-xs">{chat.time}</span>
+                <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs rounded-md font-medium">{chat.category}</span>
+                <span className="text-slate-400 dark:text-slate-500 text-xs">{chat.time}</span>
               </div>
             </button>
           ))}
@@ -190,24 +190,24 @@ export function AIChatPage() {
       {/* Main Chat */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Chat Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
               <Bot className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="font-bold text-slate-900 text-sm">AI Study Assistant</p>
+              <p className="font-bold text-slate-900 dark:text-slate-100 text-sm">AI Study Assistant</p>
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                <span className="text-xs text-slate-400">Ready to help · 5 docs indexed</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Ready to help · 5 docs indexed</span>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={exportChat} className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold transition-colors">
+            <button onClick={exportChat} className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition-colors">
               <Download className="w-3.5 h-3.5" /> Export
             </button>
-            <button onClick={() => toast.success("Conversation saved!")} className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold transition-colors">
+            <button onClick={() => toast.success("Conversation saved!")} className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition-colors">
               <Bookmark className="w-3.5 h-3.5" /> Save
             </button>
           </div>
@@ -223,21 +223,21 @@ export function AIChatPage() {
                 animate={{ opacity: 1, y: 0 }}
                 className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
               >
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === "assistant" ? "bg-gradient-to-br from-blue-500 to-indigo-600" : "bg-slate-200"}`}>
-                  {msg.role === "assistant" ? <Bot className="w-4 h-4 text-white" /> : <User className="w-4 h-4 text-slate-600" />}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === "assistant" ? "bg-gradient-to-br from-blue-500 to-indigo-600" : "bg-slate-200 dark:bg-slate-800"}`}>
+                  {msg.role === "assistant" ? <Bot className="w-4 h-4 text-white" /> : <User className="w-4 h-4 text-slate-600 dark:text-slate-300" />}
                 </div>
                 <div className={`max-w-[75%] ${msg.role === "user" ? "items-end" : "items-start"} flex flex-col gap-1`}>
                   <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-line ${
                     msg.role === "user"
                       ? "bg-blue-600 text-white rounded-tr-sm"
-                      : "bg-slate-100 text-slate-800 rounded-tl-sm"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-sm"
                   }`}>
                     {msg.content}
                   </div>
                   {msg.citations && msg.role === "assistant" && (
                     <div className="flex flex-wrap gap-1.5 mt-1">
                       {msg.citations.map((cite) => (
-                        <span key={cite} className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-600 text-xs font-semibold rounded-lg border border-blue-100">
+                        <span key={cite} className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold rounded-lg border border-blue-100 dark:border-blue-500/30">
                           <BookOpen className="w-3 h-3" /> {cite}
                         </span>
                       ))}
@@ -246,13 +246,13 @@ export function AIChatPage() {
                   {msg.role === "assistant" && (
                     <div className="flex items-center gap-1 mt-0.5 opacity-0 hover:opacity-100 transition-opacity">
                       {[ThumbsUp, ThumbsDown, Copy, RotateCcw].map((Icon, i) => (
-                        <button key={i} onClick={() => toast.success(i === 2 ? "Copied!" : "Feedback sent")} className="p-1 text-slate-300 hover:text-slate-500 transition-colors">
+                        <button key={i} onClick={() => toast.success(i === 2 ? "Copied!" : "Feedback sent")} className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
                           <Icon className="w-3.5 h-3.5" />
                         </button>
                       ))}
                     </div>
                   )}
-                  <span className="text-xs text-slate-400">{msg.timestamp}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{msg.timestamp}</span>
                 </div>
               </motion.div>
             ))}
@@ -263,9 +263,9 @@ export function AIChatPage() {
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
                 <Bot className="w-4 h-4 text-white" />
               </div>
-              <div className="px-4 py-3 bg-slate-100 rounded-2xl rounded-tl-sm flex items-center gap-1">
+              <div className="px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-2xl rounded-tl-sm flex items-center gap-1">
                 {[0, 1, 2].map((i) => (
-                  <div key={i} className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                  <div key={i} className="w-2 h-2 bg-slate-400 dark:bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
                 ))}
               </div>
             </motion.div>
@@ -276,13 +276,13 @@ export function AIChatPage() {
         {/* Suggested Questions */}
         {messages.length === 1 && (
           <div className="px-6 pb-3">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Suggested questions</p>
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Suggested questions</p>
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
               {suggestedQuestions.map((q) => (
                 <button
                   key={q}
                   onClick={() => handleSend(q)}
-                  className="shrink-0 px-3 py-2 bg-blue-50 text-blue-700 text-xs font-semibold rounded-xl hover:bg-blue-100 transition-colors border border-blue-100"
+                  className="shrink-0 px-3 py-2 bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs font-semibold rounded-xl hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors border border-blue-100 dark:border-blue-500/30"
                 >
                   {q}
                 </button>
@@ -293,14 +293,14 @@ export function AIChatPage() {
 
         {/* Input */}
         <div className="px-6 pb-5 shrink-0">
-          <form onSubmit={handleSend} className="flex items-end gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-400 transition-all">
+          <form onSubmit={handleSend} className="flex items-end gap-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-400 transition-all">
             <textarea
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(e as any); } }}
               placeholder="Ask anything about your study materials..."
               rows={1}
-              className="flex-1 bg-transparent text-sm text-slate-800 placeholder-slate-400 outline-none resize-none leading-relaxed max-h-32 min-h-[24px]"
+              className="flex-1 bg-transparent text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none resize-none leading-relaxed max-h-32 min-h-[24px]"
             />
             <button
               type="submit"
@@ -310,7 +310,7 @@ export function AIChatPage() {
               <Send className="w-4 h-4" />
             </button>
           </form>
-          <p className="text-xs text-center text-slate-400 mt-2">AI may make mistakes. Always verify important information.</p>
+          <p className="text-xs text-center text-slate-500 dark:text-slate-400 mt-2">AI may make mistakes. Always verify important information.</p>
         </div>
       </div>
     </div>

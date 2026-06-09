@@ -27,7 +27,7 @@ function PasswordStrengthBar({ password }: { password: string }) {
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className={`flex-1 h-1.5 rounded-full transition-all ${i <= strength ? colors[strength] : "bg-slate-200"}`}
+            className={`flex-1 h-1.5 rounded-full transition-all ${i <= strength ? colors[strength] : "bg-slate-200 dark:bg-slate-700"}`}
           />
         ))}
       </div>
@@ -69,17 +69,17 @@ export function ResetPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
+      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           className="max-w-md w-full text-center"
         >
-          <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6">
+          <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 mb-3">Password Reset!</h1>
-          <p className="text-slate-500 mb-8">Your password has been updated. Redirecting you to login...</p>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-3">Password Reset!</h1>
+          <p className="text-slate-500 dark:text-slate-400 mb-8">Your password has been updated. Redirecting you to login...</p>
           <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
         </motion.div>
       </div>
@@ -87,38 +87,38 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
+    <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-md w-full">
         <div className="text-center mb-10">
           <NavLink to="/" className="inline-flex items-center gap-2 mb-8">
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">A</div>
-            <span className="text-2xl font-bold text-slate-900 tracking-tight">AI Study Hub</span>
+            <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">AI Study Hub</span>
           </NavLink>
-          <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+          <div className="w-16 h-16 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
             <ShieldCheck className="w-8 h-8 text-blue-600" />
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 mb-2">Set New Password</h1>
-          <p className="text-slate-500">Create a strong password for your account</p>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2">Set New Password</h1>
+          <p className="text-slate-500 dark:text-slate-400">Create a strong password for your account</p>
         </div>
 
-        <div className="bg-white p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100">
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 dark:shadow-slate-950/40 border border-slate-200 dark:border-slate-700">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">New Password</label>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">New Password</label>
               <div className="relative group">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 dark:text-slate-400 group-focus-within:text-blue-500 transition-colors" />
                 <input
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Create a strong password"
-                  className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  className="w-full pl-11 pr-12 py-3 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -127,25 +127,25 @@ export function ResetPasswordPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Confirm Password</label>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Confirm Password</label>
               <div className="relative group">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 dark:text-slate-400 group-focus-within:text-blue-500 transition-colors" />
                 <input
                   type={showConfirm ? "text" : "password"}
                   required
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   placeholder="Confirm your password"
-                  className={`w-full pl-11 pr-12 py-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 transition-all ${
+                  className={`w-full pl-11 pr-12 py-3 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl outline-none focus:ring-2 transition-all ${
                     confirm && password !== confirm
-                      ? "border-red-300 focus:ring-red-500/20 focus:border-red-500"
-                      : "border-slate-200 focus:ring-blue-500/20 focus:border-blue-500"
+                      ? "border-red-300 dark:border-red-500/50 focus:ring-red-500/20 focus:border-red-500"
+                      : "border-slate-200 dark:border-slate-700 focus:ring-blue-500/20 focus:border-blue-500"
                   }`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirm(!showConfirm)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
                 >
                   {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -155,14 +155,14 @@ export function ResetPasswordPage() {
               )}
             </div>
 
-            <div className="bg-slate-50 rounded-2xl p-4 space-y-2">
-              <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Password Requirements</p>
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 space-y-2">
+              <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3">Password Requirements</p>
               {requirements.map((req) => (
                 <div key={req.label} className="flex items-center gap-2">
-                  <div className={`w-4 h-4 rounded-full flex items-center justify-center transition-all ${req.met ? "bg-emerald-500" : "bg-slate-200"}`}>
+                  <div className={`w-4 h-4 rounded-full flex items-center justify-center transition-all ${req.met ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-700"}`}>
                     {req.met && <CheckCircle2 className="w-3 h-3 text-white" />}
                   </div>
-                  <span className={`text-xs font-medium ${req.met ? "text-emerald-600" : "text-slate-400"}`}>{req.label}</span>
+                  <span className={`text-xs font-medium ${req.met ? "text-emerald-600 dark:text-emerald-300" : "text-slate-500 dark:text-slate-400"}`}>{req.label}</span>
                 </div>
               ))}
             </div>

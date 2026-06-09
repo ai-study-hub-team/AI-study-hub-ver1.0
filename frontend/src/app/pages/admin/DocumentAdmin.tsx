@@ -22,11 +22,11 @@ const subjects = ["All", "Physics", "History", "Management", "Math", "Psychology
 
 const StatusBadge = ({ status }: { status: string }) => {
   const config: Record<string, { label: string; className: string }> = {
-    analyzed: { label: "Analyzed", className: "bg-emerald-50 text-emerald-600" },
-    pending: { label: "Pending", className: "bg-amber-50 text-amber-600" },
-    flagged: { label: "Flagged", className: "bg-red-50 text-red-600" },
+    analyzed: { label: "Analyzed", className: "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" },
+    pending: { label: "Pending", className: "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-300" },
+    flagged: { label: "Flagged", className: "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-300" },
   };
-  const { label, className } = config[status] || { label: status, className: "bg-slate-50 text-slate-500" };
+  const { label, className } = config[status] || { label: status, className: "bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400" };
   return <span className={`px-2.5 py-1 text-xs font-bold rounded-lg ${className}`}>{label}</span>;
 };
 
@@ -50,11 +50,11 @@ export function DocumentAdmin() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 bg-slate-50 dark:bg-slate-950">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900">Document Management</h1>
-          <p className="text-slate-500">View, manage, and moderate all platform documents</p>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Document Management</h1>
+          <p className="text-slate-500 dark:text-slate-400">View, manage, and moderate all platform documents</p>
         </div>
         <div className="flex items-center gap-2">
           {[
@@ -63,7 +63,7 @@ export function DocumentAdmin() {
             { label: "Pending", value: docs.filter(d => d.status === "pending").length, color: "amber" },
             { label: "Flagged", value: docs.filter(d => d.status === "flagged").length, color: "red" },
           ].map((s) => (
-            <div key={s.label} className={`px-3 py-1.5 bg-${s.color}-50 text-${s.color}-600 rounded-xl border border-${s.color}-100`}>
+            <div key={s.label} className={`px-3 py-1.5 bg-${s.color}-50 dark:bg-slate-800 text-${s.color}-600 dark:text-slate-300 rounded-xl border border-${s.color}-100 dark:border-slate-700`}>
               <span className="text-xs font-bold">{s.label}: </span>
               <span className="text-sm font-extrabold">{s.value}</span>
             </div>
@@ -71,16 +71,16 @@ export function DocumentAdmin() {
         </div>
       </div>
 
-      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6 space-y-5">
+      <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 space-y-5">
         <div className="flex flex-col lg:flex-row gap-4 items-center">
           <div className="relative w-full lg:max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400" />
             <input
               type="text"
               placeholder="Search by filename or owner..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
           </div>
           <div className="flex items-center gap-2 overflow-x-auto">
@@ -89,7 +89,7 @@ export function DocumentAdmin() {
                 key={s}
                 onClick={() => setSubject(s)}
                 className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                  subject === s ? "bg-blue-600 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                  subject === s ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}
               >
                 {s}
@@ -101,7 +101,7 @@ export function DocumentAdmin() {
         <div className="overflow-x-auto">
           <table className="w-full border-separate border-spacing-y-2">
             <thead>
-              <tr className="text-left text-slate-400 text-xs font-bold uppercase tracking-widest">
+              <tr className="text-left text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-widest bg-slate-50 dark:bg-slate-800">
                 <th className="px-4 py-2">Document</th>
                 <th className="px-4 py-2">Owner</th>
                 <th className="px-4 py-2">Subject</th>
@@ -121,29 +121,29 @@ export function DocumentAdmin() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="group bg-white hover:bg-slate-50 transition-colors"
+                    className="group bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                   >
                     <td className="px-4 py-3 rounded-l-2xl">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">
-                          <FileText className="w-4 h-4 text-slate-400" />
+                        <div className="w-8 h-8 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                         </div>
-                        <span className="font-semibold text-slate-800 text-sm truncate max-w-[180px]">{doc.name}</span>
+                        <span className="font-semibold text-slate-900 dark:text-white text-sm truncate max-w-[180px]">{doc.name}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{doc.owner}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">{doc.owner}</td>
                     <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg">{doc.subject}</span>
+                      <span className="px-2 py-0.5 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700">{doc.subject}</span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-500">{doc.size}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-semibold">{doc.views}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{doc.size}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300 font-semibold">{doc.views}</td>
                     <td className="px-4 py-3"><StatusBadge status={doc.status} /></td>
-                    <td className="px-4 py-3 text-sm text-slate-500">{doc.uploaded}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{doc.uploaded}</td>
                     <td className="px-4 py-3 rounded-r-2xl text-right">
                       <div className="relative inline-block">
                         <button
                           onClick={() => setOpenMenu(openMenu === doc.id ? null : doc.id)}
-                          className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
+                          className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
                         >
                           <MoreVertical className="w-4 h-4" />
                         </button>
@@ -153,19 +153,19 @@ export function DocumentAdmin() {
                               initial={{ opacity: 0, scale: 0.95, y: -5 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
                               exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                              className="absolute right-0 top-full mt-1 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 w-44 py-2"
+                              className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-20 w-44 py-2"
                             >
-                              <button onClick={() => { toast.success("Opening document preview..."); setOpenMenu(null); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50">
+                              <button onClick={() => { toast.success("Opening document preview..."); setOpenMenu(null); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
                                 <Eye className="w-4 h-4" /> Preview
                               </button>
-                              <button onClick={() => { toast.success("Downloading document..."); setOpenMenu(null); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50">
+                              <button onClick={() => { toast.success("Downloading document..."); setOpenMenu(null); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
                                 <Download className="w-4 h-4" /> Download
                               </button>
-                              <button onClick={() => { toast.success("Edit metadata opened"); setOpenMenu(null); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50">
+                              <button onClick={() => { toast.success("Edit metadata opened"); setOpenMenu(null); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
                                 <Edit2 className="w-4 h-4" /> Edit
                               </button>
-                              <div className="mx-4 my-1 border-t border-slate-100" />
-                              <button onClick={() => deleteDoc(doc.id)} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50">
+                              <div className="mx-4 my-1 border-t border-slate-200 dark:border-slate-700" />
+                              <button onClick={() => deleteDoc(doc.id)} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/10">
                                 <Trash2 className="w-4 h-4" /> Delete
                               </button>
                             </motion.div>
@@ -180,8 +180,8 @@ export function DocumentAdmin() {
           </table>
           {filtered.length === 0 && (
             <div className="py-16 text-center">
-              <FileText className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-              <p className="font-bold text-slate-500">No documents found</p>
+              <FileText className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+              <p className="font-bold text-slate-500 dark:text-slate-400">No documents found</p>
             </div>
           )}
         </div>

@@ -38,20 +38,20 @@ export function MyLibrary() {
     <div className="space-y-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900">My Library</h1>
-          <p className="text-slate-500">Your personalized knowledge base</p>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-slate-100">My Library</h1>
+          <p className="text-slate-500 dark:text-slate-400">Your personalized knowledge base</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex bg-slate-100 p-1 rounded-xl">
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
             <button 
               onClick={() => setView('grid')}
-              className={`p-2 rounded-lg transition-all ${view === 'grid' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}
+              className={`p-2 rounded-lg transition-all ${view === 'grid' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
             >
               <Grid className="w-5 h-5" />
             </button>
             <button 
               onClick={() => setView('list')}
-              className={`p-2 rounded-lg transition-all ${view === 'list' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}
+              className={`p-2 rounded-lg transition-all ${view === 'list' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
             >
               <List className="w-5 h-5" />
             </button>
@@ -65,7 +65,7 @@ export function MyLibrary() {
       {/* Collections Section */}
       <section>
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-slate-900">Collections</h2>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Collections</h2>
           <button className="text-sm font-bold text-blue-600 hover:underline">View All</button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -73,13 +73,13 @@ export function MyLibrary() {
             <motion.div 
               key={idx}
               whileHover={{ y: -5 }}
-              className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm group cursor-pointer"
+              className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm group cursor-pointer"
             >
-              <div className={`w-14 h-14 rounded-2xl bg-${col.color}-50 text-${col.color}-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+              <div className={`w-14 h-14 rounded-2xl bg-${col.color}-50 dark:bg-slate-800 text-${col.color}-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                 <Library className="w-7 h-7" />
               </div>
-              <h3 className="font-bold text-slate-900 mb-1">{col.name}</h3>
-              <p className="text-sm text-slate-500">{col.count} items</p>
+              <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-1">{col.name}</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{col.count} items</p>
             </motion.div>
           ))}
         </div>
@@ -89,20 +89,20 @@ export function MyLibrary() {
       <section>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-6">
-            <button className="text-lg font-bold text-slate-900 border-b-2 border-blue-600 pb-1">All Files</button>
-            <button className="text-lg font-bold text-slate-400 hover:text-slate-600 pb-1 flex items-center gap-2">
+            <button className="text-lg font-bold text-slate-900 dark:text-slate-100 border-b-2 border-blue-600 pb-1">All Files</button>
+            <button className="text-lg font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 pb-1 flex items-center gap-2">
               <Star className="w-5 h-5" /> Favorites
             </button>
-            <button className="text-lg font-bold text-slate-400 hover:text-slate-600 pb-1 flex items-center gap-2">
+            <button className="text-lg font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 pb-1 flex items-center gap-2">
               <Clock className="w-5 h-5" /> Recent
             </button>
           </div>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400" />
             <input 
               type="text" 
               placeholder="Filter library..."
-              className="w-full md:w-64 pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+              className="w-full md:w-64 pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
         </div>
@@ -115,52 +115,52 @@ export function MyLibrary() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.05 }}
-                className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm group"
+                className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm group"
               >
                 <div className="flex items-start justify-between mb-6">
-                  <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center group-hover:bg-blue-50 transition-colors">
-                    <FileText className="w-6 h-6 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                  <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center group-hover:bg-blue-50 dark:group-hover:bg-blue-500/10 transition-colors">
+                    <FileText className="w-6 h-6 text-slate-500 dark:text-slate-400 group-hover:text-blue-500 transition-colors" />
                   </div>
                   <div className="flex items-center gap-2">
-                    <button className={`p-1.5 rounded-lg transition-colors ${doc.fav ? 'text-amber-400' : 'text-slate-300 hover:text-slate-500'}`}>
+                    <button className={`p-1.5 rounded-lg transition-colors ${doc.fav ? 'text-amber-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'}`}>
                       <Star className={`w-5 h-5 ${doc.fav ? 'fill-amber-400' : ''}`} />
                     </button>
-                    <button className="p-1.5 text-slate-300 hover:text-slate-500 rounded-lg">
+                    <button className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg">
                       <MoreHorizontal className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
-                <h4 className="font-bold text-slate-900 truncate mb-2">{doc.name}</h4>
-                <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-50">
+                <h4 className="font-bold text-slate-900 dark:text-slate-100 truncate mb-2">{doc.name}</h4>
+                <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-2">
-                    <Bookmark className="w-3 h-3 text-slate-400" />
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{doc.folder}</span>
+                    <Bookmark className="w-3 h-3 text-slate-500 dark:text-slate-400" />
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{doc.folder}</span>
                   </div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{doc.date}</span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{doc.date}</span>
                 </div>
               </motion.div>
             ))}
           </div>
         ) : (
-          <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
             {documents.map((doc, idx) => (
-              <div key={idx} className={`p-4 flex items-center justify-between hover:bg-slate-50 transition-colors ${idx !== documents.length - 1 ? 'border-b border-slate-50' : ''}`}>
+              <div key={idx} className={`p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${idx !== documents.length - 1 ? 'border-b border-slate-100 dark:border-slate-800' : ''}`}>
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center shrink-0">
-                    <FileText className="w-5 h-5 text-slate-400" />
+                  <div className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-center shrink-0">
+                    <FileText className="w-5 h-5 text-slate-500 dark:text-slate-400" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-900 text-sm">{doc.name}</h4>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{doc.folder}</p>
+                    <h4 className="font-bold text-slate-900 dark:text-slate-100 text-sm">{doc.name}</h4>
+                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{doc.folder}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-6">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden md:block">{doc.date}</span>
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest hidden md:block">{doc.date}</span>
                   <div className="flex items-center gap-2">
-                    <button className={`p-2 rounded-lg ${doc.fav ? 'text-amber-400' : 'text-slate-300'}`}>
+                    <button className={`p-2 rounded-lg ${doc.fav ? 'text-amber-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'}`}>
                       <Star className={`w-4 h-4 ${doc.fav ? 'fill-amber-400' : ''}`} />
                     </button>
-                    <button className="p-2 text-slate-300 hover:text-slate-500">
+                    <button className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300">
                       <MoreHorizontal className="w-4 h-4" />
                     </button>
                   </div>

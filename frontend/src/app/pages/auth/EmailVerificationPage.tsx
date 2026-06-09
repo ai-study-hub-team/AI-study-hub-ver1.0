@@ -61,27 +61,27 @@ export function EmailVerificationPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
+    <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-md w-full">
         <div className="text-center mb-10">
           <NavLink to="/" className="inline-flex items-center gap-2 mb-8">
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">A</div>
-            <span className="text-2xl font-bold text-slate-900 tracking-tight">AI Study Hub</span>
+            <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">AI Study Hub</span>
           </NavLink>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+            <div className="w-16 h-16 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
               <Mail className="w-8 h-8 text-blue-600" />
             </div>
-            <h1 className="text-3xl font-extrabold text-slate-900 mb-2">Verify Your Email</h1>
-            <p className="text-slate-500">We sent a 6-digit code to</p>
-            <p className="font-bold text-slate-900 mt-1">alex.johnson@example.com</p>
+            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2">Verify Your Email</h1>
+            <p className="text-slate-500 dark:text-slate-400">We sent a 6-digit code to</p>
+            <p className="font-bold text-slate-900 dark:text-white mt-1">alex.johnson@example.com</p>
           </motion.div>
         </div>
 
-        <div className="bg-white p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100">
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 dark:shadow-slate-950/40 border border-slate-200 dark:border-slate-700">
           <div className="flex justify-center gap-3 mb-8" onPaste={handlePaste}>
             {code.map((digit, i) => (
               <input
@@ -95,15 +95,15 @@ export function EmailVerificationPage() {
                 onKeyDown={(e) => handleKeyDown(i, e)}
                 className={`w-12 h-14 text-center text-2xl font-extrabold border-2 rounded-2xl outline-none transition-all ${
                   digit
-                    ? "border-blue-500 bg-blue-50 text-blue-600"
-                    : "border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-blue-50/30"
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300"
+                    : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-500 focus:bg-blue-50/30 dark:focus:bg-blue-500/10"
                 }`}
               />
             ))}
           </div>
 
-          <div className="bg-amber-50 border border-amber-100 rounded-2xl p-3 mb-6">
-            <p className="text-xs text-amber-700 font-medium text-center">Demo: use code <span className="font-extrabold">123456</span></p>
+          <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/30 rounded-2xl p-3 mb-6">
+            <p className="text-xs text-amber-700 dark:text-amber-300 font-medium text-center">Demo: use code <span className="font-extrabold">123456</span></p>
           </div>
 
           <button
@@ -116,7 +116,7 @@ export function EmailVerificationPage() {
           </button>
 
           <div className="mt-6 text-center">
-            <p className="text-sm text-slate-500 mb-3">Didn't receive the code?</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">Didn't receive the code?</p>
             <button
               onClick={handleResend}
               disabled={resending}
@@ -128,7 +128,7 @@ export function EmailVerificationPage() {
           </div>
         </div>
 
-        <p className="text-center mt-6 text-sm text-slate-500">
+        <p className="text-center mt-6 text-sm text-slate-500 dark:text-slate-400">
           Wrong email?{" "}
           <NavLink to="/register" className="text-blue-600 font-bold hover:underline">Change email address</NavLink>
         </p>
