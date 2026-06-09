@@ -1,11 +1,9 @@
 package com.aistudyhub.backend.service;
 
-import com.aistudyhub.backend.entity.Document;
-import com.aistudyhub.backend.entity.DocumentProcessStatus;
-import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.entity.DocumentChunk;
+import com.aistudyhub.backend.entity.DocumentProcessStatus;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
-import org.springframework.transaction.annotation.Transactional;
+import com.aistudyhub.backend.repository.DocumentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,12 +12,14 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.nio.file.Paths;
 
 @Service
 @RequiredArgsConstructor
@@ -33,100 +33,126 @@ public class AiIntegrationService {
     @Value("${ai.service.base-url}")
     private String aiServiceBaseUrl;
 
-    public DocumentProcessStatus processDocument(Long documentId, String fileName, String originalFileName, String filePath, String fileType) {
+    // ─── Main entry point ─────────────────────────────────────────────────────
+
+    public DocumentProcessStatus processDocument(
+            Long documentId, String fileName, String originalFileName,
+            String filePath, String fileType) {
+
         log.info("Starting processing for document ID: {}", documentId);
-        
+
         try {
-            updateDocumentStatus(documentId, DocumentProcessStatus.PROCESSING);
-            
+            // Mark as PROCESSING; clear any old error message
+            updateDocumentMetadata(documentId, DocumentProcessStatus.PROCESSING, null, null);
+
             String absoluteFilePath = Paths.get(filePath).toAbsolutePath().toString();
-            log.info("Original stored file path: {}", filePath);
-            log.info("Sending absolute file path to AI service: {}", absoluteFilePath);
-            
+            log.info("Stored file path: {} | Absolute path sent to AI: {}", filePath, absoluteFilePath);
+
             String url = aiServiceBaseUrl + "/process-document";
-            
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            
+
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("documentId", documentId);
             requestBody.put("fileName", fileName);
             requestBody.put("originalFileName", originalFileName);
             requestBody.put("filePath", absoluteFilePath);
             requestBody.put("fileType", fileType);
-            
+
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
-            
             ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
-            
-            log.info("AI service returned status code: {}", response.getStatusCode());
+
+            log.info("AI service HTTP status: {}", response.getStatusCode());
             log.info("AI service response body: {}", response.getBody());
-            
+
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 Map<String, Object> body = response.getBody();
                 String status = (String) body.get("status");
-                log.info("Parsed 'status' from AI service response: {}", status);
-                
+                log.info("Parsed 'status' from AI response: {}", status);
+
                 if ("PROCESSED".equals(status)) {
-                    log.info("Successfully processed document ID: {} with AI service", documentId);
-                    log.info("Extracted text length: {}", body.get("textLength"));
-                    log.info("Preview text: {}", body.get("previewText"));
-                    if (body.containsKey("chunkCount")) {
-                        log.info("Created {} chunks", body.get("chunkCount"));
-                    }
-                    
+                    log.info("Python returned PROCESSED for document ID: {}", documentId);
+                    log.info("Text length: {} | Preview: {}", body.get("textLength"), body.get("previewText"));
+
+                    int savedChunkCount = 0;
                     try {
                         if (body.containsKey("chunks")) {
-                            List<Map<String, Object>> chunksList = (List<Map<String, Object>>) body.get("chunks");
-                            log.info("Chunks list size received from Python: {}", chunksList != null ? chunksList.size() : "null");
+                            @SuppressWarnings("unchecked")
+                            List<Map<String, Object>> chunksList =
+                                    (List<Map<String, Object>>) body.get("chunks");
+                            log.info("Chunks received from Python: {}",
+                                    chunksList != null ? chunksList.size() : "null");
                             if (chunksList != null && !chunksList.isEmpty()) {
                                 saveChunks(documentId, chunksList);
+                                savedChunkCount = chunksList.size();
                             } else {
-                                log.warn("Chunks list is empty or null, nothing to save.");
+                                log.warn("Chunks list is empty or null — nothing saved.");
                             }
                         } else {
-                            log.warn("Response body does not contain 'chunks' key!");
+                            log.warn("Response body has no 'chunks' key!");
                         }
                     } catch (Exception e) {
-                        log.error("CRITICAL: Exception occurred while saving chunks to the database! Reason: {}", e.getMessage(), e);
-                        updateDocumentStatus(documentId, DocumentProcessStatus.FAILED);
+                        String errMsg = "DB error while saving chunks: " + e.getMessage();
+                        log.error("CRITICAL: {} for document ID: {}", errMsg, documentId, e);
+                        updateDocumentMetadata(documentId, DocumentProcessStatus.FAILED, errMsg, null);
                         return DocumentProcessStatus.FAILED;
                     }
-                    
-                    updateDocumentStatus(documentId, DocumentProcessStatus.PROCESSED);
+
+                    log.info("Finalizing document ID: {} → PROCESSED, chunkCount={}", documentId, savedChunkCount);
+                    updateDocumentMetadata(documentId, DocumentProcessStatus.PROCESSED, null, savedChunkCount);
                     return DocumentProcessStatus.PROCESSED;
+
                 } else {
-                    log.error("AI service returned status: {}. Message: {}", status, body.get("message"));
-                    updateDocumentStatus(documentId, DocumentProcessStatus.FAILED);
+                    String errMsg = "Python returned status=" + status
+                            + ", message=" + body.get("message");
+                    log.error("Processing failed for document ID: {}. {}", documentId, errMsg);
+                    updateDocumentMetadata(documentId, DocumentProcessStatus.FAILED, errMsg, null);
                     return DocumentProcessStatus.FAILED;
                 }
+
             } else {
-                log.error("AI service returned non-200 status or empty body for document ID: {}", documentId);
-                updateDocumentStatus(documentId, DocumentProcessStatus.FAILED);
+                String errMsg = "AI service returned non-2xx or empty body. HTTP status: "
+                        + response.getStatusCode();
+                log.error("{} for document ID: {}", errMsg, documentId);
+                updateDocumentMetadata(documentId, DocumentProcessStatus.FAILED, errMsg, null);
                 return DocumentProcessStatus.FAILED;
             }
-            
+
         } catch (Exception e) {
-            log.error("Failed to process document ID: {} with AI service. General exception: {}", documentId, e.getMessage(), e);
-            updateDocumentStatus(documentId, DocumentProcessStatus.FAILED);
+            String errMsg = e.getClass().getSimpleName() + ": " + e.getMessage();
+            log.error("Exception while processing document ID: {}. {}", documentId, errMsg, e);
+            updateDocumentMetadata(documentId, DocumentProcessStatus.FAILED, errMsg, null);
             return DocumentProcessStatus.FAILED;
         }
     }
 
-    private void updateDocumentStatus(Long documentId, DocumentProcessStatus status) {
+    // ─── Update metadata helper ────────────────────────────────────────────────
+
+    private void updateDocumentMetadata(Long documentId, DocumentProcessStatus status,
+                                        String errorMessage, Integer chunkCount) {
         documentRepository.findById(documentId).ifPresent(doc -> {
             doc.setProcessStatus(status);
+            // Only stamp processedAt for terminal states (not for PROCESSING)
+            if (status != DocumentProcessStatus.PROCESSING) {
+                doc.setProcessedAt(LocalDateTime.now());
+            }
+            doc.setProcessErrorMessage(errorMessage);
+            if (chunkCount != null) {
+                doc.setChunkCount(chunkCount);
+            }
             documentRepository.save(doc);
+            log.info("Document ID: {} → status={}, chunkCount={}, error={}",
+                    documentId, status, doc.getChunkCount(), errorMessage);
         });
     }
+
+    // ─── Save chunks (atomic: delete old → insert new) ────────────────────────
 
     @Transactional
     protected void saveChunks(Long documentId, List<Map<String, Object>> chunksData) {
         documentRepository.findById(documentId).ifPresent(document -> {
-            // Delete old chunks if any
             documentChunkRepository.deleteByDocumentId(documentId);
-            
-            // Save new chunks
+
             for (Map<String, Object> chunkData : chunksData) {
                 DocumentChunk chunk = DocumentChunk.builder()
                         .document(document)
@@ -138,7 +164,7 @@ public class AiIntegrationService {
                         .build();
                 documentChunkRepository.save(chunk);
             }
-            log.info("Successfully saved {} chunks to the database for document ID: {}", chunksData.size(), documentId);
+            log.info("Saved {} chunks to DB for document ID: {}", chunksData.size(), documentId);
         });
     }
 }

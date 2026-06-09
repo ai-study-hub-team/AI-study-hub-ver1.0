@@ -41,4 +41,9 @@ public class DocumentResponse {
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    // Processing metadata
+    private LocalDateTime processedAt;
+    private String processErrorMessage;
+    private Integer chunkCount;
 }

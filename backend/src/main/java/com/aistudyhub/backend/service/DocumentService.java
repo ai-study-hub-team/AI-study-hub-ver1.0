@@ -281,7 +281,10 @@ public class DocumentService {
                 .processStatus(document.getProcessStatus())
                 .userId(document.getUser() != null ? document.getUser().getId() : null)
                 .createdAt(document.getCreatedAt())
-                .updatedAt(document.getUpdatedAt());
+                .updatedAt(document.getUpdatedAt())
+                .processedAt(document.getProcessedAt())
+                .processErrorMessage(document.getProcessErrorMessage())
+                .chunkCount(document.getChunkCount());
 
         // Category info
         if (document.getCategory() != null) {

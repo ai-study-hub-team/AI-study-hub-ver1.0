@@ -41,6 +41,19 @@ public class Document {
 
     private LocalDateTime updatedAt;
 
+    // ─── Processing metadata ──────────────────────────────────────────────────
+
+    /** Timestamp of the last successful or failed processing attempt. */
+    private LocalDateTime processedAt;
+
+    /** Error message from the last failed processing attempt; null when successful. */
+    @Column(columnDefinition = "TEXT")
+    private String processErrorMessage;
+
+    /** Number of chunks saved after the last successful processing. */
+    private Integer chunkCount;
+
+
     // Many Documents -> One User
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
