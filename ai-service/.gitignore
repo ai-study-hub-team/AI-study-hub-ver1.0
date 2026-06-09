@@ -1,0 +1,8 @@
+# Python virtual environment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables — NEVER commit real API keys
+.env
