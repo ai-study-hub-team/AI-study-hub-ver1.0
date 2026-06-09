@@ -12,12 +12,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import lombok.extern.slf4j.Slf4j;
+import com.aistudyhub.backend.repository.DocumentChunkRepository;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DocumentService {
 
     private final DocumentRepository documentRepository;
@@ -25,6 +28,7 @@ public class DocumentService {
     private final CategoryRepository categoryRepository;
     private final FileStorageService fileStorageService;
     private final AiIntegrationService aiIntegrationService;
+    private final DocumentChunkRepository documentChunkRepository;
 
     // Read upload dir from config (same value used in FileStorageService)
     @Value("${app.upload.dir:uploads}")
@@ -216,6 +220,46 @@ public class DocumentService {
         document.setStatus(DocumentStatus.DELETED);
         document.setUpdatedAt(LocalDateTime.now());
         documentRepository.save(document);
+    }
+
+    // ─── Reprocess Document ────────────────────────────────────────────────────
+
+    public DocumentResponse reprocessDocument(Long id) {
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Document not found with id: " + id));
+
+        if (document.getStatus() == DocumentStatus.DELETED) {
+            throw new RuntimeException("Cannot reprocess a deleted document");
+        }
+
+        CloudFile cloudFile = document.getCloudFile();
+        if (cloudFile == null || cloudFile.getFileUrl() == null) {
+            throw new RuntimeException("Document file metadata not found");
+        }
+
+        java.nio.file.Path path = java.nio.file.Paths.get(cloudFile.getFileUrl()).toAbsolutePath();
+        if (!java.nio.file.Files.exists(path)) {
+            throw new RuntimeException("Physical file does not exist at path: " + path);
+        }
+
+        long oldChunkCount = documentChunkRepository.countByDocumentId(id);
+        log.info("Reprocessing document ID: {}. Old chunk count: {}. File path sent: {}", 
+                 id, oldChunkCount, path);
+
+        DocumentProcessStatus processStatus = aiIntegrationService.processDocument(
+                document.getId(),
+                cloudFile.getFileName(),
+                cloudFile.getOriginalName(),
+                cloudFile.getFileUrl(),
+                cloudFile.getFileType()
+        );
+
+        document = documentRepository.findById(id).orElseThrow();
+        long newChunkCount = documentChunkRepository.countByDocumentId(id);
+        log.info("Finished reprocessing document ID: {}. Final status: {}. New chunk count: {}", 
+                 id, processStatus, newChunkCount);
+
+        return toResponse(document);
     }
 
     // ─── Search ────────────────────────────────────────────────────────────────

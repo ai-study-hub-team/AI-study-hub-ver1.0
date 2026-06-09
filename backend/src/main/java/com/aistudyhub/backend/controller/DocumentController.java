@@ -69,6 +69,17 @@ public class DocumentController {
         return ResponseEntity.noContent().build(); // 204 No Content
     }
 
+    // POST /api/documents/{id}/reprocess
+    @PostMapping("/{id}/reprocess")
+    public ResponseEntity<DocumentResponse> reprocess(@PathVariable Long id) {
+        try {
+            DocumentResponse response = documentService.reprocessDocument(id);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+    }
+
     // GET /api/documents/search?keyword=java&page=0&size=10
     @GetMapping("/search")
     public ResponseEntity<Page<DocumentResponse>> search(

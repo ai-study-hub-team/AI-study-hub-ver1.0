@@ -59,9 +59,13 @@ public class AiIntegrationService {
             
             ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
             
+            log.info("AI service returned status code: {}", response.getStatusCode());
+            log.info("AI service response body: {}", response.getBody());
+            
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 Map<String, Object> body = response.getBody();
                 String status = (String) body.get("status");
+                log.info("Parsed 'status' from AI service response: {}", status);
                 
                 if ("PROCESSED".equals(status)) {
                     log.info("Successfully processed document ID: {} with AI service", documentId);
@@ -71,14 +75,28 @@ public class AiIntegrationService {
                         log.info("Created {} chunks", body.get("chunkCount"));
                     }
                     
-                    if (body.containsKey("chunks")) {
-                        saveChunks(documentId, (List<Map<String, Object>>) body.get("chunks"));
+                    try {
+                        if (body.containsKey("chunks")) {
+                            List<Map<String, Object>> chunksList = (List<Map<String, Object>>) body.get("chunks");
+                            log.info("Chunks list size received from Python: {}", chunksList != null ? chunksList.size() : "null");
+                            if (chunksList != null && !chunksList.isEmpty()) {
+                                saveChunks(documentId, chunksList);
+                            } else {
+                                log.warn("Chunks list is empty or null, nothing to save.");
+                            }
+                        } else {
+                            log.warn("Response body does not contain 'chunks' key!");
+                        }
+                    } catch (Exception e) {
+                        log.error("CRITICAL: Exception occurred while saving chunks to the database! Reason: {}", e.getMessage(), e);
+                        updateDocumentStatus(documentId, DocumentProcessStatus.FAILED);
+                        return DocumentProcessStatus.FAILED;
                     }
                     
                     updateDocumentStatus(documentId, DocumentProcessStatus.PROCESSED);
                     return DocumentProcessStatus.PROCESSED;
                 } else {
-                    log.error("AI service failed to process document ID: {}. Message: {}", documentId, body.get("message"));
+                    log.error("AI service returned status: {}. Message: {}", status, body.get("message"));
                     updateDocumentStatus(documentId, DocumentProcessStatus.FAILED);
                     return DocumentProcessStatus.FAILED;
                 }
@@ -89,7 +107,7 @@ public class AiIntegrationService {
             }
             
         } catch (Exception e) {
-            log.error("Failed to process document ID: {} with AI service", documentId, e);
+            log.error("Failed to process document ID: {} with AI service. General exception: {}", documentId, e.getMessage(), e);
             updateDocumentStatus(documentId, DocumentProcessStatus.FAILED);
             return DocumentProcessStatus.FAILED;
         }
