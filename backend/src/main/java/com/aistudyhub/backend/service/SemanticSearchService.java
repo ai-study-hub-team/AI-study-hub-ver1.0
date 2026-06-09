@@ -107,6 +107,7 @@ public class SemanticSearchService {
 
             // Look up the chunk in MySQL
             String  chunkText = null;
+            String  documentTitle = null;
             String  warning   = null;
 
             Optional<DocumentChunk> chunkOpt =
@@ -114,6 +115,9 @@ public class SemanticSearchService {
 
             if (chunkOpt.isPresent()) {
                 chunkText = chunkOpt.get().getChunkText();
+                if (chunkOpt.get().getDocument() != null) {
+                    documentTitle = chunkOpt.get().getDocument().getTitle();
+                }
                 mysqlHits++;
             } else {
                 warning = "Chunk not found in MySQL (documentId=" + docId + ", chunkIndex=" + chunkIndex + ")";
@@ -122,6 +126,7 @@ public class SemanticSearchService {
 
             enriched.add(SemanticSearchResultResponse.builder()
                     .documentId(docId != null ? docId.intValue() : null)
+                    .documentTitle(documentTitle)
                     .chunkIndex(chunkIndex)
                     .score(score)
                     .chunkText(chunkText)

@@ -12,6 +12,7 @@ import lombok.Getter;
 public class SemanticSearchResultResponse {
 
     private Integer documentId;
+    private String  documentTitle;
     private Integer chunkIndex;
     private Double  score;
 
