@@ -2,6 +2,7 @@ package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.dto.request.DocumentRequest;
 import com.aistudyhub.backend.dto.response.DocumentResponse;
+import com.aistudyhub.backend.specification.DocumentSpecification;
 import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.repository.CategoryRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
@@ -14,8 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import lombok.extern.slf4j.Slf4j;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
-
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.time.LocalDateTime;
 
 @Service
@@ -267,6 +268,30 @@ public class DocumentService {
     public Page<DocumentResponse> search(String keyword, Pageable pageable) {
         return documentRepository.searchByKeyword(keyword, pageable)
                 .map(this::toResponse);
+    }
+
+    public Page<DocumentResponse> searchAndFilter(
+            String keyword,
+            Long categoryId,
+            DocumentProcessStatus processStatus,
+            String fileType,
+            String tag,
+            LocalDateTime fromDate,
+            LocalDateTime toDate,
+            Pageable pageable) {
+
+        return documentRepository.findAll(
+                DocumentSpecification.filterDocuments(
+                        keyword,
+                        categoryId,
+                        processStatus,
+                        fileType,
+                        tag,
+                        fromDate,
+                        toDate
+                ),
+                pageable
+        ).map(this::toResponse);
     }
 
     // ─── Mapper ────────────────────────────────────────────────────────────────

@@ -20,6 +20,11 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import com.aistudyhub.backend.entity.DocumentProcessStatus;
+import org.springframework.format.annotation.DateTimeFormat;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -45,10 +50,30 @@ public class DocumentController {
     @GetMapping
     public ResponseEntity<Page<DocumentResponse>> getAll(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) DocumentProcessStatus processStatus,
+            @RequestParam(required = false) String fileType,
+            @RequestParam(required = false) String tag,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ResponseEntity.ok(documentService.getAll(pageable));
+
+        LocalDateTime fromDateTime = fromDate == null ? null : fromDate.atStartOfDay();
+        LocalDateTime toDateTime = toDate == null ? null : toDate.atTime(LocalTime.MAX);
+
+        return ResponseEntity.ok(documentService.searchAndFilter(
+                keyword,
+                categoryId,
+                processStatus,
+                fileType,
+                tag,
+                fromDateTime,
+                toDateTime,
+                pageable
+        ));
     }
 
     // GET /api/documents/{id}
@@ -83,7 +108,7 @@ public class DocumentController {
         }
     }
 
-    // GET /api/documents/search?keyword=java&page=0&size=10
+    // GET /api/documents?keyword=java&page=0&size=10
     @GetMapping("/search")
     public ResponseEntity<Page<DocumentResponse>> search(
             @RequestParam String keyword,
