@@ -102,6 +102,13 @@ def delete_document_vectors(document_id: int):
         
         logger.info(f"Completed deletion of old vectors for document ID: {document_id}")
     except Exception as e:
+        err_msg = str(e)
+        if "namespace not found" in err_msg.lower():
+            logger.warning(
+                f"Namespace '{NAMESPACE}' not found when deleting vectors for document ID {document_id}: {err_msg}. "
+                "This is expected if this is the first document uploaded or if the namespace has not been created yet."
+            )
+            return
         logger.error(f"Failed to delete old vectors for document ID {document_id}: {e}")
         raise RuntimeError(f"Pinecone deletion error: {e}") from e
 
