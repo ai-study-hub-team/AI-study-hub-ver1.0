@@ -52,14 +52,44 @@ async def process_document(request: DocumentRequest):
                 "message": "File not found",
             }
 
-        # ── 2. Extract text ───────────────────────────────────────────────────
+            # ── 2. Extract text ───────────────────────────────────────────────────
         text = extract_text(abs_file_path, request.fileType)
+
+        if text is None or not str(text).strip():
+            logger.error(f"Extracted text is empty for document ID: {request.documentId}")
+            return {
+                "documentId": request.documentId,
+                "status": "FAILED",
+                "message": "Extracted text is empty. Cannot create chunks.",
+            }
+
+        text = str(text).strip()
         text_length = len(text)
         preview_text = text[:500]
+
+        logger.info(
+            f"Extracted text length before chunking: {text_length} characters "
+            f"for document ID: {request.documentId}"
+        )
+
+        # Optional safety warning for very large Gemini output
+        if text_length > 500_000:
+            logger.warning(
+                f"Very large extracted text detected: {text_length} characters. "
+                f"Chunking may take time."
+            )
 
         # ── 3. Chunk text ─────────────────────────────────────────────────────
         chunks = chunk_text(text)
         chunk_count = len(chunks)
+
+        if not chunks:
+            logger.error(f"No chunks created for document ID: {request.documentId}")
+            return {
+                "documentId": request.documentId,
+                "status": "FAILED",
+                "message": "No chunks were created from extracted text.",
+            }
 
         logger.info(f"Extracted {text_length} characters from document ID: {request.documentId}")
         logger.info(f"Created {chunk_count} chunks")
@@ -119,11 +149,11 @@ async def process_document(request: DocumentRequest):
         }
 
     except Exception as e:
-        logger.error(f"Error processing document ID {request.documentId}: {str(e)}")
+        logger.exception(f"Error processing document ID {request.documentId}")
         return {
             "documentId": request.documentId,
             "status": "FAILED",
-            "message": f"Extraction/chunking error: {str(e)}",
+             "message": f"Extraction/chunking error: {type(e).__name__}: {repr(e)}",
         }
 
 

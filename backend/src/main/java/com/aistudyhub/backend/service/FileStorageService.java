@@ -23,7 +23,19 @@ import java.util.UUID;
 public class FileStorageService {
 
     // Allowed file extensions
-    private static final List<String> ALLOWED_EXTENSIONS = List.of("pdf", "docx", "pptx", "txt");
+    private static final List<String> ALLOWED_EXTENSIONS = List.of(
+            // Documents
+            "pdf", "docx", "pptx", "txt",
+
+            // Images
+            "png", "jpg", "jpeg", "webp", "gif",
+
+            // Videos
+            "mp4", "mov", "avi", "mkv",
+
+            // Audio
+            "mp3", "wav", "m4a", "ogg"
+    );
 
     // Read the upload directory path from application.yaml
     // Defaults to "uploads" if not configured
@@ -38,51 +50,55 @@ public class FileStorageService {
      * @throws IOException if saving fails
      */
     public String saveFile(MultipartFile file) throws IOException {
-        // 1. Validate file extension
         String originalFileName = file.getOriginalFilename();
-        String extension = getExtension(originalFileName);
-        if (!ALLOWED_EXTENSIONS.contains(extension.toLowerCase())) {
+
+        if (originalFileName == null || originalFileName.isBlank()) {
+            throw new IllegalArgumentException("File name must not be empty");
+        }
+
+        String extension = getExtension(originalFileName).toLowerCase();
+
+        if (!ALLOWED_EXTENSIONS.contains(extension)) {
             throw new IllegalArgumentException(
-                "Unsupported file type: ." + extension +
-                ". Allowed types: pdf, docx, pptx, txt"
+                    "Unsupported file type: ." + extension +
+                            ". Allowed types: pdf, docx, pptx, txt, " +
+                            "png, jpg, jpeg, webp, gif, " +
+                            "mp4, mov, avi, mkv, " +
+                            "mp3, wav, m4a, ogg"
             );
         }
 
-        // 2. Create the uploads directory if it doesn't exist yet
+        // Create the uploads directory if it doesn't exist yet
         Path uploadPath = Paths.get(uploadDir);
+
         if (!Files.exists(uploadPath)) {
             Files.createDirectories(uploadPath);
         }
 
-        // 3. Generate a unique file name to avoid overwriting existing files
-        //    e.g. "a1b2c3d4_lecture1.pdf"
-        String uniqueFileName = UUID.randomUUID().toString().substring(0, 8) + "_" + originalFileName;
+        // Không dùng tên file gốc để lưu vật lý nữa
+        // Tránh lỗi tiếng Việt có dấu khi Python upload Gemini
+        // Ví dụ: "ảnh có chữ.jpg" -> "a1b2c3d4e5f67890.jpg"
+        String uniqueFileName = UUID.randomUUID().toString().replace("-", "")
+                + "." + extension;
 
-        // 4. Save the file bytes to disk
+        // Save the file bytes to disk
         Path targetPath = uploadPath.resolve(uniqueFileName);
         Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
 
         return uniqueFileName;
     }
-
     /**
      * Returns the MIME type of the file.
-     * Falls back to "application/octet-stream" if unknown.
+     * Falls back to extension-based detection if MultipartFile content type is unknown.
      */
     public String detectMimeType(MultipartFile file) {
         String contentType = file.getContentType();
+
         if (contentType != null && !contentType.isBlank()) {
             return contentType;
         }
-        // Fallback based on extension
-        String ext = getExtension(file.getOriginalFilename()).toLowerCase();
-        return switch (ext) {
-            case "pdf"  -> "application/pdf";
-            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-            case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-            case "txt"  -> "text/plain";
-            default     -> "application/octet-stream";
-        };
+
+        return getMimeTypeFromFileName(file.getOriginalFilename());
     }
 
     // ─── Helper ────────────────────────────────────────────────────────────────
@@ -95,6 +111,7 @@ public class FileStorageService {
         if (fileName == null || !fileName.contains(".")) {
             return "";
         }
+
         return fileName.substring(fileName.lastIndexOf('.') + 1);
     }
 
@@ -102,7 +119,7 @@ public class FileStorageService {
      * Loads a stored file from the uploads directory as a Spring Resource.
      * The controller can then stream this directly to the browser.
      *
-     * @param fileName the stored file name (as saved on disk, e.g. "a1b2c3_lecture.pdf")
+     * @param fileName the stored file name
      * @return a Resource pointing to the file
      * @throws RuntimeException if the file does not exist or cannot be read
      */
@@ -116,6 +133,7 @@ public class FileStorageService {
             } else {
                 throw new RuntimeException("File not found or not readable: " + fileName);
             }
+
         } catch (MalformedURLException e) {
             throw new RuntimeException("Invalid file path: " + fileName, e);
         }
@@ -130,12 +148,33 @@ public class FileStorageService {
      */
     public String getMimeTypeFromFileName(String fileName) {
         String ext = getExtension(fileName).toLowerCase();
+
         return switch (ext) {
-            case "pdf"  -> "application/pdf";
-            case "txt"  -> "text/plain";
+            // Documents
+            case "pdf" -> "application/pdf";
+            case "txt" -> "text/plain";
             case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
             case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-            default     -> "application/octet-stream";
+
+            // Images
+            case "png" -> "image/png";
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "webp" -> "image/webp";
+            case "gif" -> "image/gif";
+
+            // Videos
+            case "mp4" -> "video/mp4";
+            case "mov" -> "video/quicktime";
+            case "avi" -> "video/x-msvideo";
+            case "mkv" -> "video/x-matroska";
+
+            // Audio
+            case "mp3" -> "audio/mpeg";
+            case "wav" -> "audio/wav";
+            case "m4a" -> "audio/x-m4a";
+            case "ogg" -> "audio/ogg";
+
+            default -> "application/octet-stream";
         };
     }
 }

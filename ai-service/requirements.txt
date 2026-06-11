@@ -6,3 +6,4 @@ python-docx==1.1.0
 pinecone==5.4.2
 sentence-transformers==3.0.1
 python-dotenv==1.0.1
+google-genai>=0.1.1
