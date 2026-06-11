@@ -15,6 +15,7 @@ public class SemanticSearchResultResponse {
     private String  documentTitle;
     private Integer chunkIndex;
     private Double  score;
+    private Double  finalScore;
 
     // Fetched from MySQL document_chunks
     private String  chunkText;       // null if chunk not found in MySQL
@@ -27,4 +28,7 @@ public class SemanticSearchResultResponse {
 
     // Warning populated when the MySQL chunk cannot be found
     private String  warning;
+
+    // "SEMANTIC" = came from Pinecone, "KEYWORD" = came from MySQL keyword fallback
+    private String  source;
 }
