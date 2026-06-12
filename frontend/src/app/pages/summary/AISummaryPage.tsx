@@ -63,9 +63,9 @@ export function AISummaryPage() {
     }, 2000);
   };
 
-  const handleExport = (format: "pdf" | "docx") => {
-    toast.success(`Exporting as ${format.toUpperCase()}...`);
-  };
+        const handleDownload = () => {
+            toast.success("Downloading summary...");
+         };
 
   const content = summaryContent.executive;
 
@@ -78,18 +78,15 @@ export function AISummaryPage() {
         </div>
         {showSummary && (
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleExport("pdf")}
+           
+           <button
+           onClick={handleDownload}
               className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <Download className="w-4 h-4" /> PDF
+>
+                <Download className="w-4 h-4" />
+                            Download
             </button>
-            <button
-              onClick={() => handleExport("docx")}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <Download className="w-4 h-4" /> DOCX
-            </button>
+
             <button
               onClick={() => { navigator.clipboard?.writeText(content.summary); toast.success("Copied to clipboard!"); }}
               className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all"
