@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.repository;
 
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentStatus;
 import org.springframework.data.domain.Page;
@@ -10,7 +11,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface DocumentRepository extends JpaRepository<Document, Long> {
+public interface DocumentRepository extends JpaRepository<Document, Long>, JpaSpecificationExecutor<Document> {
 
     // Get all ACTIVE documents (paginated)
     Page<Document> findByStatus(DocumentStatus status, Pageable pageable);
