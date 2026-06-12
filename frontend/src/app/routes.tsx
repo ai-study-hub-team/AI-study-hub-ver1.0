@@ -15,6 +15,7 @@ import { VerifyEmailSuccessPage } from "./pages/auth/VerifyEmailSuccessPage";
 import { StudentDashboard } from "./pages/dashboard/StudentDashboard";
 
 import { DocumentsPage } from "./pages/documents/DocumentsPage";
+import { UploadDocumentsPage } from "./pages/upload/UploadDocumentsPage";
 import { MyLibrary } from "./pages/library/MyLibrary";
 import { AIChatPage } from "./pages/chat/AIChatPage";
 import { AISummaryPage } from "./pages/summary/AISummaryPage";
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="dashboard" replace /> },
           { path: "dashboard", element: <StudentDashboard /> },
           { path: "documents", element: <DocumentsPage /> },
+          { path: "upload", element: <UploadDocumentsPage /> },
           { path: "library", element: <MyLibrary /> },
           { path: "chat", element: <AIChatPage /> },
           { path: "summary", element: <AISummaryPage /> },

@@ -8,7 +8,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/ai_study_hub_test?useSSL=false&serverTimezone=Asia/Ho_Chi_Minh&allowPublicKeyRetrieval=true
     username: root
-    password: 123456
+    password: Tt@130605
 
   jpa:
     hibernate:
@@ -22,8 +22,8 @@ spring:
   servlet:
     multipart:
       enabled: true
-      max-file-size: 50MB      # Maximum size per uploaded file
-      max-request-size: 50MB   # Maximum total request size
+      max-file-size: 500MB      # Maximum size per uploaded file
+      max-request-size: 500MB   # Maximum total request size
 
 # ── Custom app settings ────────────────────────────────────────────────────────
 app:

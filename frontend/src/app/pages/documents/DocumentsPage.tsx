@@ -1,20 +1,36 @@
 import {
   FileText, Search, Filter, Plus, MoreVertical, Download,
-  Trash2, ExternalLink, Upload, X, File, Check, Share2,
+  Trash2, ExternalLink, Upload, X, Check, Share2,
   Flag, Heart, Clock, BarChart2, Star, Eye, Link2,
   Lock, Globe, ChevronRight, AlertTriangle
 } from "lucide-react";
-import { useState, useRef } from "react";
+import { useState } from "react";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
+import { aiStatusMeta, documentStatusMeta } from "../../constants/documentStatus";
+import type { AiStatus, DocumentStatus } from "../../constants/documentStatus";
 
-const documents = [
-  { id: 1, name: "Advanced Thermodynamics.pdf", subject: "Physics", date: "2024-05-15", size: "4.5 MB", status: "Analyzed", views: 23, downloads: 7, favorited: false },
-  { id: 2, name: "Modern European History.pdf", subject: "History", date: "2024-05-12", size: "12.2 MB", status: "Pending", views: 5, downloads: 0, favorited: true },
-  { id: 3, name: "Business Ethics Final Project.docx", subject: "Management", date: "2024-05-10", size: "1.2 MB", status: "Analyzed", views: 41, downloads: 12, favorited: false },
-  { id: 4, name: "Calculus III Problem Set.pdf", subject: "Math", date: "2024-05-08", size: "3.8 MB", status: "Analyzed", views: 18, downloads: 4, favorited: true },
-  { id: 5, name: "Intro to Psychology Notes.pdf", subject: "Psychology", date: "2024-05-05", size: "6.5 MB", status: "Analyzed", views: 67, downloads: 20, favorited: false },
-  { id: 6, name: "Organic Chemistry Chapter 8.pdf", subject: "Chemistry", date: "2024-04-28", size: "2.3 MB", status: "Analyzed", views: 9, downloads: 2, favorited: false },
+interface DocumentItem {
+  id: number;
+  name: string;
+  subject: string;
+  date: string;
+  size: string;
+  documentStatus: DocumentStatus;
+  aiStatus: AiStatus;
+  views: number;
+  downloads: number;
+  favorited: boolean;
+}
+
+const documents: DocumentItem[] = [
+  { id: 1, name: "Advanced Thermodynamics.pdf", subject: "Physics", date: "2024-05-15", size: "4.5 MB", documentStatus: "UPLOADED", aiStatus: "READY", views: 23, downloads: 7, favorited: false },
+  { id: 2, name: "Modern European History.pdf", subject: "History", date: "2024-05-12", size: "12.2 MB", documentStatus: "UPLOADED", aiStatus: "PROCESSING", views: 5, downloads: 0, favorited: true },
+  { id: 3, name: "Business Ethics Final Project.docx", subject: "Management", date: "2024-05-10", size: "1.2 MB", documentStatus: "UPLOADED", aiStatus: "READY", views: 41, downloads: 12, favorited: false },
+  { id: 4, name: "Calculus III Problem Set.pdf", subject: "Math", date: "2024-05-08", size: "3.8 MB", documentStatus: "UPLOADED", aiStatus: "READY", views: 18, downloads: 4, favorited: true },
+  { id: 5, name: "Intro to Psychology Notes.pdf", subject: "Psychology", date: "2024-05-05", size: "6.5 MB", documentStatus: "UPLOADED", aiStatus: "READY", views: 67, downloads: 20, favorited: false },
+  { id: 6, name: "Organic Chemistry Chapter 8.pdf", subject: "Chemistry", date: "2024-04-28", size: "2.3 MB", documentStatus: "UPLOAD_FAILED", aiStatus: "FAILED", views: 9, downloads: 2, favorited: false },
 ];
 
 const recentlyViewed = [
@@ -37,13 +53,12 @@ const reportCategories = [
 type Tab = "all" | "favorites" | "recent";
 
 export function DocumentsPage() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>("all");
-  const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [shareDoc, setShareDoc] = useState<typeof documents[0] | null>(null);
   const [reportDoc, setReportDoc] = useState<typeof documents[0] | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [uploadStep, setUploadStep] = useState(1);
   const [sharing, setSharing] = useState<"private" | "public">("private");
   const [selectedReportCat, setSelectedReportCat] = useState("");
   const [docs, setDocs] = useState(documents);
@@ -78,7 +93,7 @@ export function DocumentsPage() {
           <p className="text-slate-500 dark:text-slate-400">Upload, organize, and share your study materials</p>
         </div>
         <button
-          onClick={() => { setIsUploadOpen(true); setUploadStep(1); }}
+          onClick={() => navigate("/app/upload")}
           className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all"
         >
           <Upload className="w-5 h-5" /> Upload Document
@@ -175,12 +190,17 @@ export function DocumentsPage() {
                   <th className="px-4 py-3">Date Added</th>
                   <th className="px-4 py-3">Size</th>
                   <th className="px-4 py-3">Views</th>
-                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Upload Status</th>
+                  <th className="px-4 py-3">AI Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredDocs.map((doc) => (
+                {filteredDocs.map((doc) => {
+                  const documentStatus = documentStatusMeta[doc.documentStatus];
+                  const aiStatus = aiStatusMeta[doc.aiStatus];
+
+                  return (
                   <tr key={doc.id} className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group">
                     <td className="px-4 py-4 rounded-l-2xl border-y border-l border-slate-100 dark:border-slate-700">
                       <div className="flex items-center gap-3">
@@ -197,10 +217,16 @@ export function DocumentsPage() {
                     <td className="px-4 py-4 border-y border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-sm">{doc.size}</td>
                     <td className="px-4 py-4 border-y border-slate-100 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-semibold">{doc.views}</td>
                     <td className="px-4 py-4 border-y border-slate-100 dark:border-slate-700">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${doc.status === "Analyzed" ? "bg-emerald-500" : "bg-amber-500 animate-pulse"}`} />
-                        <span className={`text-xs font-bold ${doc.status === "Analyzed" ? "text-emerald-600" : "text-amber-600"}`}>{doc.status}</span>
-                      </div>
+                      <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-extrabold ring-1 ${documentStatus.badgeClass}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${documentStatus.dotClass}`} />
+                        {documentStatus.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 border-y border-slate-100 dark:border-slate-700">
+                      <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-extrabold ring-1 ${aiStatus.badgeClass}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${aiStatus.dotClass}`} />
+                        {aiStatus.label}
+                      </span>
                     </td>
                     <td className="px-4 py-4 rounded-r-2xl border-y border-r border-slate-100 dark:border-slate-700 text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -250,7 +276,8 @@ export function DocumentsPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -265,136 +292,6 @@ export function DocumentsPage() {
           )}
         </div>
       </div>
-
-      {/* Upload Wizard Modal */}
-      <AnimatePresence>
-        {isUploadOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsUploadOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 20 }} className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 shadow-2xl">
-              <button onClick={() => setIsUploadOpen(false)} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-700 rounded-full">
-                <X className="w-5 h-5" />
-              </button>
-
-              {/* Stepper */}
-              <div className="flex items-center gap-2 mb-8">
-                {[1, 2, 3].map((s) => (
-                  <div key={s} className="flex items-center gap-2 flex-1">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-extrabold transition-all ${uploadStep >= s ? "bg-blue-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-400"}`}>
-                      {uploadStep > s ? <Check className="w-4 h-4" /> : s}
-                    </div>
-                    {s < 3 && <div className={`flex-1 h-0.5 rounded-full transition-all ${uploadStep > s ? "bg-blue-600" : "bg-slate-100 dark:bg-slate-700"}`} />}
-                  </div>
-                ))}
-              </div>
-
-              {uploadStep === 1 && (
-                <div>
-                  <h2 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mb-1">Select Files</h2>
-                  <p className="text-slate-500 dark:text-slate-400 mb-6">Supported: PDF, DOCX, TXT (Max 50MB each)</p>
-                  <div
-                    className="border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-3xl p-10 text-center hover:border-blue-400 hover:bg-blue-50/30 transition-all cursor-pointer group"
-                    onClick={() => toast.success("File picker opened")}
-                  >
-                    <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                      <Upload className="w-7 h-7 text-blue-600" />
-                    </div>
-                    <p className="font-bold text-slate-900 dark:text-slate-100 mb-1">Click to upload or drag and drop</p>
-                    <p className="text-slate-400 text-sm">PDF, DOCX, TXT files accepted</p>
-                  </div>
-                  <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center gap-3">
-                    <File className="w-5 h-5 text-slate-400" />
-                    <div className="flex-1">
-                      <p className="text-sm font-bold">Physics_Midterm_Prep.pdf</p>
-                      <div className="w-full bg-slate-200 h-1 rounded-full mt-1.5">
-                        <div className="bg-blue-600 h-full rounded-full w-3/4" />
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-blue-600">75%</span>
-                  </div>
-                  <button onClick={() => setUploadStep(2)} className="mt-6 w-full py-3.5 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all">
-                    Next: Set Details
-                  </button>
-                </div>
-              )}
-
-              {uploadStep === 2 && (
-                <div>
-                  <h2 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mb-1">Document Details</h2>
-                  <p className="text-slate-500 dark:text-slate-400 mb-6">Add metadata to help organize your document</p>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Document Title</label>
-                      <input type="text" defaultValue="Physics Midterm Prep" className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Subject</label>
-                      <select className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all">
-                        <option>Physics</option>
-                        <option>Mathematics</option>
-                        <option>History</option>
-                        <option>Chemistry</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Tags</label>
-                      <input type="text" placeholder="midterm, thermodynamics, prep" className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" />
-                    </div>
-                  </div>
-                  <div className="flex gap-3 mt-6">
-                    <button onClick={() => setUploadStep(1)} className="flex-1 py-3.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 font-bold rounded-2xl hover:bg-slate-50 dark:bg-slate-800 transition-colors">Back</button>
-                    <button onClick={() => setUploadStep(3)} className="flex-1 py-3.5 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all">Next: Sharing</button>
-                  </div>
-                </div>
-              )}
-
-              {uploadStep === 3 && (
-                <div>
-                  <h2 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mb-1">Sharing Settings</h2>
-                  <p className="text-slate-500 dark:text-slate-400 mb-6">Control who can access this document</p>
-                  <div className="space-y-3 mb-6">
-                    {[
-                      { value: "private", icon: Lock, label: "Private", desc: "Only you can view this document" },
-                      { value: "public", icon: Globe, label: "Public", desc: "Anyone with the link can view" },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setSharing(opt.value as "private" | "public")}
-                        className={`w-full flex items-center gap-4 p-4 border-2 rounded-2xl transition-all text-left ${
-                          sharing === opt.value ? "border-blue-500 bg-blue-50/30" : "border-slate-100 dark:border-slate-700 hover:border-slate-200 "
-                        }`}
-                      >
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${sharing === opt.value ? "bg-blue-100" : "bg-slate-100 dark:bg-slate-700"}`}>
-                          <opt.icon className={`w-5 h-5 ${sharing === opt.value ? "text-blue-600" : "text-slate-500 dark:text-slate-400"}`} />
-                        </div>
-                        <div>
-                          <p className="font-bold text-slate-900 dark:text-slate-100">{opt.label}</p>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">{opt.desc}</p>
-                        </div>
-                        <div className={`ml-auto w-5 h-5 rounded-full border-2 flex items-center justify-center ${sharing === opt.value ? "border-blue-500 bg-blue-600" : "border-slate-300"}`}>
-                          {sharing === opt.value && <Check className="w-3 h-3 text-white" />}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex gap-3">
-                    <button onClick={() => setUploadStep(2)} className="flex-1 py-3.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 font-bold rounded-2xl hover:bg-slate-50 dark:bg-slate-800 transition-colors">Back</button>
-                    <button
-                      onClick={() => {
-                        toast.success("Document uploaded and AI analysis started!");
-                        setIsUploadOpen(false);
-                      }}
-                      className="flex-1 py-3.5 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all"
-                    >
-                      Upload & Analyze
-                    </button>
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Share Modal */}
       <AnimatePresence>

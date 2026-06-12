@@ -135,6 +135,7 @@ public class DocumentService {
                 .description(description)
                 .tags(tags)
                 .status(DocumentStatus.ACTIVE)
+                .processStatus(DocumentProcessStatus.UPLOADED)
                 .user(user)
                 .category(category)
                 .cloudFile(cloudFile)
