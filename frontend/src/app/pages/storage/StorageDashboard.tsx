@@ -1,7 +1,8 @@
 import {
   HardDrive, Upload, FileText, Image, Film, Archive, Trash2,
-  Settings, ChevronRight, Plus, X, CheckCircle2, Clock, AlertCircle
+  ChevronRight, Plus, X, CheckCircle2, Clock, AlertCircle
 } from "lucide-react";
+import { useNavigate } from "react-router";
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -59,6 +60,7 @@ const FileTypeIcon = ({ type }: { type: string }) => {
 };
 
 export function StorageDashboard() {
+  const navigate = useNavigate();
   const [activeQueue, setActiveQueue] = useState(uploadQueue);
 
   const removeFromQueue = (id: number) => {
@@ -75,16 +77,11 @@ export function StorageDashboard() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => toast.success("Storage settings opened")}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            <Settings className="w-4 h-4" /> Settings
-          </button>
-          <button
-            onClick={() => toast.success("Upload dialog opened")}
+            onClick={() => navigate("/app/upload")}
             className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all"
           >
-            <Upload className="w-4 h-4" /> Upload Files
+            <Upload className="w-4 h-4" />
+              Upload Files
           </button>
         </div>
       </div>
@@ -275,7 +272,7 @@ export function StorageDashboard() {
           <p className="opacity-80">Upgrade to Pro for 100GB storage and unlimited AI usage</p>
         </div>
         <button
-          onClick={() => toast.success("Redirecting to upgrade page...")}
+          onClick={() => navigate("/app/subscription")}
           className="shrink-0 px-8 py-3.5 bg-white text-blue-600 font-extrabold rounded-2xl hover:bg-blue-50 transition-colors shadow-xl"
         >
           Upgrade to Pro

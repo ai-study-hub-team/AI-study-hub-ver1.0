@@ -75,7 +75,7 @@ export function StudentDashboard() {
           </p>
           <div className="flex flex-wrap gap-4">
             <button
-              onClick={() => navigate('/app/documents')}
+              onClick={() => navigate('/app/upload')}
               className="px-6 py-3 bg-white text-blue-600 font-bold rounded-xl hover:bg-blue-50 transition-colors flex items-center gap-2"
             >
               <Plus className="w-5 h-5" /> Upload Document
