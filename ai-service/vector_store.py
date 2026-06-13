@@ -32,7 +32,14 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "ai-study-hub")
 NAMESPACE = "documents"
 
+
 from settings import EMBEDDING_MODEL_NAME
+
+
+# Using multilingual model for Vietnamese support. 
+# This model also outputs 384-dimensional vectors, matching our Pinecone index.
+# IMPORTANT: All existing documents must be reprocessed to regenerate vectors with this model.
+#EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
 # ─── Lazy singletons (initialized on first use) ───────────────────────────────
