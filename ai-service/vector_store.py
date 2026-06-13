@@ -31,7 +31,9 @@ logger = logging.getLogger("ai-service.vector_store")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "ai-study-hub")
 NAMESPACE = "documents"
-EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+
+from settings import EMBEDDING_MODEL_NAME
+
 
 # ─── Lazy singletons (initialized on first use) ───────────────────────────────
 
@@ -191,13 +193,19 @@ def upsert_document_chunks(document_id: int, original_file_name: str, chunks: li
         return {"vectorCount": 0, "success": False, "error": str(e)}
 
 
-def semantic_search(query: str, document_id: Optional[int] = None, top_k: int = 5) -> list:
+def semantic_search(
+    query: str,
+    document_id: Optional[int] = None,
+    document_ids: Optional[list] = None,
+    top_k: int = 5
+) -> list:
     """
     Embed the query and retrieve top-k most similar chunks from Pinecone.
 
     Args:
         query:       The user's natural language search query.
         document_id: If provided, restrict results to this document only.
+        document_ids: If provided, restrict results to this list of document IDs.
         top_k:       Number of top results to return.
 
     Returns:
@@ -212,13 +220,19 @@ def semantic_search(query: str, document_id: Optional[int] = None, top_k: int = 
         index = _get_pinecone_index()
 
         logger.info(
-            f"Semantic search — query: '{query[:80]}', documentId={document_id}, topK={top_k}"
+            f"Semantic search — query: '{query[:80]}', documentId={document_id}, "
+            f"documentIds={document_ids}, topK={top_k}"
         )
 
         query_embedding = model.encode([query])[0].tolist()
 
-        # Optional metadata filter — only filter when a documentId is given
-        metadata_filter = {"documentId": {"$eq": document_id}} if document_id is not None else None
+        # Optional metadata filter — only filter when a documentId or documentIds is given
+        if document_ids is not None:
+            metadata_filter = {"documentId": {"$in": document_ids}}
+        elif document_id is not None:
+            metadata_filter = {"documentId": {"$eq": document_id}}
+        else:
+            metadata_filter = None
 
         query_response = index.query(
             vector=query_embedding,
