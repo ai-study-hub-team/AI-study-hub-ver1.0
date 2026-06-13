@@ -4,12 +4,13 @@ import {
   Flag, Heart, Clock, BarChart2, Star, Eye, Link2,
   Lock, Globe, ChevronRight, AlertTriangle
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import { aiStatusMeta, documentStatusMeta } from "../../constants/documentStatus";
 import type { AiStatus, DocumentStatus } from "../../constants/documentStatus";
+import { documentApi } from "../../services/documentApi";
 
 interface DocumentItem {
   id: number;
@@ -52,6 +53,31 @@ const reportCategories = [
 
 type Tab = "all" | "favorites" | "recent";
 
+const formatFileSize = (bytes: number) => {
+  if (!bytes) return "0 KB";
+
+  const mb = bytes / 1024 / 1024;
+
+  if (mb >= 1) {
+    return `${mb.toFixed(1)} MB`;
+  }
+
+  return `${(bytes / 1024).toFixed(1)} KB`;
+};
+
+const mapAiStatus = (processStatus: string): AiStatus => {
+  if (processStatus === "PROCESSED") return "READY";
+  if (processStatus === "PROCESSING") return "PROCESSING";
+  if (processStatus === "FAILED") return "FAILED";
+  return "PENDING";
+};
+
+const mapDocumentStatus = (status: string): DocumentStatus => {
+  if (status === "ACTIVE") return "UPLOADED";
+  if (status === "DELETED") return "UPLOAD_FAILED";
+  return "UPLOADED";
+};
+
 export function DocumentsPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>("all");
@@ -61,18 +87,60 @@ export function DocumentsPage() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [sharing, setSharing] = useState<"private" | "public">("private");
   const [selectedReportCat, setSelectedReportCat] = useState("");
-  const [docs, setDocs] = useState(documents);
+  const [docs, setDocs] = useState<DocumentItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [openMenu, setOpenMenu] = useState<number | null>(null);
+
+  useEffect(() => {
+  loadDocuments();
+}, []);
+
+const loadDocuments = async () => {
+  try {
+    setIsLoading(true);
+
+    const response = await documentApi.getDocuments({
+      page: 0,
+      size: 20,
+    });
+
+    const mappedDocs: DocumentItem[] = response.data.content.map((doc) => ({
+      id: doc.id,
+      name: doc.originalName || doc.fileName || doc.title,
+      subject: doc.categoryName || "General",
+      date: doc.createdAt?.slice(0, 10) || "",
+      size: formatFileSize(doc.fileSize),
+      documentStatus: mapDocumentStatus(doc.status),
+      aiStatus: mapAiStatus(doc.processStatus),
+      views: 0,
+      downloads: 0,
+      favorited: false,
+    }));
+
+    setDocs(mappedDocs);
+  } catch (error) {
+    toast.error("Cannot load documents.");
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const toggleFavorite = (id: number) => {
     setDocs((prev) => prev.map((d) => d.id === id ? { ...d, favorited: !d.favorited } : d));
   };
 
-  const deleteDoc = (id: number) => {
+const deleteDoc = async (id: number) => {
+  try {
+    await documentApi.deleteDocument(id);
+
     setDocs((prev) => prev.filter((d) => d.id !== id));
-    toast.error("Document deleted");
+    toast.success("Document deleted");
+  } catch (error) {
+    toast.error("Cannot delete document.");
+  } finally {
     setOpenMenu(null);
-  };
+  }
+};
 
   const filteredDocs = docs.filter((doc) => {
     const matchSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase());

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   ChevronRight,
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { documentApi } from "../../services/documentApi";
 import { CollaborationCard } from "./components/CollaborationCard";
 import { RecentUploadsCard } from "./components/RecentUploadsCard";
 import { StudyMaterialsCard } from "./components/StudyMaterialsCard";
@@ -30,17 +31,24 @@ const uploadTypes: UploadType[] = [
   { label: "Youtube Video", icon: Youtube },
 ];
 
-const recentUploads: RecentUpload[] = [
-  { id: 1, name: "Biology Cell Notes.pdf", type: "PDF", documentStatus: "UPLOADED", aiStatus: "READY", uploadedAt: "4 min ago" },
-  { id: 2, name: "World History Week 8.pptx", type: "Powerpoint", documentStatus: "UPLOADED", aiStatus: "PROCESSING", uploadedAt: "12 min ago" },
-  { id: 3, name: "Calculus Review Audio.mp3", type: "Audio", documentStatus: "UPLOADED", aiStatus: "READY", uploadedAt: "Yesterday" },
-  { id: 4, name: "Chemistry Lab Recording.mp4", type: "Video", documentStatus: "UPLOAD_FAILED", aiStatus: "FAILED", uploadedAt: "Yesterday" },
-  { id: 5, name: "Psychology Quizlet Import", type: "Quizlet", documentStatus: "UPLOADING", aiStatus: "PENDING", uploadedAt: "2 days ago" },
-];
+const formatUploadedAt = (date: string | undefined) => {
+  if (!date) return "";
+
+  const uploadedAt = new Date(date);
+  if (Number.isNaN(uploadedAt.getTime())) return date;
+
+  return uploadedAt.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
 
 export function UploadDocumentsPage() {
   const [step, setStep] = useState<UploadStep>(1);
   const [files, setFiles] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [recentUploads, setRecentUploads] = useState<RecentUpload[]>([]);
   const [activeFilter, setActiveFilter] = useState<UploadFilter>("All");
   const [details, setDetails] = useState({
     className: "Class Materials",
@@ -48,10 +56,44 @@ export function UploadDocumentsPage() {
     notes: "",
   });
 
+  const loadRecentUploads = useCallback(async () => {
+    try {
+      const response = await documentApi.getDocuments({
+        page: 0,
+        size: 20,
+      });
+
+      const mappedUploads = response.data.content
+        .sort((left, right) => {
+          const leftDate = new Date(left.uploadedAt || "").getTime();
+          const rightDate = new Date(right.uploadedAt || "").getTime();
+          return rightDate - leftDate;
+        })
+        .slice(0, 5)
+        .map((document): RecentUpload => ({
+          id: document.id,
+          name: document.name,
+          type: document.type || "Document",
+          documentStatus: document.documentStatus,
+          aiStatus: document.aiStatus,
+          uploadedAt: formatUploadedAt(document.uploadedAt),
+        }));
+
+      setRecentUploads(mappedUploads);
+} catch (error) {
+  console.error("Cannot load recent uploads:", error);
+  toast.error("Cannot load recent uploads.");
+}
+  }, []);
+
+  useEffect(() => {
+    loadRecentUploads();
+  }, [loadRecentUploads]);
+
   const filteredUploads = useMemo(() => {
     if (activeFilter === "All") return recentUploads;
     return recentUploads.filter((upload) => upload.aiStatus === activeFilter);
-  }, [activeFilter]);
+  }, [activeFilter, recentUploads]);
 
   const addFiles = (selectedFiles: File[]) => {
     setFiles((current) => [...current, ...selectedFiles]);
@@ -61,16 +103,41 @@ export function UploadDocumentsPage() {
     setFiles((current) => current.filter((_, currentIndex) => currentIndex !== index));
   };
 
-  const goNext = () => {
+  const goNext = async () => {
     if (step === 1 && files.length === 0) {
       toast.error("Please select at least one file.");
       return;
     }
 
-    if (step === 1) setStep(2);
+    if (step === 1) {
+      setStep(2);
+      return;
+    }
+
     if (step === 2) {
-      setStep(3);
-      toast.success("Upload complete. Study materials are being generated.");
+      try {
+        setIsUploading(true);
+
+        for (const file of files) {
+          await documentApi.uploadDocument({
+            file,
+            title: file.name,
+            userId: 1,
+            description: details.notes,
+            documentType: file.type,
+            visibility: "PRIVATE",
+            categoryId: undefined,
+          });
+        }
+
+        await loadRecentUploads();
+        setStep(3);
+        toast.success("Upload complete. Study materials are being generated.");
+      } catch (error) {
+        toast.error("Upload failed. Please try again.");
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
@@ -191,9 +258,10 @@ export function UploadDocumentsPage() {
               {step < 3 ? (
                 <button
                   onClick={goNext}
-                  className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-extrabold text-white transition-colors hover:bg-blue-700"
+                  disabled={isUploading}
+                  className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-extrabold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {step === 1 ? "Next: Set Details" : "Complete Upload"}
+                  {isUploading ? "Uploading..." : step === 1 ? "Next: Set Details" : "Complete Upload"}
                 </button>
               ) : (
                 <button

@@ -3,7 +3,7 @@ import {
   LayoutDashboard, FileText, Library, MessageSquare, FileSearch,
   Puzzle, User, LogOut, Bell, Search, Settings, ShieldCheck,
   Menu, Moon, Sun, HardDrive, CreditCard, Users, Flag,
-  BarChart2, ScrollText, Zap, UploadCloud
+  BarChart2, ScrollText, Zap, UploadCloud, Folder
 } from "lucide-react";
 import { useState } from "react";
 import { motion } from "motion/react";
@@ -21,6 +21,7 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
   const studentLinks = [
     { to: "/app/dashboard", icon: LayoutDashboard, label: "Dashboard" },
     { to: "/app/documents", icon: FileText, label: "Documents" },
+    { to: "/app/categories", icon: Folder, label: "Categories" },
     { to: "/app/upload", icon: UploadCloud, label: "Upload" },
     { to: "/app/library", icon: Library, label: "My Library" },
     { to: "/app/chat", icon: MessageSquare, label: "AI Chat" },
