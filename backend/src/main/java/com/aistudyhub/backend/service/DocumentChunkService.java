@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.service;
 
+import com.aistudyhub.backend.dto.python.*;
 import com.aistudyhub.backend.dto.response.ChunkSearchResponse;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentChunk;
@@ -9,13 +10,17 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.Collections;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class DocumentChunkService {
+
 
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentRepository documentRepository;
@@ -69,4 +74,50 @@ public class DocumentChunkService {
                 .textLength(chunk.getTextLength())
                 .build();
     }
+
+    @Transactional(readOnly = true)
+    public ChunkResolveBatchResponse resolveChunks(ChunkResolveBatchRequest request) {
+        if (request == null || request.getChunks() == null) {
+            return ChunkResolveBatchResponse.builder()
+                    .chunks(Collections.emptyList())
+                    .build();
+        }
+
+        List<ChunkResolveItemResponse> resolved = request.getChunks().stream()
+                .map(item -> {
+                    if (item == null || item.getDocumentId() == null || item.getChunkIndex() == null) {
+                        return ChunkResolveItemResponse.builder()
+                                .documentId(item != null ? item.getDocumentId() : null)
+                                .chunkIndex(item != null ? item.getChunkIndex() : null)
+                                .chunkText(null)
+                                .found(false)
+                                .build();
+                    }
+
+                    Optional<DocumentChunk> chunkOpt = documentChunkRepository
+                            .findByDocument_IdAndChunkIndex(item.getDocumentId(), item.getChunkIndex());
+
+                    if (chunkOpt.isPresent()) {
+                        return ChunkResolveItemResponse.builder()
+                                .documentId(item.getDocumentId())
+                                .chunkIndex(item.getChunkIndex())
+                                .chunkText(chunkOpt.get().getChunkText())
+                                .found(true)
+                                .build();
+                    } else {
+                        return ChunkResolveItemResponse.builder()
+                                .documentId(item.getDocumentId())
+                                .chunkIndex(item.getChunkIndex())
+                                .chunkText(null)
+                                .found(false)
+                                .build();
+                    }
+                })
+                .collect(Collectors.toList());
+
+        return ChunkResolveBatchResponse.builder()
+                .chunks(resolved)
+                .build();
+    }
 }
+

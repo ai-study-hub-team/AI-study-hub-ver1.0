@@ -4,6 +4,10 @@ import uvicorn
 import logging
 import os
 from typing import Optional
+import requests
+
+from schemas.chat_schema import ChatRequest, ChatResponse, CitationResponse
+
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -197,7 +201,145 @@ async def semantic_search_endpoint(
         }
 
 
+
+# ─── Chat Endpoint ────────────────────────────────────────────────────────────
+
+def get_gemini_client():
+    from google import genai
+    from settings import GEMINI_API_KEY
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY is not set")
+    return genai.Client(api_key=GEMINI_API_KEY)
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat_endpoint(request: ChatRequest):
+    logger.info(f"Received chat request for session: {request.sessionId}")
+    
+    # 1. Perform semantic search restricted to request.documentIds
+    try:
+        from vector_store import semantic_search
+        search_results = semantic_search(
+            query=request.question,
+            document_ids=request.documentIds,
+            top_k=5
+        )
+    except Exception as e:
+        logger.error(f"Error querying Pinecone: {e}")
+        search_results = []
+
+    # 2. Build batch chunk resolve request to call Spring Boot
+    resolved_chunks_map = {}
+    if search_results:
+        resolve_payload = {
+            "chunks": [
+                {"documentId": res["documentId"], "chunkIndex": res["chunkIndex"]}
+                for res in search_results
+            ]
+        }
+        
+        from settings import SPRING_BOOT_BASE_URL
+        resolve_url = f"{SPRING_BOOT_BASE_URL.rstrip('/')}/api/internal/chunks/resolve"
+        
+        try:
+            logger.info(f"Resolving {len(search_results)} chunks from Spring Boot at {resolve_url}")
+            response = requests.post(resolve_url, json=resolve_payload, timeout=10)
+            if response.status_code == 200:
+                response_data = response.json()
+                for item in response_data.get("chunks", []):
+                    if item.get("found"):
+                        key = (item["documentId"], item["chunkIndex"])
+                        resolved_chunks_map[key] = item["chunkText"]
+            else:
+                logger.error(f"Spring Boot chunk resolution returned status {response.status_code}: {response.text}")
+        except Exception as e:
+            logger.error(f"Failed to connect to Spring Boot chunk resolution API: {e}")
+
+    # 3. Construct context for Gemini using found=True chunks only
+    context_parts = []
+    for res in search_results:
+        key = (res["documentId"], res["chunkIndex"])
+        if key in resolved_chunks_map:
+            text = resolved_chunks_map[key]
+            context_parts.append(
+                f"[Tài liệu ID: {res['documentId']}, Chunk: {res['chunkIndex']}]\n{text}"
+            )
+            
+    context_text = "\n\n".join(context_parts)
+
+    # 4. Construct prompt with context, history, and question
+    system_instruction = (
+        '''Bạn là chatbot học tập của hệ thống AI Study Hub.
+Nhiệm vụ của bạn là trả lời câu hỏi của người dùng CHỈ dựa trên phần CONTEXT được cung cấp từ các tài liệu đã chọn.
+Quy tắc bắt buộc:
+1. Trước khi trả lời, hãy tự kiểm tra xem CONTEXT có thật sự liên quan trực tiếp đến USER QUESTION hay không.
+2. Chỉ trả lời khi CONTEXT có đủ thông tin rõ ràng để trả lời câu hỏi.
+3. Nếu CONTEXT không liên quan, chỉ liên quan rất ít, hoặc không đủ dữ liệu để trả lời, hãy trả lời đúng câu sau:
+   "Mình không tìm thấy đủ thông tin phù hợp trong tài liệu đã chọn để trả lời câu hỏi này."
+4. Không được dùng kiến thức chung bên ngoài tài liệu để tự bổ sung câu trả lời.
+5. Không được suy đoán, không được bịa thêm thông tin nếu CONTEXT không nói rõ.
+6. Nếu CONTEXT có một phần thông tin liên quan nhưng chưa đủ đầy đủ, hãy nói rõ phần nào có trong tài liệu và phần nào không đủ thông tin.
+7. Trả lời bằng tiếng Việt, dễ hiểu, phù hợp với sinh viên.
+8. Nếu trả lời được, hãy trình bày mạch lạc, có thể dùng gạch đầu dòng nếu cần.
+9. Không nhắc đến Pinecone, embedding, vector search, chunk, retrieval score hoặc cơ chế kỹ thuật nội bộ trong câu trả lời cho người dùng.
+'''
+    )
+
+    prompt = f"=== CONTEXT ===\n{context_text}\n\n"
+    
+    if request.history:
+        prompt += "=== CHAT HISTORY ===\n"
+        for msg in request.history:
+            role_label = "Người dùng" if msg.role.lower() == "user" else "Trợ lý"
+            prompt += f"{role_label}: {msg.content}\n"
+        prompt += "\n"
+        
+    prompt += f"=== CURRENT QUESTION ===\nNgười dùng: {request.question}\nTrợ lý:"
+
+    # 5. Call Gemini API
+    try:
+        client = get_gemini_client()
+        from settings import GEMINI_MODEL
+        logger.info(f"Calling Gemini ({GEMINI_MODEL}) for session {request.sessionId}...")
+        
+        from google.genai import types
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.7
+        )
+        
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=config
+        )
+        answer = response.text or "Không nhận được phản hồi từ mô hình AI."
+    except Exception as e:
+        logger.exception(f"Error calling Gemini: {e}")
+        answer = f"Lỗi khi gọi mô hình AI: {str(e)}"
+
+    # 6. Map search results into Citations response (only if found and text resolved)
+    citations = []
+    for res in search_results:
+        key = (res["documentId"], res["chunkIndex"])
+        if key in resolved_chunks_map:
+            chunk_text = resolved_chunks_map[key]
+            # Clip between 300 to 500 characters
+            preview = chunk_text[:400] if len(chunk_text) > 400 else chunk_text
+            citations.append(
+                CitationResponse(
+                    documentId=res["documentId"],
+                    chunkIndex=res["chunkIndex"],
+                    score=res["score"],
+                    previewText=preview
+                )
+            )
+
+    return ChatResponse(answer=answer, citations=citations)
+
+
 # ─── Health check ─────────────────────────────────────────────────────────────
+
 
 @app.get("/health")
 async def health():
