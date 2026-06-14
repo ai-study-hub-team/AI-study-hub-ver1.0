@@ -7,12 +7,12 @@ import {
   FileText,
   FileVideo,
   Presentation,
-  RotateCcw,
   Youtube,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { documentApi } from "../../services/documentApi";
+import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { CollaborationCard } from "./components/CollaborationCard";
 import { RecentUploadsCard } from "./components/RecentUploadsCard";
 import { StudyMaterialsCard } from "./components/StudyMaterialsCard";
@@ -20,7 +20,12 @@ import { UploadDropzone } from "./components/UploadDropzone";
 import { UploadFileList } from "./components/UploadFileList";
 import { UploadStepper } from "./components/UploadStepper";
 import { UploadTypeButton } from "./components/UploadTypeButton";
-import type { RecentUpload, UploadFilter, UploadStep, UploadType } from "./types";
+import type {
+  RecentUpload,
+  UploadFilter,
+  UploadStep,
+  UploadType,
+} from "./types";
 
 const uploadTypes: UploadType[] = [
   { label: "Powerpoints", icon: Presentation },
@@ -50,11 +55,21 @@ export function UploadDocumentsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [recentUploads, setRecentUploads] = useState<RecentUpload[]>([]);
   const [activeFilter, setActiveFilter] = useState<UploadFilter>("All");
+  const [categories, setCategories] = useState<CategoryResponse[]>([]);
   const [details, setDetails] = useState({
-    className: "Class Materials",
-    subject: "General Studies",
+    categoryId: "",
     notes: "",
   });
+
+  const loadCategories = useCallback(async () => {
+    try {
+      const response = await categoryApi.getCategories();
+      setCategories(response.data ?? []);
+    } catch (error) {
+      console.error("Cannot load categories:", error);
+      toast.error("Cannot load categories.");
+    }
+  }, []);
 
   const loadRecentUploads = useCallback(async () => {
     try {
@@ -70,25 +85,28 @@ export function UploadDocumentsPage() {
           return rightDate - leftDate;
         })
         .slice(0, 5)
-        .map((document): RecentUpload => ({
-          id: document.id,
-          name: document.name,
-          type: document.type || "Document",
-          documentStatus: document.documentStatus,
-          aiStatus: document.aiStatus,
-          uploadedAt: formatUploadedAt(document.uploadedAt),
-        }));
+        .map(
+          (document): RecentUpload => ({
+            id: document.id,
+            name: document.name,
+            type: document.type || "Document",
+            documentStatus: document.documentStatus,
+            aiStatus: document.aiStatus,
+            uploadedAt: formatUploadedAt(document.uploadedAt),
+          }),
+        );
 
       setRecentUploads(mappedUploads);
-} catch (error) {
-  console.error("Cannot load recent uploads:", error);
-  toast.error("Cannot load recent uploads.");
-}
+    } catch (error) {
+      console.error("Cannot load recent uploads:", error);
+      toast.error("Cannot load recent uploads.");
+    }
   }, []);
 
   useEffect(() => {
     loadRecentUploads();
-  }, [loadRecentUploads]);
+    loadCategories();
+  }, [loadRecentUploads, loadCategories]);
 
   const filteredUploads = useMemo(() => {
     if (activeFilter === "All") return recentUploads;
@@ -100,7 +118,9 @@ export function UploadDocumentsPage() {
   };
 
   const removeFile = (index: number) => {
-    setFiles((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    setFiles((current) =>
+      current.filter((_, currentIndex) => currentIndex !== index),
+    );
   };
 
   const goNext = async () => {
@@ -115,6 +135,11 @@ export function UploadDocumentsPage() {
     }
 
     if (step === 2) {
+      if (!details.categoryId) {
+        toast.error("Please select a category.");
+        return;
+      }
+
       try {
         setIsUploading(true);
 
@@ -126,7 +151,7 @@ export function UploadDocumentsPage() {
             description: details.notes,
             documentType: file.type,
             visibility: "PRIVATE",
-            categoryId: undefined,
+            categoryId: Number(details.categoryId),
           });
         }
 
@@ -150,10 +175,15 @@ export function UploadDocumentsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm font-bold uppercase tracking-widest text-blue-600">Upload</p>
-          <h1 className="text-3xl font-extrabold text-slate-950 dark:text-white">Add class materials</h1>
+          <p className="text-sm font-bold uppercase tracking-widest text-blue-600">
+            Upload
+          </p>
+          <h1 className="text-3xl font-extrabold text-slate-950 dark:text-white">
+            Add study materials
+          </h1>
           <p className="mt-1 text-slate-500 dark:text-slate-400">
-            Upload files, add a little context, and generate study materials in one flow.
+            Upload files, add a little context, and generate study materials in
+            one flow.
           </p>
         </div>
       </div>
@@ -185,44 +215,55 @@ export function UploadDocumentsPage() {
             {step === 2 && (
               <div className="space-y-5">
                 <div>
-                  <h2 className="text-2xl font-extrabold text-slate-950 dark:text-white">Set Details</h2>
+                  <h2 className="text-2xl font-extrabold text-slate-950 dark:text-white">
+                    Set Details
+                  </h2>
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Add class context so the generated materials are easier to organize.
+                    Select a category and add notes for this upload.
                   </p>
                 </div>
 
                 <UploadFileList files={files} onRemove={removeFile} />
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label className="space-y-1.5">
-                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Class</span>
-                    <input
-                      value={details.className}
-                      onChange={(event) => setDetails((current) => ({ ...current, className: event.target.value }))}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    />
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Subject</span>
+                  <label className="block space-y-1.5">
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                      Category
+                    </span>
+
                     <select
-                      value={details.subject}
-                      onChange={(event) => setDetails((current) => ({ ...current, subject: event.target.value }))}
+                      value={details.categoryId}
+                      onChange={(event) =>
+                        setDetails((current) => ({
+                          ...current,
+                          categoryId: event.target.value,
+                        }))
+                      }
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                     >
-                      <option>General Studies</option>
-                      <option>Biology</option>
-                      <option>Chemistry</option>
-                      <option>Mathematics</option>
-                      <option>History</option>
+                      <option value="">Select category</option>
+
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 </div>
 
                 <label className="block space-y-1.5">
-                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Notes</span>
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                    Notes
+                  </span>
                   <textarea
                     value={details.notes}
-                    onChange={(event) => setDetails((current) => ({ ...current, notes: event.target.value }))}
+                    onChange={(event) =>
+                      setDetails((current) => ({
+                        ...current,
+                        notes: event.target.value,
+                      }))
+                    }
                     rows={4}
                     placeholder="Exam focus, chapters, teacher instructions..."
                     className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
@@ -236,9 +277,12 @@ export function UploadDocumentsPage() {
                 <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40">
                   <CheckCircle2 className="h-9 w-9" />
                 </div>
-                <h2 className="text-2xl font-extrabold text-slate-950 dark:text-white">Upload Complete</h2>
+                <h2 className="text-2xl font-extrabold text-slate-950 dark:text-white">
+                  Upload Complete
+                </h2>
                 <p className="mt-2 max-w-lg text-sm text-slate-500 dark:text-slate-400">
-                  Your files are queued for AI processing. We will turn them into summaries, study plans, and progress tracking.
+                  Your files are queued for AI processing. We will turn them
+                  into summaries, study plans, and progress tracking.
                 </p>
                 <div className="mt-5 w-full max-w-xl">
                   <UploadFileList files={files} onRemove={removeFile} />
@@ -261,7 +305,11 @@ export function UploadDocumentsPage() {
                   disabled={isUploading}
                   className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-extrabold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isUploading ? "Uploading..." : step === 1 ? "Next: Set Details" : "Complete Upload"}
+                  {isUploading
+                    ? "Uploading..."
+                    : step === 1
+                      ? "Next: Set Details"
+                      : "Complete Upload"}
                 </button>
               ) : (
                 <button
@@ -274,7 +322,9 @@ export function UploadDocumentsPage() {
             </div>
           </section>
 
-          <CollaborationCard onCopyLink={() => toast.success("Class upload link copied.")} />
+          <CollaborationCard
+            onCopyLink={() => toast.success("Upload link copied.")}
+          />
         </div>
 
         <aside className="space-y-5">
