@@ -50,7 +50,9 @@ const mapAiStatus = (status: string | undefined): AiStatus => {
   return "PENDING";
 };
 
-const mapDocumentResponse = (document: DocumentResponse): DocumentListItemResponse => ({
+const mapDocumentResponse = (
+  document: DocumentResponse
+): DocumentListItemResponse => ({
   ...document,
   id: document.id,
   name: document.title || document.originalName || document.fileName,
@@ -61,7 +63,9 @@ const mapDocumentResponse = (document: DocumentResponse): DocumentListItemRespon
   folder: document.categoryName || "Uncategorized",
 });
 
-const mapPageDocumentResponse = (page: PageDocumentResponse): PageDocumentResponse => ({
+const mapPageDocumentResponse = (
+  page: PageDocumentResponse
+): PageDocumentResponse => ({
   ...page,
   content: (page.content ?? []).map(mapDocumentResponse),
 });
@@ -74,6 +78,19 @@ export const documentApi = {
         ...response,
         data: mapPageDocumentResponse(response.data),
       }));
+  },
+
+  getAllDocumentsForSelect() {
+    return api
+      .get<PageDocumentResponse>("/api/documents", {
+        params: {
+          page: 0,
+          size: 100,
+        },
+      })
+      .then((response) =>
+        (response.data.content ?? []).map(mapDocumentResponse)
+      );
   },
 
   uploadDocument(payload: UploadDocumentPayload) {
