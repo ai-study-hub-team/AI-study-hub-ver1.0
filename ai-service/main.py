@@ -7,6 +7,8 @@ from typing import Optional
 import requests
 
 from schemas.chat_schema import ChatRequest, ChatResponse, CitationResponse
+from schemas.summary_schema import SummaryRequest, SummaryResponse
+from schemas.quiz_schema import QuizRequest, QuizResponse
 
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
@@ -336,6 +338,27 @@ Quy tắc bắt buộc:
             )
 
     return ChatResponse(answer=answer, citations=citations)
+
+
+# ─── Document Summary Endpoint ────────────────────────────────────────────────
+
+@app.post("/summary", response_model=SummaryResponse)
+async def summary_endpoint(request: SummaryRequest):
+    logger.info(f"Received summary request for document ID: {request.documentId}")
+    from summary_service import process_summary_request
+    return process_summary_request(request)
+
+
+# ─── Quiz Endpoint ───────────────────────────────────────────────────────────
+
+@app.post("/quiz", response_model=QuizResponse)
+async def quiz_endpoint(request: QuizRequest):
+    logger.info(
+        f"Received quiz request for document ID: {request.documentId}, "
+        f"questionCount: {request.questionCount}, difficulty: {request.difficulty}"
+    )
+    from quiz_service import process_quiz_request
+    return process_quiz_request(request)
 
 
 # ─── Health check ─────────────────────────────────────────────────────────────
