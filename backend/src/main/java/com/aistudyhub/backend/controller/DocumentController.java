@@ -234,4 +234,34 @@ public class DocumentController {
                 .contentType(MediaType.parseMediaType(mimeType))
                 .body(resource);
     }
+
+
+    @GetMapping("/ai-ready")
+    public ResponseEntity<Page<DocumentResponse>> getAiReadyDocuments(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) String fileType,
+            @RequestParam(required = false) String tag,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+
+        LocalDateTime fromDateTime = fromDate == null ? null : fromDate.atStartOfDay();
+        LocalDateTime toDateTime = toDate == null ? null : toDate.atTime(LocalTime.MAX);
+
+        return ResponseEntity.ok(documentService.searchAndFilter(
+                keyword,
+                categoryId,
+                DocumentProcessStatus.PROCESSED,
+                fileType,
+                tag,
+                fromDateTime,
+                toDateTime,
+                pageable
+        ));
+    }
+
 }
