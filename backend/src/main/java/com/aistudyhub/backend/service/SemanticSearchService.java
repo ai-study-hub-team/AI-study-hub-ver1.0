@@ -13,6 +13,8 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.*;
+import java.util.Locale;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -51,7 +53,7 @@ public class SemanticSearchService {
             "trong", "một", "các", "những", "và", "với", "có", "được", "như",
             "khi", "này", "đó", "mà", "hay", "hoặc", "tại", "từ", "đến",
             "theo", "bởi", "vì", "do", "nên", "thì", "ra", "vào", "lên",
-            "xuống", "qua", "lại", "đã", "sẽ", "đang", "chưa", "không", "chỉ"
+            "xuống", "qua", "lại", "đã", "sẽ", "đang", "bị"
     );
 
     // ─── Public API ───────────────────────────────────────────────────────────
@@ -293,40 +295,114 @@ public class SemanticSearchService {
         double boost = 0.0;
         if (importantTerms.isEmpty()) return boost;
 
-        String lowerQuery = query.toLowerCase();
-        String importantPhrase = String.join(" ", importantTerms);
+        String normalizedQuery = normalizeSearchText(query);
+        List<String> normTerms = normalizeImportantTerms(importantTerms);
+        if (normTerms.isEmpty()) return 0.0;
+        String importantPhrase = String.join(" ", normTerms);
 
         if (chunkText != null) {
-            String lowerChunk = chunkText.toLowerCase();
+            String normalizedChunk = normalizeSearchText(chunkText);
+            Set<String> chunkWords = tokenizeToSet(normalizedChunk);
 
             // Strongest boost: important phrase match (stopwords stripped)
-            if (lowerChunk.contains(importantPhrase)) {
+            if (containsExactPhrase(normalizedChunk, importantPhrase)) {
                 boost += 0.25;
                 log.debug("Phrase boost +0.25 for phrase '{}' in chunk", importantPhrase);
-            } else if (lowerChunk.contains(lowerQuery)) {
+            } else if (containsExactPhrase(normalizedChunk, normalizedQuery)) {
                 // Exact original query match (also good, but includes generic words)
                 boost += 0.15;
             }
 
-            // Per-term boost for each important word
-            for (String term : importantTerms) {
-                if (term.length() > 1 && lowerChunk.contains(term)) {
-                    boost += 0.03;
+            // N-gram phrase boost
+            double phraseBoost = 0.0;
+            List<String> trigrams = generateNgrams(normTerms, 3);
+            for (String trigram : trigrams) {
+                if (containsExactPhrase(normalizedChunk, trigram)) {
+                    phraseBoost += 0.06;
                 }
+            }
+            List<String> bigrams = generateNgrams(normTerms, 2);
+            for (String bigram : bigrams) {
+                if (containsExactPhrase(normalizedChunk, bigram)) {
+                    phraseBoost += 0.04;
+                }
+            }
+            boost += Math.min(phraseBoost, 0.16);
+
+            // Per-term boost & coverage
+            int matchedTerms = 0;
+            for (String term : normTerms) {
+                if (term.length() > 1 && chunkWords.contains(term)) {
+                    boost += 0.01;
+                    matchedTerms++;
+                }
+            }
+
+            double coverage = (double) matchedTerms / normTerms.size();
+            if (coverage >= 0.85) {
+                boost += 0.12;
+            } else if (coverage >= 0.65) {
+                boost += 0.08;
+            } else if (coverage >= 0.45) {
+                boost += 0.04;
             }
         }
 
         if (title != null) {
-            String lowerTitle = title.toLowerCase();
-            if (lowerTitle.contains(importantPhrase)) boost += 0.10;
+            String normalizedTitle = normalizeSearchText(title);
+            if (containsExactPhrase(normalizedTitle, importantPhrase)) boost += 0.10;
         }
 
         if (fileName != null) {
-            String lowerFileName = fileName.toLowerCase();
-            if (lowerFileName.contains(importantPhrase)) boost += 0.05;
+            String normalizedFileName = normalizeSearchText(fileName);
+            if (containsExactPhrase(normalizedFileName, importantPhrase)) boost += 0.05;
         }
 
-        return boost;
+        return Math.min(boost, 0.30);
+    }
+
+    private String normalizeSearchText(String text) {
+        if (text == null) return "";
+        return text.toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}\\s]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private Set<String> tokenizeToSet(String normalizedText) {
+        if (normalizedText == null || normalizedText.isBlank()) return Collections.emptySet();
+        return new HashSet<>(Arrays.asList(normalizedText.split("\\s+")));
+    }
+
+    private boolean containsExactPhrase(String normalizedText, String normalizedPhrase) {
+        if (normalizedText == null || normalizedPhrase == null || normalizedPhrase.isBlank()) return false;
+        String regex = "(?<![\\p{L}\\p{N}])" + Pattern.quote(normalizedPhrase) + "(?![\\p{L}\\p{N}])";
+        return Pattern.compile(regex).matcher(normalizedText).find();
+    }
+
+    private List<String> generateNgrams(List<String> terms, int n) {
+        List<String> ngrams = new ArrayList<>();
+        if (terms.size() < n) return ngrams;
+        for (int i = 0; i <= terms.size() - n; i++) {
+            StringBuilder sb = new StringBuilder();
+            for (int j = 0; j < n; j++) {
+                if (j > 0) sb.append(" ");
+                sb.append(terms.get(i + j));
+            }
+            ngrams.add(sb.toString());
+        }
+        return ngrams;
+    }
+
+    private List<String> normalizeImportantTerms(List<String> terms) {
+        if (terms == null) {
+            return List.of();
+        }
+        return terms.stream()
+                .map(this::normalizeSearchText)
+                .filter(term -> !term.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     // ─── Type-safe converters (Python JSON numbers may be Integer or Double) ──
