@@ -22,6 +22,8 @@ import { AISummaryPage } from "./pages/summary/AISummaryPage";
 import { QuizGeneratorPage } from "./pages/quiz/QuizGeneratorPage";
 import { ProfilePage } from "./pages/profile/ProfilePage";
 import { StorageDashboard } from "./pages/storage/StorageDashboard";
+import { CategoriesPage } from "./pages/categories/CategoriesPage";
+import { CategoryDocumentsPage } from "./pages/categories/CategoryDocumentsPage";
 
 import { PricingPage } from "./pages/subscription/PricingPage";
 import { SubscriptionDashboard } from "./pages/subscription/SubscriptionDashboard";
@@ -63,6 +65,8 @@ export const router = createBrowserRouter([
           { path: "quiz", element: <QuizGeneratorPage /> },
           { path: "profile", element: <ProfilePage /> },
           { path: "storage", element: <StorageDashboard /> },
+          { path: "categories", element: <CategoriesPage /> },
+          { path: "categories/:categoryId", element: <CategoryDocumentsPage /> },
           { path: "subscription", element: <SubscriptionDashboard /> },
           { path: "subscription/upgrade", element: <UpgradePlanPage /> },
         ],

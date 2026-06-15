@@ -280,7 +280,7 @@ export function LandingPage() {
             <div className="absolute top-8 right-8 px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-full uppercase tracking-widest">Most Popular</div>
             <h4 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Pro</h4>
             <p className="text-slate-500 dark:text-slate-400 mb-6">For students who want to excel</p>
-            <div className="text-4xl font-black text-slate-900 dark:text-white mb-8">$12 <span className="text-lg font-medium text-slate-500 dark:text-slate-400">/mo</span></div>
+            <div className="text-4xl font-black text-slate-900 dark:text-white mb-8">$19 <span className="text-lg font-medium text-slate-500 dark:text-slate-400">/mo</span></div>
             <ul className="space-y-4 mb-10 text-slate-700 dark:text-slate-300">
               <li className="flex items-center gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500" /> Unlimited uploads</li>
               <li className="flex items-center gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500" /> Unlimited AI Chat</li>

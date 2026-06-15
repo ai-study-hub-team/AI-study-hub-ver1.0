@@ -5,7 +5,6 @@ import {
   Bell, 
   Shield, 
   CreditCard, 
-  LogOut, 
   Camera, 
   CheckCircle2,
   ChevronRight,
@@ -49,12 +48,6 @@ export function ProfilePage() {
               {tab.name}
             </button>
           ))}
-          <div className="pt-4 mt-4 border-t border-slate-200 dark:border-slate-700">
-            <button className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all">
-              <LogOut className="w-5 h-5" />
-              Log Out
-            </button>
-          </div>
         </div>
 
         {/* Content Area */}

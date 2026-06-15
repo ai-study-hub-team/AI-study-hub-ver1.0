@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.controller;
 
+import com.aistudyhub.backend.dto.python.*;
 import com.aistudyhub.backend.dto.response.ChunkSearchResponse;
 import com.aistudyhub.backend.entity.DocumentChunk;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
@@ -70,5 +71,12 @@ public class DocumentChunkController {
             error.put("error", e.getMessage());
             return ResponseEntity.badRequest().body(error);
         }
+    }
+
+    @PostMapping("/internal/chunks/resolve")
+    public ResponseEntity<ChunkResolveBatchResponse> resolveChunks(
+            @RequestBody ChunkResolveBatchRequest request) {
+        ChunkResolveBatchResponse response = documentChunkService.resolveChunks(request);
+        return ResponseEntity.ok(response);
     }
 }
