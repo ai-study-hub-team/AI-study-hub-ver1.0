@@ -14,9 +14,11 @@ import { VerifyEmailSuccessPage } from "./pages/auth/VerifyEmailSuccessPage";
 
 import { StudentDashboard } from "./pages/dashboard/StudentDashboard";
 
-import { DocumentsPage } from "./pages/documents/DocumentsPage";
 import { UploadDocumentsPage } from "./pages/upload/UploadDocumentsPage";
 import { MyLibrary } from "./pages/library/MyLibrary";
+import { AllCategoriesPage } from "./pages/library/AllCategoriesPage";
+import { LibraryCategoryDocumentsPage } from "./pages/library/LibraryCategoryDocumentsPage";
+import { AllDocumentsPage } from "./pages/library/AllDocumentsPage";
 import { AIChatPage } from "./pages/chat/AIChatPage";
 import { AISummaryPage } from "./pages/summary/AISummaryPage";
 import { QuizGeneratorPage } from "./pages/quiz/QuizGeneratorPage";
@@ -57,9 +59,11 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="dashboard" replace /> },
           { path: "dashboard", element: <StudentDashboard /> },
-          { path: "documents", element: <DocumentsPage /> },
           { path: "upload", element: <UploadDocumentsPage /> },
           { path: "library", element: <MyLibrary /> },
+          { path: "library/categories", element: <AllCategoriesPage /> },
+          { path: "library/categories/:categoryId", element: <LibraryCategoryDocumentsPage /> },
+          { path: "library/documents", element: <AllDocumentsPage /> },
           { path: "chat", element: <AIChatPage /> },
           { path: "summary", element: <AISummaryPage /> },
           { path: "quiz", element: <QuizGeneratorPage /> },

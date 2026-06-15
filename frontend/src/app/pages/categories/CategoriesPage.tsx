@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FolderPlus, Trash2 } from "lucide-react";
+import { ChevronRight, FolderPlus, Library, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import axios from "axios";
 import { useNavigate } from "react-router";
@@ -18,11 +18,39 @@ export function CategoriesPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [categoryCounts, setCategoryCounts] = useState<Record<number, number>>(
+    {},
+  );
 
   const loadCategories = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/categories`);
-      setCategories(response.data ?? []);
+      const [categoryResponse, documentResponse] = await Promise.all([
+        axios.get(`${API_BASE_URL}/categories`),
+        axios.get(`${API_BASE_URL}/documents`, {
+          params: {
+            page: 0,
+            size: 100,
+          },
+        }),
+      ]);
+
+      const categoryData = categoryResponse.data ?? [];
+      const documentData = documentResponse.data?.content ?? [];
+
+      const counts = documentData.reduce(
+        (result: Record<number, number>, document: any) => {
+          if (document.categoryId) {
+            result[document.categoryId] =
+              (result[document.categoryId] ?? 0) + 1;
+          }
+
+          return result;
+        },
+        {},
+      );
+
+      setCategories(categoryData);
+      setCategoryCounts(counts);
     } catch (error) {
       console.error(error);
       toast.error("Cannot load categories.");
@@ -110,39 +138,68 @@ export function CategoriesPage() {
         </button>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="space-y-3">
-          {categories.map((category) => (
-            <div
-              key={category.id}
-              onClick={() => navigate(`/app/categories/${category.id}`)}
-              className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-100 p-4 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-            >
-              <div>
-                <p className="font-bold text-slate-900 dark:text-white">
-                  {category.name}
-                </p>
-                <p className="text-sm text-slate-500">
-                  {category.description || "No description"}
-                </p>
-              </div>
+      <section>
+        <h2 className="mb-4 text-2xl font-extrabold text-slate-950 dark:text-white">
+          Categories
+        </h2>
 
-              <button
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setDeleteId(category.id);
-                }}
-                className="rounded-lg p-2 text-red-500 hover:bg-red-50"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
+        {categories.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {categories.map((category, index) => {
+              const itemCount = categoryCounts[category.id] ?? 0;
+              const iconColor =
+                index % 2 === 0
+                  ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300"
+                  : "bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300";
 
-          {categories.length === 0 && (
-            <p className="text-sm text-slate-500">No categories yet.</p>
-          )}
-        </div>
+              return (
+                <div
+                  key={category.id}
+                  onClick={() => navigate(`/app/categories/${category.id}`)}
+                  className="group flex cursor-pointer items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
+                >
+                  <div className="flex min-w-0 items-center gap-4">
+                    <div
+                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${iconColor}`}
+                    >
+                      <Library className="h-6 w-6" />
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="truncate font-extrabold text-slate-950 dark:text-white">
+                        {category.name}
+                      </p>
+
+                      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                        {itemCount} {itemCount === 1 ? "Item" : "Items"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setDeleteId(category.id);
+                      }}
+                      className="rounded-lg p-2 text-red-500 opacity-0 transition hover:bg-red-50 group-hover:opacity-100 dark:hover:bg-red-950/30"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+
+                    <ChevronRight className="h-5 w-5 text-slate-400 transition group-hover:translate-x-1" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              No categories yet.
+            </p>
+          </div>
+        )}
       </section>
       {deleteId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

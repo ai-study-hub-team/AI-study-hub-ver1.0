@@ -38,16 +38,14 @@ export interface UploadDocumentPayload {
 
 const mapDocumentStatus = (status: string | undefined): DocumentStatus => {
   if (status === "DELETED") return "DELETED";
-  if (status === "UPLOAD_FAILED") return "UPLOAD_FAILED";
-  if (status === "UPLOADING") return "UPLOADING";
-  return "UPLOADED";
+  return "ACTIVE";
 };
 
 const mapAiStatus = (status: string | undefined): AiStatus => {
-  if (status === "PROCESSED" || status === "READY") return "READY";
   if (status === "PROCESSING") return "PROCESSING";
+  if (status === "PROCESSED") return "PROCESSED";
   if (status === "FAILED") return "FAILED";
-  return "PENDING";
+  return "UPLOADED";
 };
 
 const mapDocumentResponse = (
@@ -97,24 +95,40 @@ export const documentApi = {
     const formData = new FormData();
     formData.append("file", payload.file);
 
-    return api.post<DocumentResponse>("/api/documents/upload", formData, {
-      params: {
-        title: payload.title,
-        description: payload.description,
-        documentType: payload.documentType,
-        visibility: payload.visibility,
-        userId: payload.userId,
-        categoryId: payload.categoryId,
-      },
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+    return api
+      .post<DocumentResponse>("/api/documents/upload", formData, {
+        params: {
+          title: payload.title,
+          description: payload.description,
+          documentType: payload.documentType,
+          visibility: payload.visibility,
+          userId: payload.userId,
+          categoryId: payload.categoryId,
+        },
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      })
+      .then((response) => ({
+        ...response,
+        data: mapDocumentResponse(response.data),
+      }));
   },
 
   reprocessDocument(id: number) {
-    return api.post<DocumentResponse>(`/api/documents/${id}/reprocess`);
+    return api
+      .post<DocumentResponse>(`/api/documents/${id}/reprocess`)
+      .then((response) => ({
+        ...response,
+        data: mapDocumentResponse(response.data),
+      }));
   },
+
+  downloadDocument(id: number) {
+  return api.get(`/api/documents/${id}/download`, {
+    responseType: "blob",
+  });
+},
 
   deleteDocument(id: number) {
     return api.delete(`/api/documents/${id}`);

@@ -65,16 +65,15 @@ const formatFileSize = (bytes: number) => {
 };
 
 const mapAiStatus = (processStatus: string): AiStatus => {
-  if (processStatus === "PROCESSED") return "READY";
+  if (processStatus === "PROCESSED") return "PROCESSED";
   if (processStatus === "PROCESSING") return "PROCESSING";
   if (processStatus === "FAILED") return "FAILED";
-  return "PENDING";
+  return "UPLOADED";
 };
 
 const mapDocumentStatus = (status: string): DocumentStatus => {
-  if (status === "ACTIVE") return "UPLOADED";
-  if (status === "DELETED") return "UPLOAD_FAILED";
-  return "UPLOADED";
+  if (status === "DELETED") return "DELETED";
+  return "ACTIVE";
 };
 
 export function DocumentsPage() {

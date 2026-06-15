@@ -58,6 +58,37 @@ const statStyles = {
   emerald: "bg-emerald-50 text-emerald-600",
 };
 
+const getDocumentTypeLabel = (fileType?: string) => {
+  if (!fileType) return "FILE";
+
+  const normalizedFileType = fileType.toLowerCase();
+
+  if (normalizedFileType.includes("pdf")) return "PDF";
+  if (
+    normalizedFileType.includes("wordprocessingml") ||
+    normalizedFileType.includes("msword")
+  ) {
+    return "DOCX";
+  }
+  if (
+    normalizedFileType.includes("presentationml") ||
+    normalizedFileType.includes("powerpoint")
+  ) {
+    return "PPTX";
+  }
+  if (
+    normalizedFileType.includes("spreadsheetml") ||
+    normalizedFileType.includes("excel")
+  ) {
+    return "XLSX";
+  }
+  if (normalizedFileType.includes("image")) return "IMAGE";
+  if (normalizedFileType.includes("video")) return "VIDEO";
+  if (normalizedFileType.includes("audio")) return "AUDIO";
+
+  return "FILE";
+};
+
 export function StudentDashboard() {
   const navigate = useNavigate();
 
@@ -145,7 +176,7 @@ export function StudentDashboard() {
       size: doc.fileSize
         ? `${(doc.fileSize / 1024 / 1024).toFixed(1)} MB`
         : "Unknown size",
-      type: doc.fileType || "FILE",
+      type: getDocumentTypeLabel(doc.fileType),
     }));
   }, [documents]);
 
@@ -307,7 +338,7 @@ export function StudentDashboard() {
           </h3>
 
           <button
-            onClick={() => navigate("/app/documents")}
+            onClick={() => navigate("/app/library")}
             className="text-blue-600 font-bold flex items-center gap-1 hover:underline"
           >
             View All <ChevronRight className="w-4 h-4" />
