@@ -1,0 +1,308 @@
+﻿id,query,expected,must_contain_any,pass_at_1,pass_at_3,pass_at_5,top1_chunk,top1_score,top1_final_score,top1_source,top1_text,top2_chunk,top2_text,top3_chunk,top3_text,error
+Q01,HTTP 401,"Chunk 13 hoặc section LIME-ANCHOR / HTTP 401, 403, 404",LIME-ANCHOR | HTTP 401 | 401 nghĩa | 401 liên quan đăng nhập,YES,YES,YES,13,0.4194,0.7194,SEMANTIC,"gle rồi có cần JWT không” phải truy hồi mục này.
+11. HTTP 401, 403 và 404 trong API tài liệu
+Mã kiểm thử: LIME-ANCHOR. Thuật ngữ trung tâm của mục này là http-error-codes. 401 nghĩa là chưa xác thực hoặc token không hợp lệ; 403 nghĩa là đã xác thực nhưng không có quyền; 404 nghĩa là tài nguyên không tồn tại hoặc không được tiết lộ.
+Bối cảnh: Khi người dùng chưa đăng nhập mà gọi API download tài liệu riêng tư, hệ thống nên trả 401. Khi người dùng đã đăng nhập nhưng không phải chủ sở hữu hoặc khôn",12,"n. JWT là định dạng token dùng để xác thực request sau khi đăng nhập, còn Google OAuth là cơ chế đăng nhập thông qua tài khoản Google.
+Bối cảnh: Người dùng đăng nhập bằng email/password hoặc Google đều có thể nhận JWT của hệ thống. JWT được gửi kèm request để gọi API như upload tài liệu, xem thư việ",41,"ho RAG search.
+FAILED | Quá trình xử lý bị lỗi. | Không | Cho phép retry sau khi sửa nguyên nhân.
+ARCHIVED_TEMP | Tài liệu bị ẩn tạm thời trong 7 ngày trước khi xóa vĩnh viễn. | Không | Dữ kiện TURQUOISE-SEAL chỉ nằm trong bảng này.
+Mã HTTP | Khi nào dùng | Ví dụ trong AI Study Hub
+401 | Chưa đăng n",
+Q02,đã đăng nhập nhưng thiếu quyền,Chunk 13 hoặc Chunk 41 / HTTP 403 thiếu quyền,403 | thiếu quyền | LIME-ANCHOR,NO,YES,YES,39,0.3179,0.5779000000000001,SEMANTIC,"Có thể lỗi ở nhiều tầng: text extractor bỏ sót bảng, chunking cắt mất định nghĩa, embedding model không phù hợp tiếng Việt, top-k quá thấp, threshold quá lỏng, reranking thiếu, prompt không buộc trích nguồn hoặc citation mapping sai. Không nên chỉ kết luận lỗi do Pinecone khi chưa xem top chunks được trả về.
+35. Checklist tự kiểm thử sau khi upload file này
+Kiểm tra Document status có chuyển từ UPLOADED/PROCESSING sang PROCESSED hay không.
+Kiểm tra chunkCount có đủ lớn để bao phủ toàn bộ tài liệ",13,"gle rồi có cần JWT không” phải truy hồi mục này.
+11. HTTP 401, 403 và 404 trong API tài liệu
+Mã kiểm thử: LIME-ANCHOR. Thuật ngữ trung tâm của mục này là http-error-codes. 401 nghĩa là chưa xác thực hoặc token không hợp lệ; 403 nghĩa là đã xác thực nhưng không có quyền; 404 nghĩa là tài nguyên không",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",
+Q03,đã đăng nhập nhưng bị chặn vì thiếu quyền,Chunk 13 / HTTP 403 khác 401,403 khác 401 | bị chặn vì thiếu quyền | LIME-ANCHOR,NO,YES,YES,39,0.3238,0.5938000000000001,SEMANTIC,"Có thể lỗi ở nhiều tầng: text extractor bỏ sót bảng, chunking cắt mất định nghĩa, embedding model không phù hợp tiếng Việt, top-k quá thấp, threshold quá lỏng, reranking thiếu, prompt không buộc trích nguồn hoặc citation mapping sai. Không nên chỉ kết luận lỗi do Pinecone khi chưa xem top chunks được trả về.
+35. Checklist tự kiểm thử sau khi upload file này
+Kiểm tra Document status có chuyển từ UPLOADED/PROCESSING sang PROCESSED hay không.
+Kiểm tra chunkCount có đủ lớn để bao phủ toàn bộ tài liệ",13,"gle rồi có cần JWT không” phải truy hồi mục này.
+11. HTTP 401, 403 và 404 trong API tài liệu
+Mã kiểm thử: LIME-ANCHOR. Thuật ngữ trung tâm của mục này là http-error-codes. 401 nghĩa là chưa xác thực hoặc token không hợp lệ; 403 nghĩa là đã xác thực nhưng không có quyền; 404 nghĩa là tài nguyên không",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",
+Q04,TURQUOISE-SEAL,Chunk bảng chứa TURQUOISE-SEAL hoặc ARCHIVED_TEMP,TURQUOISE-SEAL | ARCHIVED_TEMP,YES,YES,YES,39,0.1082,0.3582,SEMANTIC,"Có thể lỗi ở nhiều tầng: text extractor bỏ sót bảng, chunking cắt mất định nghĩa, embedding model không phù hợp tiếng Việt, top-k quá thấp, threshold quá lỏng, reranking thiếu, prompt không buộc trích nguồn hoặc citation mapping sai. Không nên chỉ kết luận lỗi do Pinecone khi chưa xem top chunks được trả về.
+35. Checklist tự kiểm thử sau khi upload file này
+Kiểm tra Document status có chuyển từ UPLOADED/PROCESSING sang PROCESSED hay không.
+Kiểm tra chunkCount có đủ lớn để bao phủ toàn bộ tài liệ",41,"ho RAG search.
+FAILED | Quá trình xử lý bị lỗi. | Không | Cho phép retry sau khi sửa nguyên nhân.
+ARCHIVED_TEMP | Tài liệu bị ẩn tạm thời trong 7 ngày trước khi xóa vĩnh viễn. | Không | Dữ kiện TURQUOISE-SEAL chỉ nằm trong bảng này.
+Mã HTTP | Khi nào dùng | Ví dụ trong AI Study Hub
+401 | Chưa đăng n",17,"g còn tham chiếu hợp lệ.
+Câu then chốt: Điểm chính của OCEAN-SAFFRON là: tiện lợi của public URL phải được cân bằng với quyền riêng tư và khả năng thu hồi truy cập.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “Python có cần file public không” phải ra mục bảo mật storage này.
+15. MySQL search và Pinecone search
+M",
+Q05,tài liệu bị ẩn tạm thời trong 7 ngày trước khi xóa vĩnh viễn,Chunk bảng ARCHIVED_TEMP,ARCHIVED_TEMP | ẩn tạm thời trong 7 ngày | xóa vĩnh viễn,YES,YES,YES,40,0.2019,0.4619000000000001,SEMANTIC,"cy.
+Mục tiêu của file này
+• Kiểm tra hệ thống có tìm đúng đoạn nội dung dựa trên ý nghĩa câu hỏi, không chỉ dựa trên từ khóa.
+• Kiểm tra khả năng phân biệt các khái niệm gần giống nhau như share link và upload link, full-text search và vector search, OAuth và JWT.
+• Kiểm tra việc trích xuất nội dung trong bảng, bullet list và các đoạn dài có nhiều từ nhiễu.
+• Các mã như COBALT-LANTERN hoặc HARBOR-LOTUS là mã hiếm để kiểm tra truy hồi chính xác theo từ khóa.
+Trạng thái | Ý nghĩa | Được search nội",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",41,"ho RAG search.
+FAILED | Quá trình xử lý bị lỗi. | Không | Cho phép retry sau khi sửa nguyên nhân.
+ARCHIVED_TEMP | Tài liệu bị ẩn tạm thời trong 7 ngày trước khi xóa vĩnh viễn. | Không | Dữ kiện TURQUOISE-SEAL chỉ nằm trong bảng này.
+Mã HTTP | Khi nào dùng | Ví dụ trong AI Study Hub
+401 | Chưa đăng n",
+Q06,tại sao tăng top-k vẫn sai,Chunk ECHO-PEBBLE / top-k-similarity,ECHO-PEBBLE | top-k | threshold | metadata filter,YES,YES,YES,5,0.3898,0.6898,SEMANTIC,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm đoạn nhiễu nếu tài liệu nhiều chủ đề gần nhau.
+Ví dụ kiểm thử: Một lỗi phổ biến là lấy top-k quá thấp khiến câu trả lời thiếu thông tin, hoặc lấy quá cao rồi gửi quá nhiều context làm mô hình trả lời ",3,"” bị cắt giữa hai chunk, câu trả lời có thể thiếu phần giải thích. Overlap giúp giảm lỗi này nhưng không nên quá lớn vì sẽ làm tăng chi phí embedding.
+Câu then chốt: Điểm chính của COBALT-LANTERN là: overlap 100-150 ký tự giúp bảo toàn ngữ cảnh, nhưng không thay thế cho việc cắt theo ranh giới câu h",20,"o low stock. Một sản phẩm có quantity 0 nên được báo out of stock hoặc vừa out of stock vừa cần nhập hàng tùy thiết kế.
+Điểm phân biệt: Low stock khác out of stock. Out of stock nghĩa là số lượng bằng 0, còn low stock vẫn còn hàng nhưng cần nhập thêm.
+Ví dụ kiểm thử: Trong bài inventory, tổng giá tr",
+Q07,xóa rồi search vẫn ra,Chunk XENON-OTTER / delete-cleanup,XENON-OTTER | delete-cleanup | xóa vectors | vector database,YES,YES,YES,27,0.2386,0.5386,SEMANTIC,"quả mồ côi, làm search trả về nội dung không còn tồn tại.
+Ví dụ kiểm thử: Nếu xóa storage trước nhưng database rollback, hệ thống có thể còn metadata trỏ đến file không tồn tại. Vì vậy cần thiết kế transaction hoặc cơ chế bù lỗi.
+Câu then chốt: Điểm chính của XENON-OTTER là: xóa tài liệu phải đồng bộ giữa database, storage và vector database.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “tại sao xóa rồi search vẫn ra” phải về mục này.
+24. Tài liệu đã lưu và quyền truy cập bị thu hồi
+Mã kiểm thử: YELLOW-IGUANA",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",26,"tại nhưng tài liệu chỉ nói về chunking, hệ thống không nên bịa ra giá. Nó nên báo không có thông tin phù hợp trong tài liệu đã upload.
+Câu then chốt: Điểm chính của WILLOW-SEAHORSE là: RAG tốt phải biết từ chối khi tài liệu không chứa câu trả lời.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi ngoài nội dung tài li",
+Q08,dictionary có sắp xếp theo key không,Chunk MICA-DRAGON / Python dictionary,MICA-DRAGON | dictionary | không tự động sắp,YES,YES,YES,15,0.4797,0.7797000000000001,SEMANTIC,"ự thêm vào, không tự động sắp theo key.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “dictionary có sắp xếp theo key không” phải ra mục này.
+13. Set trong Python và loại trùng
+Mã kiểm thử: NOVA-CANYON. Thuật ngữ trung tâm của mục này là python-set. Set là cấu trúc dữ liệu lưu các phần tử không trùng lặp và thường dùng cho kiểm tra membership nhanh.
+Bối cảnh: Nếu có danh sách mã sinh viên bị lặp, chuyển sang set là cách nhanh để loại trùng. Tuy nhiên, nếu cần giữ thứ tự ban đầu, phải dùng cách khác như dict.fr",14,"n quan đăng nhập, 403 liên quan quyền, 404 liên quan không tìm thấy hoặc không tiết lộ tài nguyên.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “đã đăng nhập mà vẫn không được tải file thì mã gì” thuộc mục này.
+12. Dictionary trong Python
+Mã kiểm thử: MICA-DRAGON. Thuật ngữ trung tâm của mục này là python-diction",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",
+Q09,role khác ownership thế nào,Chunk CERULEAN-MOTH / role-permission,CERULEAN-MOTH | role | ownership,YES,YES,YES,33,0.4947,0.7947,SEMANTIC,"i dùng thường có thể sửa tài liệu của người khác nếu endpoint thiếu guard.
+Câu then chốt: Điểm chính của CERULEAN-MOTH là: role quyết định nhóm quyền, ownership quyết định tài nguyên cụ thể.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “role khác ownership thế nào” phải kéo về mục này.
+29. Tìm kiếm trong nội dung bảng
+Mã kiểm thử: DUNE-LEMUR. Thuật ngữ trung tâm của mục này là table-extraction. Một số dữ kiện quan trọng có thể nằm trong bảng, không nằm trong paragraph thông thường.
+Bối cảnh: Tài liệu học thườ",32,"i không có nguồn phù hợp.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “quy tắc nào dùng khi similarity thấp” phải là Mercury Lantern, không phải Mercury Delta.
+28. Phân quyền admin và người dùng thường
+Mã kiểm thử: CERULEAN-MOTH. Thuật ngữ trung tâm của mục này là role-permission. Admin có quyền quản lý người dù",8,"bám vào chunk nguồn, không chỉ bám vào tên file.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “tại sao cần lưu pageNumber hoặc charStart” phải về mục này.
+7. Share link tài liệu và upload link cộng tác
+Mã kiểm thử: HARBOR-LOTUS. Thuật ngữ trung tâm của mục này là sharing-model. Share link tài liệu dùng để người k",
+Q10,lưu tài liệu người khác vào thư viện,Chunk IVORY-TURTLE / Save to Library,IVORY-TURTLE | Save to Library | library-save,NO,YES,YES,8,0.1879,0.4879,SEMANTIC,"bám vào chunk nguồn, không chỉ bám vào tên file.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “tại sao cần lưu pageNumber hoặc charStart” phải về mục này.
+7. Share link tài liệu và upload link cộng tác
+Mã kiểm thử: HARBOR-LOTUS. Thuật ngữ trung tâm của mục này là sharing-model. Share link tài liệu dùng để người khác xem hoặc lưu một tài liệu đã tồn tại, còn upload link cộng tác dùng để người khác đóng góp file mới vào thư viện của chủ sở hữu.
+Bối cảnh: Trong share link tài liệu, hệ thống kiểm tra chủ sở hữu, ",33,"i dùng thường có thể sửa tài liệu của người khác nếu endpoint thiếu guard.
+Câu then chốt: Điểm chính của CERULEAN-MOTH là: role quyết định nhóm quyền, ownership quyết định tài nguyên cụ thể.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “role khác ownership thế nào” phải kéo về mục này.
+29. Tìm kiếm trong nội dung",10,"ông tạo bản sao file mới trừ khi thiết kế yêu cầu clone tài liệu.
+Điểm phân biệt: Một hệ thống có thể có cả hai, nhưng nếu chỉ cần quản lý tài liệu đã lưu thì Save to Library rõ nghĩa hơn Favorite.
+Ví dụ kiểm thử: Favorite thường dùng để sắp xếp ưu tiên hoặc đánh dấu sao. Nó không nhất thiết thể hiệ",
+Q11,file upload rồi sao tìm nội dung chưa ra,Chunk ALPHA-RIVER / upload pipeline,ALPHA-RIVER | upload-pipeline | chưa chứng minh vector search,YES,YES,YES,2,0.3442,0.6442,SEMANTIC,"hống, chưa chứng minh vector search đã sẵn sàng.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “file upload rồi sao tìm nội dung chưa ra?” phải kéo về mục này, không kéo về mục chia sẻ tài liệu.
+2. Chunking văn bản và overlap
+Mã kiểm thử: COBALT-LANTERN. Thuật ngữ trung tâm của mục này là semantic-chunking. Chunking nên ưu tiên cắt theo câu, xuống dòng hoặc khoảng trắng để tránh cắt đôi định nghĩa quan trọng.
+Bối cảnh: Trong thử nghiệm này, kích thước chunk khuyến nghị là khoảng 900 đến 1200 ký tự, overlap kho",39,"Có thể lỗi ở nhiều tầng: text extractor bỏ sót bảng, chunking cắt mất định nghĩa, embedding model không phù hợp tiếng Việt, top-k quá thấp, threshold quá lỏng, reranking thiếu, prompt không buộc trích nguồn hoặc citation mapping sai. Không nên chỉ kết luận lỗi do Pinecone khi chưa xem top chunks đượ",1,"hon service xử lý nội dung.
+Bối cảnh: Một luồng đúng thường gồm: kiểm tra định dạng file, lưu file vật lý hoặc cloud, tạo bản ghi Document, gọi Python service, tách text, chia chunk, lưu chunk, tạo embedding và cập nhật trạng thái. Nếu bỏ qua bước lưu metadata ban đầu, backend khó theo dõi lỗi xử lý",
+Q12,overlap bao nhiêu để không mất ngữ cảnh,Chunk COBALT-LANTERN / chunking overlap,COBALT-LANTERN | overlap | 100 | 150,YES,YES,YES,3,0.4795,0.7795,SEMANTIC,"” bị cắt giữa hai chunk, câu trả lời có thể thiếu phần giải thích. Overlap giúp giảm lỗi này nhưng không nên quá lớn vì sẽ làm tăng chi phí embedding.
+Câu then chốt: Điểm chính của COBALT-LANTERN là: overlap 100-150 ký tự giúp bảo toàn ngữ cảnh, nhưng không thay thế cho việc cắt theo ranh giới câu hợp lý.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi về “cắt đôi định nghĩa”, “overlap bao nhiêu” hoặc “chunk bị thiếu ngữ cảnh” phải về mục này.
+3. Embedding và tokenization
+Mã kiểm thử: DELTA-ORCHID. Thuật ngữ tru",39,"Có thể lỗi ở nhiều tầng: text extractor bỏ sót bảng, chunking cắt mất định nghĩa, embedding model không phù hợp tiếng Việt, top-k quá thấp, threshold quá lỏng, reranking thiếu, prompt không buộc trích nguồn hoặc citation mapping sai. Không nên chỉ kết luận lỗi do Pinecone khi chưa xem top chunks đượ",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",
+Q13,embedding có phải tokenization không,Chunk DELTA-ORCHID / embedding vs tokenization,DELTA-ORCHID | embedding | tokenization,YES,YES,YES,3,0.3038,0.4638,SEMANTIC,"” bị cắt giữa hai chunk, câu trả lời có thể thiếu phần giải thích. Overlap giúp giảm lỗi này nhưng không nên quá lớn vì sẽ làm tăng chi phí embedding.
+Câu then chốt: Điểm chính của COBALT-LANTERN là: overlap 100-150 ký tự giúp bảo toàn ngữ cảnh, nhưng không thay thế cho việc cắt theo ranh giới câu hợp lý.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi về “cắt đôi định nghĩa”, “overlap bao nhiêu” hoặc “chunk bị thiếu ngữ cảnh” phải về mục này.
+3. Embedding và tokenization
+Mã kiểm thử: DELTA-ORCHID. Thuật ngữ tru",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",24,"dung dài.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “inline khác attachment thế nào” phải về mục preview/download.
+21. Reranking sau truy hồi vector
+Mã kiểm thử: VIOLET-RAVEN. Thuật ngữ trung tâm của mục này là reranking. Reranking là bước sắp xếp lại các chunk đã truy hồi để chọn ngữ cảnh phù hợp nhất trước k",
+Q14,Pinecone tìm đúng nhưng user không có quyền thì sao,Chunk FALCON-MANGO / metadata filter permission,FALCON-MANGO | metadata-filter | quyền truy cập,YES,YES,YES,6,0.2661,0.5661,SEMANTIC,"này là metadata-filter. Metadata filter giúp giới hạn phạm vi tìm kiếm theo userId, documentId, category, visibility hoặc trạng thái xử lý.
+Bối cảnh: Ví dụ người dùng chỉ được xem tài liệu của chính họ, hệ thống phải lọc theo userId hoặc permission trước khi hiển thị kết quả. Nếu Pinecone trả về chunk của tài liệu không có quyền, backend vẫn phải loại bỏ.
+Điểm phân biệt: Filter theo metadata khác với filter theo nội dung. Metadata nằm ngoài đoạn văn, còn nội dung nằm trong chunk được embedding.
+",7,"hỏi “Pinecone tìm đúng nhưng user không có quyền thì sao” thuộc mục này.
+6. Citation và ánh xạ trang
+Mã kiểm thử: GARNET-CAPYBARA. Thuật ngữ trung tâm của mục này là page-citation. Citation tốt cần chỉ ra đoạn hoặc trang nguồn để người dùng kiểm chứng câu trả lời của AI.
+Bối cảnh: Với PDF, hệ thống ",38,"ce xử lý tách text và embedding, Pinecone giữ vector, còn frontend hiển thị trạng thái cho người dùng. Nếu một câu hỏi hỏi “service nào gọi Pinecone”, đáp án phụ thuộc thiết kế: có thể Python service tạo embedding và upsert vector, backend gọi Pinecone khi search, hoặc backend gọi Python để query. F",
+Q15,tại sao cần lưu pageNumber hoặc charStart,Chunk GARNET-CAPYBARA / citation mapping,GARNET-CAPYBARA | page-citation | charStart,YES,YES,YES,7,0.3226,0.6226,SEMANTIC,"hỏi “Pinecone tìm đúng nhưng user không có quyền thì sao” thuộc mục này.
+6. Citation và ánh xạ trang
+Mã kiểm thử: GARNET-CAPYBARA. Thuật ngữ trung tâm của mục này là page-citation. Citation tốt cần chỉ ra đoạn hoặc trang nguồn để người dùng kiểm chứng câu trả lời của AI.
+Bối cảnh: Với PDF, hệ thống nên lưu pageNumber khi tách text. Với DOCX, hệ thống có thể lưu heading, paragraph index hoặc charStart/charEnd. Không có vị trí nguồn, câu trả lời RAG khó được tin tưởng.
+Điểm phân biệt: Citation khô",8,"bám vào chunk nguồn, không chỉ bám vào tên file.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “tại sao cần lưu pageNumber hoặc charStart” phải về mục này.
+7. Share link tài liệu và upload link cộng tác
+Mã kiểm thử: HARBOR-LOTUS. Thuật ngữ trung tâm của mục này là sharing-model. Share link tài liệu dùng để người k",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",
+Q16,link cộng tác upload khác gì share link,Chunk HARBOR-LOTUS / sharing model,HARBOR-LOTUS | sharing-model | upload link | share link,YES,YES,YES,8,0.4953,0.7953,SEMANTIC,"bám vào chunk nguồn, không chỉ bám vào tên file.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “tại sao cần lưu pageNumber hoặc charStart” phải về mục này.
+7. Share link tài liệu và upload link cộng tác
+Mã kiểm thử: HARBOR-LOTUS. Thuật ngữ trung tâm của mục này là sharing-model. Share link tài liệu dùng để người khác xem hoặc lưu một tài liệu đã tồn tại, còn upload link cộng tác dùng để người khác đóng góp file mới vào thư viện của chủ sở hữu.
+Bối cảnh: Trong share link tài liệu, hệ thống kiểm tra chủ sở hữu, ",9,"thư viện.
+Ví dụ kiểm thử: Nếu bạn cùng lớp upload tài liệu qua link cộng tác, file chưa nên xuất hiện công khai ngay. Nó nên ở trạng thái chờ duyệt để tránh spam hoặc nội dung sai.
+Câu then chốt: Điểm chính của HARBOR-LOTUS là: share link là chia sẻ tài liệu đã có; upload link là cho phép người khác",0,"BỘ TÀI LIỆU KIỂM THỬ RAG VECTOR SEARCH
+Phiên bản tiếng Việt - có nhiều chủ đề gần nghĩa, mã hiếm và dữ kiện gây nhiễu
+Cách dùng đề xuất: Upload file này vào hệ thống của bạn, chờ trạng thái xử lý xong, sau đó hỏi các câu tự nhiên như “link cộng tác upload khác gì link chia sẻ tài liệu?” hoặc “trạng ",
+Q17,trạng thái nào mới cho search nội dung,Chunk JASPER-CLOUD hoặc bảng PROCESSED,JASPER-CLOUD | PROCESSED | đủ điều kiện,NO,YES,YES,33,0.2983,0.5083,SEMANTIC,"i dùng thường có thể sửa tài liệu của người khác nếu endpoint thiếu guard.
+Câu then chốt: Điểm chính của CERULEAN-MOTH là: role quyết định nhóm quyền, ownership quyết định tài nguyên cụ thể.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “role khác ownership thế nào” phải kéo về mục này.
+29. Tìm kiếm trong nội dung bảng
+Mã kiểm thử: DUNE-LEMUR. Thuật ngữ trung tâm của mục này là table-extraction. Một số dữ kiện quan trọng có thể nằm trong bảng, không nằm trong paragraph thông thường.
+Bối cảnh: Tài liệu học thườ",40,"cy.
+Mục tiêu của file này
+• Kiểm tra hệ thống có tìm đúng đoạn nội dung dựa trên ý nghĩa câu hỏi, không chỉ dựa trên từ khóa.
+• Kiểm tra khả năng phân biệt các khái niệm gần giống nhau như share link và upload link, full-text search và vector search, OAuth và JWT.
+• Kiểm tra việc trích xuất nội dung",0,"BỘ TÀI LIỆU KIỂM THỬ RAG VECTOR SEARCH
+Phiên bản tiếng Việt - có nhiều chủ đề gần nghĩa, mã hiếm và dữ kiện gây nhiễu
+Cách dùng đề xuất: Upload file này vào hệ thống của bạn, chờ trạng thái xử lý xong, sau đó hỏi các câu tự nhiên như “link cộng tác upload khác gì link chia sẻ tài liệu?” hoặc “trạng ",
+Q18,đăng nhập Google rồi có cần JWT không,Chunk KESTREL-MOON / OAuth vs JWT,KESTREL-MOON | OAuth | JWT,YES,YES,YES,13,0.2328,0.5327999999999999,SEMANTIC,"gle rồi có cần JWT không” phải truy hồi mục này.
+11. HTTP 401, 403 và 404 trong API tài liệu
+Mã kiểm thử: LIME-ANCHOR. Thuật ngữ trung tâm của mục này là http-error-codes. 401 nghĩa là chưa xác thực hoặc token không hợp lệ; 403 nghĩa là đã xác thực nhưng không có quyền; 404 nghĩa là tài nguyên không tồn tại hoặc không được tiết lộ.
+Bối cảnh: Khi người dùng chưa đăng nhập mà gọi API download tài liệu riêng tư, hệ thống nên trả 401. Khi người dùng đã đăng nhập nhưng không phải chủ sở hữu hoặc khôn",12,"n. JWT là định dạng token dùng để xác thực request sau khi đăng nhập, còn Google OAuth là cơ chế đăng nhập thông qua tài khoản Google.
+Bối cảnh: Người dùng đăng nhập bằng email/password hoặc Google đều có thể nhận JWT của hệ thống. JWT được gửi kèm request để gọi API như upload tài liệu, xem thư việ",39,"Có thể lỗi ở nhiều tầng: text extractor bỏ sót bảng, chunking cắt mất định nghĩa, embedding model không phù hợp tiếng Việt, top-k quá thấp, threshold quá lỏng, reranking thiếu, prompt không buộc trích nguồn hoặc citation mapping sai. Không nên chỉ kết luận lỗi do Pinecone khi chưa xem top chunks đượ",
+Q19,loại sinh viên trùng bằng cấu trúc nào,Chunk NOVA-CANYON / Python set,NOVA-CANYON | python-set | loại trùng,YES,YES,YES,15,0.2162,0.5162,SEMANTIC,"ự thêm vào, không tự động sắp theo key.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “dictionary có sắp xếp theo key không” phải ra mục này.
+13. Set trong Python và loại trùng
+Mã kiểm thử: NOVA-CANYON. Thuật ngữ trung tâm của mục này là python-set. Set là cấu trúc dữ liệu lưu các phần tử không trùng lặp và thường dùng cho kiểm tra membership nhanh.
+Bối cảnh: Nếu có danh sách mã sinh viên bị lặp, chuyển sang set là cách nhanh để loại trùng. Tuy nhiên, nếu cần giữ thứ tự ban đầu, phải dùng cách khác như dict.fr",16,"tồn tại, nhưng không dùng để lưu dữ liệu cần thứ tự trình bày chính xác.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “loại sinh viên trùng bằng cấu trúc nào” phải kéo về mục này.
+14. Bảo mật file storage và URL public
+Mã kiểm thử: OCEAN-SAFFRON. Thuật ngữ trung tâm của mục này là storage-security. Không nên để m",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",
+Q20,Python có cần file public không,Chunk OCEAN-SAFFRON / storage security,OCEAN-SAFFRON | storage-security | public URL | signed URL,YES,YES,YES,16,0.4019,0.5719,SEMANTIC,"tồn tại, nhưng không dùng để lưu dữ liệu cần thứ tự trình bày chính xác.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “loại sinh viên trùng bằng cấu trúc nào” phải kéo về mục này.
+14. Bảo mật file storage và URL public
+Mã kiểm thử: OCEAN-SAFFRON. Thuật ngữ trung tâm của mục này là storage-security. Không nên để mọi file học tập ở trạng thái public URL nếu tài liệu có quyền riêng tư.
+Bối cảnh: Nếu Python service cần đọc file để xử lý, backend có thể gửi đường dẫn nội bộ, signed URL ngắn hạn, hoặc stream file q",15,"ự thêm vào, không tự động sắp theo key.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “dictionary có sắp xếp theo key không” phải ra mục này.
+13. Set trong Python và loại trùng
+Mã kiểm thử: NOVA-CANYON. Thuật ngữ trung tâm của mục này là python-set. Set là cấu trúc dữ liệu lưu các phần tử không trùng lặp và thường",17,"g còn tham chiếu hợp lệ.
+Câu then chốt: Điểm chính của OCEAN-SAFFRON là: tiện lợi của public URL phải được cân bằng với quyền riêng tư và khả năng thu hồi truy cập.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “Python có cần file public không” phải ra mục bảo mật storage này.
+15. MySQL search và Pinecone search
+M",
+Q21,search title khác search trong nội dung thế nào,Chunk PINE-BAMBOO / hybrid search,PINE-BAMBOO | hybrid-search | MySQL | Pinecone,YES,YES,YES,18,0.3634,0.6634,SEMANTIC,"hĩa.
+Ví dụ kiểm thử: Nếu chỉ dùng MySQL LIKE theo title, câu hỏi “tài liệu nào nói về overlap chunk” có thể không tìm ra file nếu title không chứa chữ overlap. Pinecone có thể tìm trong nội dung đã embedding.
+Câu then chốt: Điểm chính của PINE-BAMBOO là: MySQL quản lý metadata, Pinecone quản lý độ gần ngữ nghĩa của nội dung.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “search title khác search trong nội dung thế nào” phải kéo về mục này.
+16. Kiểm tra xung đột lịch học
+Mã kiểm thử: QUARTZ-GECKO. Thuật ngữ tru",0,"BỘ TÀI LIỆU KIỂM THỬ RAG VECTOR SEARCH
+Phiên bản tiếng Việt - có nhiều chủ đề gần nghĩa, mã hiếm và dữ kiện gây nhiễu
+Cách dùng đề xuất: Upload file này vào hệ thống của bạn, chờ trạng thái xử lý xong, sau đó hỏi các câu tự nhiên như “link cộng tác upload khác gì link chia sẻ tài liệu?” hoặc “trạng ",24,"dung dài.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “inline khác attachment thế nào” phải về mục preview/download.
+21. Reranking sau truy hồi vector
+Mã kiểm thử: VIOLET-RAVEN. Thuật ngữ trung tâm của mục này là reranking. Reranking là bước sắp xếp lại các chunk đã truy hồi để chọn ngữ cảnh phù hợp nhất trước k",
+Q22,09:30-11:00 có trùng 08:00-10:00 không,Chunk QUARTZ-GECKO / schedule conflict,QUARTZ-GECKO | schedule-conflict | trùng,YES,YES,YES,19,0.1763,0.4763,SEMANTIC,"ùng tên môn không phải là xung đột lịch. Xung đột lịch phải dựa trên ngày, giờ bắt đầu, giờ kết thúc và đôi khi là địa điểm.
+Ví dụ kiểm thử: Trong bài tập Python, có thể lưu lịch bằng dictionary hoặc list object, rồi so sánh từng cặp course slot. Cần kiểm tra trường hợp giờ kết thúc bằng đúng giờ bắt đầu của môn sau thì không tính là trùng.
+Câu then chốt: Điểm chính của QUARTZ-GECKO là: xung đột lịch xảy ra khi khoảng thời gian giao nhau trên cùng ngày, không chỉ khi giờ bắt đầu giống hệt.
+Gợi ý",3,"” bị cắt giữa hai chunk, câu trả lời có thể thiếu phần giải thích. Overlap giúp giảm lỗi này nhưng không nên quá lớn vì sẽ làm tăng chi phí embedding.
+Câu then chốt: Điểm chính của COBALT-LANTERN là: overlap 100-150 ký tự giúp bảo toàn ngữ cảnh, nhưng không thay thế cho việc cắt theo ranh giới câu h",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",
+Q23,quantity 3 minStock 5 có cảnh báo không,Chunk RUBY-MEADOW / low stock,RUBY-MEADOW | inventory-low-stock | quantity 3 | minStock 5,YES,YES,YES,20,0.2951,0.5951,SEMANTIC,"o low stock. Một sản phẩm có quantity 0 nên được báo out of stock hoặc vừa out of stock vừa cần nhập hàng tùy thiết kế.
+Điểm phân biệt: Low stock khác out of stock. Out of stock nghĩa là số lượng bằng 0, còn low stock vẫn còn hàng nhưng cần nhập thêm.
+Ví dụ kiểm thử: Trong bài inventory, tổng giá trị kho có thể tính bằng quantity nhân price. Giá trị theo category giúp biết nhóm nào chiếm nhiều vốn nhất.
+Câu then chốt: Điểm chính của RUBY-MEADOW là: low stock dùng ngưỡng cảnh báo, không chỉ kiểm ",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",25,"rường hợp lấy nhầm đoạn.
+Câu then chốt: Điểm chính của VIOLET-RAVEN là: embedding retrieval lấy ứng viên, reranking chọn ứng viên tốt nhất cho câu hỏi cụ thể.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “nhiều đoạn đều giống nhau thì chọn đoạn nào” phải kéo về reranking.
+22. RAG hallucination và câu trả lời khôn",
+Q24,actor nào xử lý thực địa,Chunk SILVER-PANDA / SnakeGuard,SILVER-PANDA | SnakeGuard | đội cứu hộ | xử lý thực địa,YES,YES,YES,21,0.2174,0.5174,SEMANTIC,"ị viên.
+Bối cảnh: Cư dân gửi ảnh, vị trí và mô tả tình huống. Hệ thống dự đoán loài rắn, mức độ nguy hiểm và hướng dẫn không tiếp cận. Đội cứu hộ nhận nhiệm vụ, cập nhật trạng thái và có thể hỏi chuyên gia nếu cần xác nhận loài.
+Điểm phân biệt: AI nhận diện rắn không thay thế đội cứu hộ. AI chỉ hỗ trợ phân loại ban đầu và cung cấp hướng dẫn an toàn tức thời.
+Ví dụ kiểm thử: Quản trị viên quản lý tài khoản, dữ liệu loài rắn, báo cáo cộng đồng, bản đồ vùng nguy hiểm và thống kê hiệu quả xử lý.
+Câu",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",33,"i dùng thường có thể sửa tài liệu của người khác nếu endpoint thiếu guard.
+Câu then chốt: Điểm chính của CERULEAN-MOTH là: role quyết định nhóm quyền, ownership quyết định tài nguyên cụ thể.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “role khác ownership thế nào” phải kéo về mục này.
+29. Tìm kiếm trong nội dung",
+Q25,lỗi AI service sửa rồi có cần upload lại không,Chunk TIGER-NECTAR / retry processing,TIGER-NECTAR | retry-processing | Retry khác re-upload,YES,YES,YES,22,0.186,0.486,SEMANTIC,"essing. Retry processing là hành động chạy lại quá trình tách text, chunking và embedding cho tài liệu đã FAILED.
+Bối cảnh: Khi Gemini hoặc OCR bị lỗi 403, tài liệu có thể chuyển FAILED. Nếu nguyên nhân là cấu hình API key, sau khi sửa cấu hình admin có thể retry để xử lý lại tài liệu mà không bắt người dùng upload lại.
+Điểm phân biệt: Retry khác re-upload. Retry dùng lại file đã có; re-upload tạo lần upload mới hoặc thay thế file tùy thiết kế.
+Ví dụ kiểm thử: Retry nên xóa hoặc ghi đè chunks cũ",32,"i không có nguồn phù hợp.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “quy tắc nào dùng khi similarity thấp” phải là Mercury Lantern, không phải Mercury Delta.
+28. Phân quyền admin và người dùng thường
+Mã kiểm thử: CERULEAN-MOTH. Thuật ngữ trung tâm của mục này là role-permission. Admin có quyền quản lý người dù",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",
+Q26,inline khác attachment thế nào,Chunk UMBER-KOALA / preview download,UMBER-KOALA | inline | attachment | preview,YES,YES,YES,24,0.3195,0.6194999999999999,SEMANTIC,"dung dài.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “inline khác attachment thế nào” phải về mục preview/download.
+21. Reranking sau truy hồi vector
+Mã kiểm thử: VIOLET-RAVEN. Thuật ngữ trung tâm của mục này là reranking. Reranking là bước sắp xếp lại các chunk đã truy hồi để chọn ngữ cảnh phù hợp nhất trước khi gửi cho mô hình sinh câu trả lời.
+Bối cảnh: Khi nhiều chunk có điểm vector gần nhau, reranker có thể ưu tiên chunk trả lời trực tiếp câu hỏi thay vì chunk chỉ liên quan chung chung. Điều này hữu íc",23,"tài liệu và Table of Contents
+Mã kiểm thử: UMBER-KOALA. Thuật ngữ trung tâm của mục này là document-preview-toc. Document preview cho phép người dùng xem nội dung nhanh trong trình duyệt, còn Table of Contents giúp nhảy đến các heading quan trọng.
+Bối cảnh: Trong hệ thống học tập, preview giúp người",33,"i dùng thường có thể sửa tài liệu của người khác nếu endpoint thiếu guard.
+Câu then chốt: Điểm chính của CERULEAN-MOTH là: role quyết định nhóm quyền, ownership quyết định tài nguyên cụ thể.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “role khác ownership thế nào” phải kéo về mục này.
+29. Tìm kiếm trong nội dung",
+Q27,nhiều đoạn đều giống nhau thì chọn đoạn nào,Chunk VIOLET-RAVEN / reranking,VIOLET-RAVEN | reranking | chọn ứng viên,YES,YES,YES,25,0.3078,0.6078,SEMANTIC,"rường hợp lấy nhầm đoạn.
+Câu then chốt: Điểm chính của VIOLET-RAVEN là: embedding retrieval lấy ứng viên, reranking chọn ứng viên tốt nhất cho câu hỏi cụ thể.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “nhiều đoạn đều giống nhau thì chọn đoạn nào” phải kéo về reranking.
+22. RAG hallucination và câu trả lời không có nguồn
+Mã kiểm thử: WILLOW-SEAHORSE. Thuật ngữ trung tâm của mục này là rag-hallucination. RAG hallucination xảy ra khi mô hình trả lời vượt quá thông tin có trong các chunk nguồn hoặc trộn sai nh",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",24,"dung dài.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “inline khác attachment thế nào” phải về mục preview/download.
+21. Reranking sau truy hồi vector
+Mã kiểm thử: VIOLET-RAVEN. Thuật ngữ trung tâm của mục này là reranking. Reranking là bước sắp xếp lại các chunk đã truy hồi để chọn ngữ cảnh phù hợp nhất trước k",
+Q28,RAG tốt phải biết từ chối khi nào,Chunk WILLOW-SEAHORSE hoặc ELM-FOX / no answer,WILLOW-SEAHORSE | ELM-FOX | không tìm thấy | không chứa câu trả lời,YES,YES,YES,26,0.2202,0.5102,SEMANTIC,"tại nhưng tài liệu chỉ nói về chunking, hệ thống không nên bịa ra giá. Nó nên báo không có thông tin phù hợp trong tài liệu đã upload.
+Câu then chốt: Điểm chính của WILLOW-SEAHORSE là: RAG tốt phải biết từ chối khi tài liệu không chứa câu trả lời.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi ngoài nội dung tài liệu phải kích hoạt câu trả lời không tìm thấy, không phải bịa.
+23. Xóa tài liệu và dọn vector
+Mã kiểm thử: XENON-OTTER. Thuật ngữ trung tâm của mục này là delete-cleanup. Khi xóa tài liệu, hệ thống cần",25,"rường hợp lấy nhầm đoạn.
+Câu then chốt: Điểm chính của VIOLET-RAVEN là: embedding retrieval lấy ứng viên, reranking chọn ứng viên tốt nhất cho câu hỏi cụ thể.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “nhiều đoạn đều giống nhau thì chọn đoạn nào” phải kéo về reranking.
+22. RAG hallucination và câu trả lời khôn",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",
+Q29,ZINC-WHALE nói về điều gì,Chunk ZINC-WHALE / rare-code-testing,ZINC-WHALE | rare-code-testing | mã hiếm,YES,YES,YES,28,0.0449,0.33490000000000003,SEMANTIC,"ở tài liệu.
+Điểm phân biệt: Save to Library không nên mặc định biến tài liệu riêng tư của người khác thành tài sản vĩnh viễn của người lưu.
+Ví dụ kiểm thử: Nếu thiết kế là copy, hệ thống tạo bản sao riêng. Cách này tốn storage hơn và cần quy định rõ về bản quyền hoặc quyền riêng tư tài liệu.
+Câu then chốt: Điểm chính của YELLOW-IGUANA là: lưu vào thư viện không đồng nghĩa có quyền vĩnh viễn nếu tài liệu vẫn thuộc người khác.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “đã save rồi chủ tài liệu thu hồi thì sa",24,"dung dài.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “inline khác attachment thế nào” phải về mục preview/download.
+21. Reranking sau truy hồi vector
+Mã kiểm thử: VIOLET-RAVEN. Thuật ngữ trung tâm của mục này là reranking. Reranking là bước sắp xếp lại các chunk đã truy hồi để chọn ngữ cảnh phù hợp nhất trước k",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",
+Q30,cơ chế nào xóa file khi bị từ chối,Chunk AMBER-FINCH / Bloom Gate,AMBER-FINCH | Bloom Gate | reject | bị từ chối,NO,YES,YES,5,0.4091,0.4091,SEMANTIC,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm đoạn nhiễu nếu tài liệu nhiều chủ đề gần nhau.
+Ví dụ kiểm thử: Một lỗi phổ biến là lấy top-k quá thấp khiến câu trả lời thiếu thông tin, hoặc lấy quá cao rồi gửi quá nhiều context làm mô hình trả lời ",29,"hiện rất ít trong tài liệu. Nếu không tìm được, có thể pipeline tách text hoặc chunking đã làm mất ký tự đặc biệt.
+Điểm phân biệt: Exact match bằng mã hiếm khác với semantic search. Nó kiểm tra khả năng lập chỉ mục và giữ nguyên chuỗi văn bản.
+Ví dụ kiểm thử: Mã hiếm cũng giúp phát hiện việc normali",30,"Cache là bộ nhớ tạm cho kết quả embedding gần đây.
+Bối cảnh: Bloom Gate được dùng ở bước owner approve hoặc reject file cộng tác. Nếu reject, file nên bị xóa khỏi storage và không được embedding. Bloom Cache thì không liên quan đến duyệt file, nó chỉ giảm thời gian truy vấn lặp lại.
+Điểm phân biệt: ",
+Q31,quy tắc nào dùng khi similarity thấp,Chunk BASIL-SQUID / Mercury Lantern,BASIL-SQUID | Mercury Lantern | similarity thấp,YES,YES,YES,32,0.2652,0.5651999999999999,SEMANTIC,"i không có nguồn phù hợp.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “quy tắc nào dùng khi similarity thấp” phải là Mercury Lantern, không phải Mercury Delta.
+28. Phân quyền admin và người dùng thường
+Mã kiểm thử: CERULEAN-MOTH. Thuật ngữ trung tâm của mục này là role-permission. Admin có quyền quản lý người dùng, tài liệu bị báo cáo và thống kê hệ thống; người dùng thường quản lý tài liệu của chính họ.
+Bối cảnh: Trong AI Study Hub, admin có thể xem danh sách report, khóa tài liệu vi phạm và kiểm tra lỗi xử",31,"g tâm của mục này là fictional-policies. Mercury Delta là quy tắc ưu tiên chunk có citation rõ ràng; Mercury Lantern là quy tắc đánh dấu câu hỏi ngoài phạm vi tài liệu.
+Bối cảnh: Mercury Delta chạy sau khi đã có danh sách chunk ứng viên và ưu tiên chunk có pageNumber hoặc charStart/charEnd đầy đủ. M",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",
+Q32,dữ kiện chỉ nằm trong bảng thì extractor cần làm gì,Chunk DUNE-LEMUR / table extraction,DUNE-LEMUR | table-extraction | đọc cả bảng | cell text,YES,YES,YES,34,0.2986,0.5986,SEMANTIC,"g rồi hỏi mã đó. Nếu RAG không tìm ra, khả năng cao pipeline bỏ qua table text.
+Câu then chốt: Điểm chính của DUNE-LEMUR là: extractor DOCX nên đọc cả bảng, nếu không vector index sẽ thiếu một phần nội dung quan trọng.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi về “dữ kiện chỉ nằm trong bảng” phải về mục này.
+30. Khi nào nên trả về “không tìm thấy”
+Mã kiểm thử: ELM-FOX. Thuật ngữ trung tâm của mục này là no-answer-policy. Hệ thống nên trả về “không tìm thấy trong tài liệu” khi similarity thấp, nguồn không đ",33,"i dùng thường có thể sửa tài liệu của người khác nếu endpoint thiếu guard.
+Câu then chốt: Điểm chính của CERULEAN-MOTH là: role quyết định nhóm quyền, ownership quyết định tài nguyên cụ thể.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “role khác ownership thế nào” phải kéo về mục này.
+29. Tìm kiếm trong nội dung",36,"iểm phân biệt: Một câu trả lời nghe đúng nhưng lấy sai nguồn vẫn là lỗi trong hệ thống có yêu cầu citation.
+Ví dụ kiểm thử: Khi đo, ghi lại query, top chunks, similarity score, câu trả lời, citation và nhận xét. Điều này giúp biết lỗi nằm ở embedding, chunking, retrieval, reranking hay prompt trả lờ",
+Q33,test RAG cần đo những gì,Chunk FERN-BADGER / manual evaluation,FERN-BADGER | manual-evaluation | retrieval accuracy | answer accuracy,YES,YES,YES,36,0.3795,0.6795,SEMANTIC,"iểm phân biệt: Một câu trả lời nghe đúng nhưng lấy sai nguồn vẫn là lỗi trong hệ thống có yêu cầu citation.
+Ví dụ kiểm thử: Khi đo, ghi lại query, top chunks, similarity score, câu trả lời, citation và nhận xét. Điều này giúp biết lỗi nằm ở embedding, chunking, retrieval, reranking hay prompt trả lời.
+Câu then chốt: Điểm chính của FERN-BADGER là: đánh giá RAG phải tách retrieval accuracy và answer accuracy.
+Gợi ý nhiễu ngữ nghĩa: Câu hỏi “test RAG cần đo những gì” phải ra mục này.
+32. Bảng kiểm ",5,"ngữ cảnh để trả lời.
+Bối cảnh: Nếu top-k bằng 3, hệ thống chỉ lấy ba chunk gần nhất. Nếu top-k bằng 12, hệ thống có nhiều lựa chọn hơn nhưng cần bước lọc hoặc rerank để tránh nhầm giữa các mục có từ vựng giống nhau.
+Điểm phân biệt: Top-k cao không tự động làm câu trả lời tốt hơn. Nó có thể kéo thêm ",20,"o low stock. Một sản phẩm có quantity 0 nên được báo out of stock hoặc vừa out of stock vừa cần nhập hàng tùy thiết kế.
+Điểm phân biệt: Low stock khác out of stock. Out of stock nghĩa là số lượng bằng 0, còn low stock vẫn còn hàng nhưng cần nhập thêm.
+Ví dụ kiểm thử: Trong bài inventory, tổng giá tr",

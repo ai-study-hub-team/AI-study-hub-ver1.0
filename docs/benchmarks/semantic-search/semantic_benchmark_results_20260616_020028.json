@@ -1,0 +1,450 @@
+{
+  "generated_at": "2026-06-16T02:00:22",
+  "base_url": "http://localhost:3001/api/documents/semantic-search",
+  "document_id": 18,
+  "top_k": 10,
+  "results": [
+    {
+      "benchmark": {
+        "id": "Q01",
+        "query": "HTTP 401",
+        "expected": "Chunk 13 hoặc section LIME-ANCHOR / HTTP 401, 403, 404",
+        "must_contain_any": [
+          "LIME-ANCHOR",
+          "HTTP 401",
+          "401 nghĩa",
+          "401 liên quan đăng nhập"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=HTTP+401&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q02",
+        "query": "đã đăng nhập nhưng thiếu quyền",
+        "expected": "Chunk 13 hoặc Chunk 41 / HTTP 403 thiếu quyền",
+        "must_contain_any": [
+          "403",
+          "thiếu quyền",
+          "LIME-ANCHOR"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=%C4%91%C3%A3+%C4%91%C4%83ng+nh%E1%BA%ADp+nh%C6%B0ng+thi%E1%BA%BFu+quy%E1%BB%81n&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q03",
+        "query": "đã đăng nhập nhưng bị chặn vì thiếu quyền",
+        "expected": "Chunk 13 / HTTP 403 khác 401",
+        "must_contain_any": [
+          "403 khác 401",
+          "bị chặn vì thiếu quyền",
+          "LIME-ANCHOR"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=%C4%91%C3%A3+%C4%91%C4%83ng+nh%E1%BA%ADp+nh%C6%B0ng+b%E1%BB%8B+ch%E1%BA%B7n+v%C3%AC+thi%E1%BA%BFu+quy%E1%BB%81n&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q04",
+        "query": "TURQUOISE-SEAL",
+        "expected": "Chunk bảng chứa TURQUOISE-SEAL hoặc ARCHIVED_TEMP",
+        "must_contain_any": [
+          "TURQUOISE-SEAL",
+          "ARCHIVED_TEMP"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=TURQUOISE-SEAL&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q05",
+        "query": "tài liệu bị ẩn tạm thời trong 7 ngày trước khi xóa vĩnh viễn",
+        "expected": "Chunk bảng ARCHIVED_TEMP",
+        "must_contain_any": [
+          "ARCHIVED_TEMP",
+          "ẩn tạm thời trong 7 ngày",
+          "xóa vĩnh viễn"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=t%C3%A0i+li%E1%BB%87u+b%E1%BB%8B+%E1%BA%A9n+t%E1%BA%A1m+th%E1%BB%9Di+trong+7+ng%C3%A0y+tr%C6%B0%E1%BB%9Bc+khi+x%C3%B3a+v%C4%A9nh+vi%E1%BB%85n&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q06",
+        "query": "tại sao tăng top-k vẫn sai",
+        "expected": "Chunk ECHO-PEBBLE / top-k-similarity",
+        "must_contain_any": [
+          "ECHO-PEBBLE",
+          "top-k",
+          "threshold",
+          "metadata filter"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=t%E1%BA%A1i+sao+t%C4%83ng+top-k+v%E1%BA%ABn+sai&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q07",
+        "query": "xóa rồi search vẫn ra",
+        "expected": "Chunk XENON-OTTER / delete-cleanup",
+        "must_contain_any": [
+          "XENON-OTTER",
+          "delete-cleanup",
+          "xóa vectors",
+          "vector database"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=x%C3%B3a+r%E1%BB%93i+search+v%E1%BA%ABn+ra&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q08",
+        "query": "dictionary có sắp xếp theo key không",
+        "expected": "Chunk MICA-DRAGON / Python dictionary",
+        "must_contain_any": [
+          "MICA-DRAGON",
+          "dictionary",
+          "không tự động sắp"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=dictionary+c%C3%B3+s%E1%BA%AFp+x%E1%BA%BFp+theo+key+kh%C3%B4ng&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q09",
+        "query": "role khác ownership thế nào",
+        "expected": "Chunk CERULEAN-MOTH / role-permission",
+        "must_contain_any": [
+          "CERULEAN-MOTH",
+          "role",
+          "ownership"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=role+kh%C3%A1c+ownership+th%E1%BA%BF+n%C3%A0o&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q10",
+        "query": "lưu tài liệu người khác vào thư viện",
+        "expected": "Chunk IVORY-TURTLE / Save to Library",
+        "must_contain_any": [
+          "IVORY-TURTLE",
+          "Save to Library",
+          "library-save"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=l%C6%B0u+t%C3%A0i+li%E1%BB%87u+ng%C6%B0%E1%BB%9Di+kh%C3%A1c+v%C3%A0o+th%C6%B0+vi%E1%BB%87n&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q11",
+        "query": "file upload rồi sao tìm nội dung chưa ra",
+        "expected": "Chunk ALPHA-RIVER / upload pipeline",
+        "must_contain_any": [
+          "ALPHA-RIVER",
+          "upload-pipeline",
+          "chưa chứng minh vector search"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=file+upload+r%E1%BB%93i+sao+t%C3%ACm+n%E1%BB%99i+dung+ch%C6%B0a+ra&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q12",
+        "query": "overlap bao nhiêu để không mất ngữ cảnh",
+        "expected": "Chunk COBALT-LANTERN / chunking overlap",
+        "must_contain_any": [
+          "COBALT-LANTERN",
+          "overlap",
+          "100",
+          "150"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=overlap+bao+nhi%C3%AAu+%C4%91%E1%BB%83+kh%C3%B4ng+m%E1%BA%A5t+ng%E1%BB%AF+c%E1%BA%A3nh&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q13",
+        "query": "embedding có phải tokenization không",
+        "expected": "Chunk DELTA-ORCHID / embedding vs tokenization",
+        "must_contain_any": [
+          "DELTA-ORCHID",
+          "embedding",
+          "tokenization"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=embedding+c%C3%B3+ph%E1%BA%A3i+tokenization+kh%C3%B4ng&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q14",
+        "query": "Pinecone tìm đúng nhưng user không có quyền thì sao",
+        "expected": "Chunk FALCON-MANGO / metadata filter permission",
+        "must_contain_any": [
+          "FALCON-MANGO",
+          "metadata-filter",
+          "quyền truy cập"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=Pinecone+t%C3%ACm+%C4%91%C3%BAng+nh%C6%B0ng+user+kh%C3%B4ng+c%C3%B3+quy%E1%BB%81n+th%C3%AC+sao&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q15",
+        "query": "tại sao cần lưu pageNumber hoặc charStart",
+        "expected": "Chunk GARNET-CAPYBARA / citation mapping",
+        "must_contain_any": [
+          "GARNET-CAPYBARA",
+          "page-citation",
+          "charStart"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=t%E1%BA%A1i+sao+c%E1%BA%A7n+l%C6%B0u+pageNumber+ho%E1%BA%B7c+charStart&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q16",
+        "query": "link cộng tác upload khác gì share link",
+        "expected": "Chunk HARBOR-LOTUS / sharing model",
+        "must_contain_any": [
+          "HARBOR-LOTUS",
+          "sharing-model",
+          "upload link",
+          "share link"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=link+c%E1%BB%99ng+t%C3%A1c+upload+kh%C3%A1c+g%C3%AC+share+link&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q17",
+        "query": "trạng thái nào mới cho search nội dung",
+        "expected": "Chunk JASPER-CLOUD hoặc bảng PROCESSED",
+        "must_contain_any": [
+          "JASPER-CLOUD",
+          "PROCESSED",
+          "đủ điều kiện"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=tr%E1%BA%A1ng+th%C3%A1i+n%C3%A0o+m%E1%BB%9Bi+cho+search+n%E1%BB%99i+dung&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q18",
+        "query": "đăng nhập Google rồi có cần JWT không",
+        "expected": "Chunk KESTREL-MOON / OAuth vs JWT",
+        "must_contain_any": [
+          "KESTREL-MOON",
+          "OAuth",
+          "JWT"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=%C4%91%C4%83ng+nh%E1%BA%ADp+Google+r%E1%BB%93i+c%C3%B3+c%E1%BA%A7n+JWT+kh%C3%B4ng&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q19",
+        "query": "loại sinh viên trùng bằng cấu trúc nào",
+        "expected": "Chunk NOVA-CANYON / Python set",
+        "must_contain_any": [
+          "NOVA-CANYON",
+          "python-set",
+          "loại trùng"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=lo%E1%BA%A1i+sinh+vi%C3%AAn+tr%C3%B9ng+b%E1%BA%B1ng+c%E1%BA%A5u+tr%C3%BAc+n%C3%A0o&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q20",
+        "query": "Python có cần file public không",
+        "expected": "Chunk OCEAN-SAFFRON / storage security",
+        "must_contain_any": [
+          "OCEAN-SAFFRON",
+          "storage-security",
+          "public URL",
+          "signed URL"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=Python+c%C3%B3+c%E1%BA%A7n+file+public+kh%C3%B4ng&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q21",
+        "query": "search title khác search trong nội dung thế nào",
+        "expected": "Chunk PINE-BAMBOO / hybrid search",
+        "must_contain_any": [
+          "PINE-BAMBOO",
+          "hybrid-search",
+          "MySQL",
+          "Pinecone"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=search+title+kh%C3%A1c+search+trong+n%E1%BB%99i+dung+th%E1%BA%BF+n%C3%A0o&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q22",
+        "query": "09:30-11:00 có trùng 08:00-10:00 không",
+        "expected": "Chunk QUARTZ-GECKO / schedule conflict",
+        "must_contain_any": [
+          "QUARTZ-GECKO",
+          "schedule-conflict",
+          "trùng"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=09%3A30-11%3A00+c%C3%B3+tr%C3%B9ng+08%3A00-10%3A00+kh%C3%B4ng&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q23",
+        "query": "quantity 3 minStock 5 có cảnh báo không",
+        "expected": "Chunk RUBY-MEADOW / low stock",
+        "must_contain_any": [
+          "RUBY-MEADOW",
+          "inventory-low-stock",
+          "quantity 3",
+          "minStock 5"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=quantity+3+minStock+5+c%C3%B3+c%E1%BA%A3nh+b%C3%A1o+kh%C3%B4ng&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q24",
+        "query": "actor nào xử lý thực địa",
+        "expected": "Chunk SILVER-PANDA / SnakeGuard",
+        "must_contain_any": [
+          "SILVER-PANDA",
+          "SnakeGuard",
+          "đội cứu hộ",
+          "xử lý thực địa"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=actor+n%C3%A0o+x%E1%BB%AD+l%C3%BD+th%E1%BB%B1c+%C4%91%E1%BB%8Ba&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q25",
+        "query": "lỗi AI service sửa rồi có cần upload lại không",
+        "expected": "Chunk TIGER-NECTAR / retry processing",
+        "must_contain_any": [
+          "TIGER-NECTAR",
+          "retry-processing",
+          "Retry khác re-upload"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=l%E1%BB%97i+AI+service+s%E1%BB%ADa+r%E1%BB%93i+c%C3%B3+c%E1%BA%A7n+upload+l%E1%BA%A1i+kh%C3%B4ng&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q26",
+        "query": "inline khác attachment thế nào",
+        "expected": "Chunk UMBER-KOALA / preview download",
+        "must_contain_any": [
+          "UMBER-KOALA",
+          "inline",
+          "attachment",
+          "preview"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=inline+kh%C3%A1c+attachment+th%E1%BA%BF+n%C3%A0o&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q27",
+        "query": "nhiều đoạn đều giống nhau thì chọn đoạn nào",
+        "expected": "Chunk VIOLET-RAVEN / reranking",
+        "must_contain_any": [
+          "VIOLET-RAVEN",
+          "reranking",
+          "chọn ứng viên"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=nhi%E1%BB%81u+%C4%91o%E1%BA%A1n+%C4%91%E1%BB%81u+gi%E1%BB%91ng+nhau+th%C3%AC+ch%E1%BB%8Dn+%C4%91o%E1%BA%A1n+n%C3%A0o&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q28",
+        "query": "RAG tốt phải biết từ chối khi nào",
+        "expected": "Chunk WILLOW-SEAHORSE hoặc ELM-FOX / no answer",
+        "must_contain_any": [
+          "WILLOW-SEAHORSE",
+          "ELM-FOX",
+          "không tìm thấy",
+          "không chứa câu trả lời"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=RAG+t%E1%BB%91t+ph%E1%BA%A3i+bi%E1%BA%BFt+t%E1%BB%AB+ch%E1%BB%91i+khi+n%C3%A0o&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q29",
+        "query": "ZINC-WHALE nói về điều gì",
+        "expected": "Chunk ZINC-WHALE / rare-code-testing",
+        "must_contain_any": [
+          "ZINC-WHALE",
+          "rare-code-testing",
+          "mã hiếm"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=ZINC-WHALE+n%C3%B3i+v%E1%BB%81+%C4%91i%E1%BB%81u+g%C3%AC&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q30",
+        "query": "cơ chế nào xóa file khi bị từ chối",
+        "expected": "Chunk AMBER-FINCH / Bloom Gate",
+        "must_contain_any": [
+          "AMBER-FINCH",
+          "Bloom Gate",
+          "reject",
+          "bị từ chối"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=c%C6%A1+ch%E1%BA%BF+n%C3%A0o+x%C3%B3a+file+khi+b%E1%BB%8B+t%E1%BB%AB+ch%E1%BB%91i&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q31",
+        "query": "quy tắc nào dùng khi similarity thấp",
+        "expected": "Chunk BASIL-SQUID / Mercury Lantern",
+        "must_contain_any": [
+          "BASIL-SQUID",
+          "Mercury Lantern",
+          "similarity thấp"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=quy+t%E1%BA%AFc+n%C3%A0o+d%C3%B9ng+khi+similarity+th%E1%BA%A5p&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q32",
+        "query": "dữ kiện chỉ nằm trong bảng thì extractor cần làm gì",
+        "expected": "Chunk DUNE-LEMUR / table extraction",
+        "must_contain_any": [
+          "DUNE-LEMUR",
+          "table-extraction",
+          "đọc cả bảng",
+          "cell text"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=d%E1%BB%AF+ki%E1%BB%87n+ch%E1%BB%89+n%E1%BA%B1m+trong+b%E1%BA%A3ng+th%C3%AC+extractor+c%E1%BA%A7n+l%C3%A0m+g%C3%AC&topK=10&documentId=18')"
+    },
+    {
+      "benchmark": {
+        "id": "Q33",
+        "query": "test RAG cần đo những gì",
+        "expected": "Chunk FERN-BADGER / manual evaluation",
+        "must_contain_any": [
+          "FERN-BADGER",
+          "manual-evaluation",
+          "retrieval accuracy",
+          "answer accuracy"
+        ]
+      },
+      "error": "HTTPError('500 Server Error: Internal Server Error for url: http://localhost:3001/api/documents/semantic-search?query=test+RAG+c%E1%BA%A7n+%C4%91o+nh%E1%BB%AFng+g%C3%AC&topK=10&documentId=18')"
+    }
+  ]
+}
