@@ -33,5 +33,8 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
 
     /** Used by semantic search: fetch a single chunk by document + position. */
     Optional<DocumentChunk> findByDocument_IdAndChunkIndex(Long documentId, Integer chunkIndex);
+
+    /** Used by semantic search: fetch chunks in batch by document + positions. */
+    List<DocumentChunk> findByDocument_IdAndChunkIndexIn(Long documentId, java.util.Collection<Integer> chunkIndexes);
 }
 
