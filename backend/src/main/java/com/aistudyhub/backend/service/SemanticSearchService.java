@@ -93,6 +93,35 @@ public class SemanticSearchService {
             log.warn("Semantic step skipped — {}", pythonError);
         }
 
+        // Group candidates by documentId to fix N+1 query issue
+        Map<Long, Set<Integer>> docToChunkIndexes = new HashMap<>();
+        for (Map<String, Object> item : pythonResults) {
+            Long    docId      = toLong(item.get("documentId"));
+            Integer chunkIndex = toInt(item.get("chunkIndex"));
+            if (docId != null && chunkIndex != null) {
+                docToChunkIndexes.computeIfAbsent(docId, k -> new HashSet<>()).add(chunkIndex);
+            }
+        }
+
+        log.info("Batch fetching chunks for {} documents.", docToChunkIndexes.size());
+
+        // Fetch chunks in batch and build lookup map
+        Map<String, DocumentChunk> chunkLookupMap = new HashMap<>();
+        int batchFetches = 0;
+        for (Map.Entry<Long, Set<Integer>> entry : docToChunkIndexes.entrySet()) {
+            Long docId = entry.getKey();
+            Set<Integer> chunkIndexes = entry.getValue();
+            if (!chunkIndexes.isEmpty()) {
+                List<DocumentChunk> chunks = documentChunkRepository.findByDocument_IdAndChunkIndexIn(docId, chunkIndexes);
+                for (DocumentChunk chunk : chunks) {
+                    chunkLookupMap.put(docId + ":" + chunk.getChunkIndex(), chunk);
+                }
+                batchFetches++;
+            }
+        }
+
+        log.info("Performed {} batch fetches from MySQL.", batchFetches);
+
         // Enrich Pinecone candidates with MySQL chunkText
         int semanticMysqlHits = 0;
         for (Map<String, Object> item : pythonResults) {
@@ -110,10 +139,9 @@ public class SemanticSearchService {
             String documentTitle = null;
             String warning       = null;
 
-            Optional<DocumentChunk> chunkOpt =
-                    documentChunkRepository.findByDocument_IdAndChunkIndex(docId, chunkIndex);
-            if (chunkOpt.isPresent()) {
-                DocumentChunk c = chunkOpt.get();
+            String lookupKey = docId + ":" + chunkIndex;
+            DocumentChunk c = chunkLookupMap.get(lookupKey);
+            if (c != null) {
                 chunkText = c.getChunkText();
                 if (c.getDocument() != null) documentTitle = c.getDocument().getTitle();
                 semanticMysqlHits++;

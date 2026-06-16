@@ -30,6 +30,7 @@ public class DocumentService {
     private final FileStorageService fileStorageService;
     private final AiIntegrationService aiIntegrationService;
     private final DocumentChunkRepository documentChunkRepository;
+    private final DocumentProcessingAsyncService documentProcessingAsyncService;
 
     // Read upload dir from config (same value used in FileStorageService)
     @Value("${app.upload.dir:uploads}")
@@ -79,6 +80,9 @@ public class DocumentService {
 
     /**
      * Uploads a file and saves both Document and CloudFile metadata.
+     * Returns immediately with status {@code PROCESSING}.
+     * AI processing (text extraction, chunking, embedding, vector storage)
+     * continues in the background via {@link DocumentProcessingAsyncService}.
      *
      * @param file        the actual file from the multipart request
      * @param title       document title
@@ -96,6 +100,9 @@ public class DocumentService {
             String visibility,
             Long userId,
             Long categoryId) throws IOException {
+
+        log.info("Upload received — title='{}', originalName='{}', userId={}, categoryId={}",
+                title, file.getOriginalFilename(), userId, categoryId);
 
         // 1. Validate user
         User user = userRepository.findById(userId)
@@ -129,13 +136,13 @@ public class DocumentService {
         // 6. Combine documentType and visibility into tags field (simple approach for now)
         String tags = buildTags(documentType, visibility);
 
-        // 7. Build Document record
+        // 7. Build Document record with PROCESSING status (ready for background AI work)
         Document document = Document.builder()
                 .title(title)
                 .description(description)
                 .tags(tags)
                 .status(DocumentStatus.ACTIVE)
-                .processStatus(DocumentProcessStatus.UPLOADED)
+                .processStatus(DocumentProcessStatus.PROCESSING)
                 .user(user)
                 .category(category)
                 .cloudFile(cloudFile)
@@ -144,16 +151,13 @@ public class DocumentService {
                 .build();
 
         Document saved = documentRepository.save(document);
-        
-        // 8. Call AI service to process the document
-        DocumentProcessStatus processStatus = aiIntegrationService.processDocument(
-                saved.getId(),
-                cloudFile.getFileName(),
-                cloudFile.getOriginalName(),
-                cloudFile.getFileUrl(),
-                cloudFile.getFileType()
-        );
-        saved.setProcessStatus(processStatus);
+        log.info("Document metadata saved — id={}, title='{}', processStatus=PROCESSING",
+                saved.getId(), saved.getTitle());
+
+        // 8. Fire-and-forget: AI processing runs in a background thread.
+        //    The upload response is returned immediately to the frontend.
+        documentProcessingAsyncService.processDocumentAsync(saved.getId());
+        log.info("Background processing dispatched for document ID: {}", saved.getId());
 
         return toResponse(saved);
     }
