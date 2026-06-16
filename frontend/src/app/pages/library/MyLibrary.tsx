@@ -61,13 +61,13 @@ const categoryIconColorClass: Record<string, string> = {
 
 const statusBadgeClass: Record<AiStatus, string> = {
   UPLOADED:
-    "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:ring-blue-800",
+    "rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:ring-blue-800",
   PROCESSING:
-    "bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-950/30 dark:text-orange-300 dark:ring-orange-800",
+    "rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:ring-amber-800",
   PROCESSED:
-    "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800",
+    "rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800",
   FAILED:
-    "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/30 dark:text-red-300 dark:ring-red-800",
+    "rounded-full bg-red-50 text-red-700 ring-1 ring-red-200 dark:bg-red-950/30 dark:text-red-300 dark:ring-red-800",
 };
 
 const formatDocumentDate = (date: string | undefined) => {
@@ -122,6 +122,7 @@ function CategoryCard({ category }: { category: LibraryCategory }) {
           {category.count} items
         </p>
       </div>
+
       <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600" />
     </motion.div>
   );
@@ -159,8 +160,8 @@ function DocumentRow({
         </div>
       </div>
 
-      <span className="inline-flex max-w-full rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-        <span className="truncate">{document.folder}</span>
+      <span className="inline-flex w-fit rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+        {document.folder || "Uncategorized"}
       </span>
 
       <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
@@ -171,12 +172,12 @@ function DocumentRow({
         {(document.fileSize / 1024).toFixed(1)} KB
       </p>
 
-      <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800">
+      <span className="inline-flex w-fit rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800">
         {document.documentStatus}
       </span>
 
       <span
-        className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-extrabold ring-1 ${statusBadgeClass[document.aiStatus]}`}
+        className={`inline-flex w-fit px-2.5 py-1 text-[11px] font-extrabold ${statusBadgeClass[document.aiStatus]}`}
       >
         {document.aiStatus}
       </span>
@@ -219,6 +220,7 @@ export function MyLibrary() {
   const [aiStatusFilter, setAiStatusFilter] = useState<AiStatus | "ALL">("ALL");
   const [showUploadStatusMenu, setShowUploadStatusMenu] = useState(false);
   const [showAiStatusMenu, setShowAiStatusMenu] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
 
   useEffect(() => {
     const loadDocuments = async () => {
@@ -262,12 +264,7 @@ export function MyLibrary() {
     );
   };
 
-  const handleDelete = async (documentId: number) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this document?",
-    );
-    if (!confirmed) return;
-
+  const handleDelete = async (documentId: number): Promise<boolean> => {
     try {
       await documentApi.deleteDocument(documentId);
 
@@ -276,9 +273,11 @@ export function MyLibrary() {
       );
 
       toast.success("Document deleted successfully.");
+      return true;
     } catch (error) {
       console.error("Cannot delete document:", error);
       toast.error("Cannot delete document.");
+      return false;
     }
   };
 
@@ -622,7 +621,7 @@ export function MyLibrary() {
                         <RotateCcw className="h-4 w-4" />
                       </button>
 
-                      <button onClick={() => handleDelete(document.id)}>
+                      <button onClick={() => setDeleteId(document.id)}>
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
@@ -671,7 +670,7 @@ export function MyLibrary() {
                   key={document.id}
                   document={document}
                   onToggleFavorite={toggleFavorite}
-                  onDelete={handleDelete}
+                  onDelete={setDeleteId}
                   onReprocess={handleReprocess}
                   onDownload={handleDownload}
                 />
@@ -694,6 +693,44 @@ export function MyLibrary() {
           </div>
         )}
       </section>
+      {deleteId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Delete Document
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Are you sure you want to delete this document? This action cannot
+              be undone.
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteId(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (deleteId === null) return;
+
+                  const success = await handleDelete(deleteId);
+
+                  if (success) {
+                    setDeleteId(null);
+                  }
+                }}
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

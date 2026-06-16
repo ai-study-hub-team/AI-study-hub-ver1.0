@@ -51,6 +51,7 @@ export function CategoryDocumentsPage() {
   const [categoryName, setCategoryName] = useState("");
   const [documents, setDocuments] = useState<DocumentListItemResponse[]>([]);
   const [favorites, setFavorites] = useState<Record<number, boolean>>({});
+  const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const loadDocuments = async () => {
     try {
@@ -86,22 +87,20 @@ export function CategoryDocumentsPage() {
     }));
   };
 
-  const handleDelete = async (documentId: number) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this document?",
-    );
-
-    if (!confirmed) return;
-
+  const handleDelete = async (documentId: number): Promise<boolean> => {
     try {
       await documentApi.deleteDocument(documentId);
+
       setDocuments((current) =>
         current.filter((document) => document.id !== documentId),
       );
+
       toast.success("Document deleted successfully.");
+      return true;
     } catch (error) {
       console.error(error);
       toast.error("Cannot delete document.");
+      return false;
     }
   };
 
@@ -240,7 +239,7 @@ export function CategoryDocumentsPage() {
                 </button>
 
                 <button
-                  onClick={() => handleDelete(document.id)}
+                  onClick={() => setDeleteId(document.id)}
                   className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -254,6 +253,44 @@ export function CategoryDocumentsPage() {
           </div>
         )}
       </div>
+      {deleteId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Delete Document
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Are you sure you want to delete this document? This action cannot
+              be undone.
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteId(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (deleteId === null) return;
+
+                  const success = await handleDelete(deleteId);
+
+                  if (success) {
+                    setDeleteId(null);
+                  }
+                }}
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

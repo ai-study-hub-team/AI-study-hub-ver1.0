@@ -1,172 +1,350 @@
 import {
-  FileText, Search, Edit2, Trash2, Eye, Download,
-  MoreVertical, CheckCircle2, Clock, AlertTriangle,
-  Filter, Plus, ExternalLink
+  Download,
+  Edit2,
+  Eye,
+  FileText,
+  MoreVertical,
+  Search,
+  Trash2,
 } from "lucide-react";
-import { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 
-const allDocuments = [
-  { id: 1, name: "Advanced Thermodynamics.pdf", owner: "Alex Johnson", subject: "Physics", size: "4.5 MB", status: "analyzed", uploaded: "Jun 5, 2024", downloads: 12, views: 89 },
-  { id: 2, name: "Modern European History.pdf", owner: "Sarah Chen", subject: "History", size: "12.2 MB", status: "pending", uploaded: "Jun 4, 2024", downloads: 0, views: 3 },
-  { id: 3, name: "Business Ethics Final Project.docx", owner: "Marcus Williams", subject: "Management", size: "1.2 MB", status: "analyzed", uploaded: "Jun 3, 2024", downloads: 34, views: 156 },
-  { id: 4, name: "Calculus III Problem Set.pdf", owner: "Priya Patel", subject: "Math", size: "3.8 MB", status: "analyzed", uploaded: "Jun 2, 2024", downloads: 8, views: 47 },
-  { id: 5, name: "Intro to Psychology Notes.pdf", owner: "James O'Brien", subject: "Psychology", size: "6.5 MB", status: "flagged", uploaded: "Jun 1, 2024", downloads: 5, views: 23 },
-  { id: 6, name: "Organic Chemistry Lab Report.pdf", owner: "Yuki Tanaka", subject: "Chemistry", size: "2.1 MB", status: "analyzed", uploaded: "May 31, 2024", downloads: 2, views: 11 },
-  { id: 7, name: "Machine Learning Basics.pdf", owner: "Emma Rodriguez", subject: "CS", size: "8.7 MB", status: "analyzed", uploaded: "May 30, 2024", downloads: 67, views: 320 },
-  { id: 8, name: "Ancient Greek Philosophy.docx", owner: "David Kim", subject: "Philosophy", size: "0.9 MB", status: "flagged", uploaded: "May 28, 2024", downloads: 0, views: 4 },
-];
+import { documentApi } from "../../services/documentApi";
 
-const subjects = ["All", "Physics", "History", "Management", "Math", "Psychology", "Chemistry", "CS", "Philosophy"];
+interface AdminDocument {
+  id: number;
+  fileType?: string;
+  title?: string;
+  fileName?: string;
+  originalName?: string;
+  userId?: number;
+  categoryName?: string;
+  fileSize?: number;
+  processStatus?: string;
+  documentStatus?: string;
+  createdAt?: string;
+}
+
+const getDocumentName = (document: AdminDocument) =>
+  document.title || document.originalName || document.fileName || "Untitled";
+
+const getDocumentStatus = (document: AdminDocument) =>
+  document.processStatus || document.documentStatus || "PENDING";
+
+const getFileExtension = (document: AdminDocument) => {
+  const name = getDocumentName(document);
+  const extensionFromName = name.split(".").pop()?.toUpperCase();
+  const extensionFromType = document.fileType?.split("/").pop()?.toUpperCase();
+
+  return extensionFromName && extensionFromName !== name.toUpperCase()
+    ? extensionFromName
+    : extensionFromType || "FILE";
+};
+
+const formatFileSize = (size?: number) => {
+  if (!size) return "0 KB";
+  return `${(size / 1024).toFixed(1)} KB`;
+};
+
+const formatDate = (date?: string) => {
+  if (!date) return "Unknown";
+
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) return "Unknown";
+
+  return parsedDate.toLocaleDateString("vi-VN");
+};
 
 const StatusBadge = ({ status }: { status: string }) => {
-  const config: Record<string, { label: string; className: string }> = {
-    analyzed: { label: "Analyzed", className: "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" },
-    pending: { label: "Pending", className: "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-300" },
-    flagged: { label: "Flagged", className: "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-300" },
+  const normalizedStatus = status.toUpperCase();
+
+  const config: Record<string, string> = {
+    READY:
+      "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800",
+    PROCESSED:
+      "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800",
+    PROCESSING:
+      "bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:ring-amber-800",
+    PENDING:
+      "bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:ring-amber-800",
+    FAILED:
+      "bg-red-50 text-red-700 ring-1 ring-red-200 dark:bg-red-950/30 dark:text-red-300 dark:ring-red-800",
   };
-  const { label, className } = config[status] || { label: status, className: "bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400" };
-  return <span className={`px-2.5 py-1 text-xs font-bold rounded-lg ${className}`}>{label}</span>;
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-extrabold ${
+        config[normalizedStatus] ??
+        "bg-slate-100 text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700"
+      }`}
+    >
+      {normalizedStatus}
+    </span>
+  );
 };
 
 export function DocumentAdmin() {
   const [search, setSearch] = useState("");
-  const [subject, setSubject] = useState("All");
-  const [docs, setDocs] = useState(allDocuments);
+  const [docs, setDocs] = useState<AdminDocument[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [openMenu, setOpenMenu] = useState<number | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
 
-  const filtered = docs.filter((d) => {
-    const matchSearch = d.name.toLowerCase().includes(search.toLowerCase()) || d.owner.toLowerCase().includes(search.toLowerCase());
-    const matchSubject = subject === "All" || d.subject === subject;
-    return matchSearch && matchSubject;
+  const loadDocuments = async () => {
+    try {
+      setIsLoading(true);
+
+      const response = await documentApi.getDocuments({
+        page: 0,
+        size: 100,
+      });
+
+      setDocs(response.data.content ?? []);
+    } catch (error) {
+      console.error(error);
+      toast.error("Cannot load documents.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDocuments();
+  }, []);
+
+  const filtered = docs.filter((document) => {
+    const name = getDocumentName(document).toLowerCase();
+    const owner = `user #${document.userId ?? ""}`.toLowerCase();
+
+    return (
+      name.includes(search.toLowerCase()) ||
+      owner.includes(search.toLowerCase())
+    );
   });
 
-  const deleteDoc = (id: number) => {
-    const doc = docs.find((d) => d.id === id);
-    setDocs((prev) => prev.filter((d) => d.id !== id));
-    toast.error(`"${doc?.name}" deleted`);
-    setOpenMenu(null);
+  const deleteDoc = async (id: number): Promise<boolean> => {
+    try {
+      await documentApi.deleteDocument(id);
+
+      setDocs((current) => current.filter((document) => document.id !== id));
+      toast.success("Document deleted successfully.");
+      setOpenMenu(null);
+
+      return true;
+    } catch (error) {
+      console.error(error);
+      toast.error("Cannot delete document.");
+      return false;
+    }
   };
 
   return (
     <div className="space-y-8 bg-slate-50 dark:bg-slate-950">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Document Management</h1>
-          <p className="text-slate-500 dark:text-slate-400">View, manage, and moderate all platform documents</p>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
+            Document Management
+          </h1>
+          <p className="text-slate-500 dark:text-slate-400">
+            View, manage, and moderate all platform documents
+          </p>
         </div>
+
         <div className="flex items-center gap-2">
-          {[
-            { label: "Total", value: docs.length, color: "slate" },
-            { label: "Analyzed", value: docs.filter(d => d.status === "analyzed").length, color: "emerald" },
-            { label: "Pending", value: docs.filter(d => d.status === "pending").length, color: "amber" },
-            { label: "Flagged", value: docs.filter(d => d.status === "flagged").length, color: "red" },
-          ].map((s) => (
-            <div key={s.label} className={`px-3 py-1.5 bg-${s.color}-50 dark:bg-slate-800 text-${s.color}-600 dark:text-slate-300 rounded-xl border border-${s.color}-100 dark:border-slate-700`}>
-              <span className="text-xs font-bold">{s.label}: </span>
-              <span className="text-sm font-extrabold">{s.value}</span>
-            </div>
-          ))}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            <span className="text-xs font-bold">Total: </span>
+            <span className="text-sm font-extrabold">{docs.length}</span>
+          </div>
+
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-emerald-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            <span className="text-xs font-bold">Ready: </span>
+            <span className="text-sm font-extrabold">
+              {
+                docs.filter((document) =>
+                  ["READY", "PROCESSED"].includes(
+                    getDocumentStatus(document).toUpperCase(),
+                  ),
+                ).length
+              }
+            </span>
+          </div>
+
+          <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-1.5 text-amber-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            <span className="text-xs font-bold">Pending: </span>
+            <span className="text-sm font-extrabold">
+              {
+                docs.filter((document) =>
+                  ["PENDING", "PROCESSING"].includes(
+                    getDocumentStatus(document).toUpperCase(),
+                  ),
+                ).length
+              }
+            </span>
+          </div>
+
+          <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-1.5 text-red-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            <span className="text-xs font-bold">Failed: </span>
+            <span className="text-sm font-extrabold">
+              {
+                docs.filter(
+                  (document) =>
+                    getDocumentStatus(document).toUpperCase() === "FAILED",
+                ).length
+              }
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 space-y-5">
-        <div className="flex flex-col lg:flex-row gap-4 items-center">
+      <div className="space-y-5 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-col items-center gap-4 lg:flex-row">
           <div className="relative w-full lg:max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
             <input
               type="text"
               placeholder="Search by filename or owner..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              onChange={(event) => setSearch(event.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
             />
-          </div>
-          <div className="flex items-center gap-2 overflow-x-auto">
-            {subjects.slice(0, 6).map((s) => (
-              <button
-                key={s}
-                onClick={() => setSubject(s)}
-                className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                  subject === s ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
-                }`}
-              >
-                {s}
-              </button>
-            ))}
           </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full border-separate border-spacing-y-2">
             <thead>
-              <tr className="text-left text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-widest bg-slate-50 dark:bg-slate-800">
+              <tr className="bg-slate-50 text-left text-xs font-bold uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                 <th className="px-4 py-2">Document</th>
                 <th className="px-4 py-2">Owner</th>
-                <th className="px-4 py-2">Subject</th>
+                <th className="px-4 py-2">Category</th>
                 <th className="px-4 py-2">Size</th>
-                <th className="px-4 py-2">Views</th>
-                <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2">Upload Status</th>
+                <th className="px-4 py-2">AI Status</th>
                 <th className="px-4 py-2">Uploaded</th>
                 <th className="px-4 py-2 text-right">Actions</th>
               </tr>
             </thead>
+
             <tbody>
               <AnimatePresence>
-                {filtered.map((doc) => (
+                {filtered.map((document) => (
                   <motion.tr
-                    key={doc.id}
+                    key={document.id}
                     layout
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="group bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    className="group bg-white transition-colors hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800"
                   >
-                    <td className="px-4 py-3 rounded-l-2xl">
+                    <td className="rounded-l-2xl px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-center shrink-0">
-                          <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 dark:bg-slate-800">
+                          <FileText className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                         </div>
-                        <span className="font-semibold text-slate-900 dark:text-white text-sm truncate max-w-[180px]">{doc.name}</span>
+
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-slate-900 dark:text-white">
+                            {getDocumentName(document)}
+                          </p>
+
+                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            {getFileExtension(document)}
+                          </p>
+                        </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">{doc.owner}</td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700">{doc.subject}</span>
+
+                    <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
+                      User #{document.userId ?? "Unknown"}
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{doc.size}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300 font-semibold">{doc.views}</td>
-                    <td className="px-4 py-3"><StatusBadge status={doc.status} /></td>
-                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{doc.uploaded}</td>
-                    <td className="px-4 py-3 rounded-r-2xl text-right">
+
+                    <td className="px-4 py-3">
+                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                        {document.categoryName || "Uncategorized"}
+                      </span>
+                    </td>
+
+                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
+                      {formatFileSize(document.fileSize)}
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800">
+                        {document.documentStatus || "ACTIVE"}
+                      </span>
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <StatusBadge status={getDocumentStatus(document)} />
+                    </td>
+
+                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
+                      {formatDate(document.createdAt)}
+                    </td>
+
+                    <td className="rounded-r-2xl px-4 py-3 text-right">
                       <div className="relative inline-block">
                         <button
-                          onClick={() => setOpenMenu(openMenu === doc.id ? null : doc.id)}
-                          className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+                          onClick={() =>
+                            setOpenMenu(
+                              openMenu === document.id ? null : document.id,
+                            )
+                          }
+                          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                         >
-                          <MoreVertical className="w-4 h-4" />
+                          <MoreVertical className="h-4 w-4" />
                         </button>
+
                         <AnimatePresence>
-                          {openMenu === doc.id && (
+                          {openMenu === document.id && (
                             <motion.div
                               initial={{ opacity: 0, scale: 0.95, y: -5 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
                               exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                              className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-20 w-44 py-2"
+                              className="absolute right-0 top-full z-20 mt-1 w-44 rounded-2xl border border-slate-200 bg-white py-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"
                             >
-                              <button onClick={() => { toast.success("Opening document preview..."); setOpenMenu(null); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
-                                <Eye className="w-4 h-4" /> Preview
+                              <button
+                                onClick={() => {
+                                  toast.success("Opening document preview...");
+                                  setOpenMenu(null);
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                              >
+                                <Eye className="h-4 w-4" /> Preview
                               </button>
-                              <button onClick={() => { toast.success("Downloading document..."); setOpenMenu(null); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
-                                <Download className="w-4 h-4" /> Download
+
+                              <button
+                                onClick={() => {
+                                  toast.success("Downloading document...");
+                                  setOpenMenu(null);
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                              >
+                                <Download className="h-4 w-4" /> Download
                               </button>
-                              <button onClick={() => { toast.success("Edit metadata opened"); setOpenMenu(null); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
-                                <Edit2 className="w-4 h-4" /> Edit
+
+                              <button
+                                onClick={() => {
+                                  toast.success("Edit metadata opened");
+                                  setOpenMenu(null);
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                              >
+                                <Edit2 className="h-4 w-4" /> Edit
                               </button>
+
                               <div className="mx-4 my-1 border-t border-slate-200 dark:border-slate-700" />
-                              <button onClick={() => deleteDoc(doc.id)} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/10">
-                                <Trash2 className="w-4 h-4" /> Delete
+
+                              <button
+                                onClick={() => {
+                                  setDeleteId(document.id);
+                                  setOpenMenu(null);
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+                              >
+                                <Trash2 className="h-4 w-4" /> Delete
                               </button>
                             </motion.div>
                           )}
@@ -178,14 +356,64 @@ export function DocumentAdmin() {
               </AnimatePresence>
             </tbody>
           </table>
-          {filtered.length === 0 && (
+
+          {isLoading && (
             <div className="py-16 text-center">
-              <FileText className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-              <p className="font-bold text-slate-500 dark:text-slate-400">No documents found</p>
+              <p className="font-bold text-slate-500 dark:text-slate-400">
+                Loading documents...
+              </p>
+            </div>
+          )}
+
+          {!isLoading && filtered.length === 0 && (
+            <div className="py-16 text-center">
+              <FileText className="mx-auto mb-3 h-12 w-12 text-slate-300 dark:text-slate-600" />
+              <p className="font-bold text-slate-500 dark:text-slate-400">
+                No documents found
+              </p>
             </div>
           )}
         </div>
       </div>
+
+      {deleteId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Delete Document
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Are you sure you want to delete this document? This action cannot
+              be undone.
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteId(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (deleteId === null) return;
+
+                  const success = await deleteDoc(deleteId);
+
+                  if (success) {
+                    setDeleteId(null);
+                  }
+                }}
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

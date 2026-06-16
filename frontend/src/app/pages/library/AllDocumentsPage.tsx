@@ -154,6 +154,7 @@ export function AllDocumentsPage() {
   const navigate = useNavigate();
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const loadDocuments = async () => {
     try {
@@ -201,22 +202,20 @@ export function AllDocumentsPage() {
     );
   };
 
-  const handleDelete = async (documentId: number) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this document?",
-    );
-
-    if (!confirmed) return;
-
+  const handleDelete = async (documentId: number): Promise<boolean> => {
     try {
       await documentApi.deleteDocument(documentId);
+
       setDocuments((current) =>
         current.filter((document) => document.id !== documentId),
       );
+
       toast.success("Document deleted successfully.");
+      return true;
     } catch (error) {
       console.error("Cannot delete document:", error);
       toast.error("Cannot delete document.");
+      return false;
     }
   };
 
@@ -249,75 +248,113 @@ export function AllDocumentsPage() {
     }
   };
 
-return (
-  <div className="space-y-6">
-    <button
-      onClick={() => navigate("/app/library")}
-      className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-    >
-      <ArrowLeft className="h-4 w-4" />
-      Back to Library
-    </button>
-
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <div>
-        <h1 className="text-4xl font-extrabold text-slate-900 dark:text-slate-100">
-          All Documents
-        </h1>
-
-        <p className="mt-2 text-lg text-slate-500 dark:text-slate-400">
-          View all uploaded documents.
-        </p>
-      </div>
-
+  return (
+    <div className="space-y-6">
       <button
-        onClick={() => navigate("/app/upload")}
-        className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition hover:bg-blue-700"
+        onClick={() => navigate("/app/library")}
+        className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
       >
-        <Upload className="h-4 w-4" />
-        Upload Document
+        <ArrowLeft className="h-4 w-4" />
+        Back to Library
       </button>
-    </div>
 
-    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="hidden bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:bg-slate-950 md:grid md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)]">
-        <span>Document Name</span>
-        <span>Category</span>
-        <span>Date Added</span>
-        <span>Size</span>
-        <span>Upload Status</span>
-        <span>AI Status</span>
-        <span className="text-right">Actions</span>
-      </div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-4xl font-extrabold text-slate-900 dark:text-slate-100">
+            All Documents
+          </h1>
 
-      {isLoading ? (
-        <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
-          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-            Loading documents...
+          <p className="mt-2 text-lg text-slate-500 dark:text-slate-400">
+            View all uploaded documents.
           </p>
         </div>
-      ) : documents.length > 0 ? (
-        documents.map((document) => (
-          <DocumentRow
-            key={document.id}
-            document={document}
-            onToggleFavorite={toggleFavorite}
-            onDelete={handleDelete}
-            onReprocess={handleReprocess}
-            onDownload={handleDownload}
-          />
-        ))
-      ) : (
-        <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
-          <h3 className="font-bold text-slate-900 dark:text-slate-100">
-            No documents found
-          </h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Upload a document to see it here.
-          </p>
+
+        <button
+          onClick={() => navigate("/app/upload")}
+          className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition hover:bg-blue-700"
+        >
+          <Upload className="h-4 w-4" />
+          Upload Document
+        </button>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="hidden bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:bg-slate-950 md:grid md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)]">
+          <span>Document Name</span>
+          <span>Category</span>
+          <span>Date Added</span>
+          <span>Size</span>
+          <span>Upload Status</span>
+          <span>AI Status</span>
+          <span className="text-right">Actions</span>
+        </div>
+
+        {isLoading ? (
+          <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
+            <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+              Loading documents...
+            </p>
+          </div>
+        ) : documents.length > 0 ? (
+          documents.map((document) => (
+            <DocumentRow
+              key={document.id}
+              document={document}
+              onToggleFavorite={toggleFavorite}
+              onDelete={setDeleteId}
+              onReprocess={handleReprocess}
+              onDownload={handleDownload}
+            />
+          ))
+        ) : (
+          <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
+            <h3 className="font-bold text-slate-900 dark:text-slate-100">
+              No documents found
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Upload a document to see it here.
+            </p>
+          </div>
+        )}
+      </div>
+      {deleteId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Delete Document
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Are you sure you want to delete this document? This action cannot
+              be undone.
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteId(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (deleteId === null) return;
+
+                  const success = await handleDelete(deleteId);
+
+                  if (success) {
+                    setDeleteId(null);
+                  }
+                }}
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
-  </div>
-);
+  );
 }
