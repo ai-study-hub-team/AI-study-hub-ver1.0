@@ -1,42 +1,33 @@
 import {
-  Puzzle, Trophy, Clock, CheckCircle2, XCircle,
-  FileText, Sparkles, BrainCircuit, RotateCcw,
-  Medal, Target, BookOpen, TrendingUp,
+  Trophy,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  FileText,
+  Sparkles,
+  RotateCcw,
+  Medal,
+  TrendingUp,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { documentApi } from "../../services/documentApi";
+import {
+  generateQuizApi,
+  getQuizzesApi,
+  getQuizByIdApi,
+} from "../../services/aiApi";
 
-type View = "setup" | "quiz" | "result" | "history" | "bank" | "leaderboard" | "review";
+type View = "setup" | "quiz" | "result" | "history" | "leaderboard" | "review";
 
-const mockQuestions = [
-  {
-    question: "Which part of the neuron receives signals from other neurons?",
-    options: ["Axon", "Dendrite", "Myelin Sheath", "Soma"],
-    correct: 1,
-    explanation: "Dendrites receive signals from other neurons.",
-  },
-  {
-    question: "What is the primary excitatory neurotransmitter in the central nervous system?",
-    options: ["GABA", "Dopamine", "Glutamate", "Serotonin"],
-    correct: 2,
-    explanation: "Glutamate is the most abundant excitatory neurotransmitter in the CNS.",
-  },
-  {
-    question: "The gap between two communicating neurons is called the:",
-    options: ["Synapse", "Node of Ranvier", "Axon Hillock", "Vesicle"],
-    correct: 0,
-    explanation: "The synapse is the junction between two neurons.",
-  },
-];
-
-const quizHistory = [
-  { id: 1, topic: "Intro to Psychology", score: 85, time: "8 min", date: "Jun 5, 2024", difficulty: "Intermediate" },
-  { id: 2, topic: "Advanced Thermodynamics", score: 60, time: "12 min", date: "Jun 4, 2024", difficulty: "Hard" },
-  { id: 3, topic: "Calculus III", score: 90, time: "7 min", date: "Jun 3, 2024", difficulty: "Easy" },
-];
+type Question = {
+  question: string;
+  options: string[];
+  correct: number;
+  explanation?: string;
+};
 
 const leaderboardData = [
   { rank: 1, name: "James O'Brien", score: 2840, quizzes: 47, badge: "gold" },
@@ -44,95 +35,229 @@ const leaderboardData = [
   { rank: 3, name: "Alex Johnson", score: 2450, quizzes: 38, badge: "bronze" },
 ];
 
-const questionBank = [
-  { id: 1, topic: "Psychology", question: "What is classical conditioning?", difficulty: "Easy" },
-  { id: 2, topic: "Physics", question: "State Newton's second law of motion", difficulty: "Intermediate" },
-  { id: 3, topic: "Math", question: "What is the derivative of ln(x)?", difficulty: "Intermediate" },
-];
-
 const performanceData = [
   { subject: "Psychology", score: 82 },
   { subject: "Physics", score: 65 },
   { subject: "Math", score: 90 },
   { subject: "History", score: 74 },
-  { subject: "Chemistry", score: 58 },
 ];
 
 const BadgeIcon = ({ badge }: { badge: string | null }) => {
-  if (!badge) return <span className="text-sm text-slate-500 font-bold">#</span>;
   const colors: Record<string, string> = {
     gold: "text-amber-500",
     silver: "text-slate-400",
     bronze: "text-amber-700",
   };
-  return <Medal className={`w-5 h-5 ${colors[badge]}`} />;
+
+  return <Medal className={`w-5 h-5 ${colors[badge || "gold"]}`} />;
 };
 
 export function QuizGeneratorPage() {
   const [view, setView] = useState<View>("setup");
   const [difficulty, setDifficulty] = useState("Intermediate");
   const [questionCount, setQuestionCount] = useState(10);
-  const [currentQ, setCurrentQ] = useState(0);
-  const [score, setScore] = useState(0);
+
   const [documents, setDocuments] = useState<any[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
   const [selectedDocName, setSelectedDocName] = useState("");
+
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [currentQ, setCurrentQ] = useState(0);
+  const [score, setScore] = useState(0);
   const [answers, setAnswers] = useState<(number | null)[]>([]);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
 
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [quizHistoryData, setQuizHistoryData] = useState<any[]>([]);
+
   useEffect(() => {
-    const fetchDocuments = async () => {
-      try {
-        const data = await documentApi.getAllDocumentsForSelect();
-        setDocuments(data);
-
-        if (data.length > 0) {
-          setSelectedDocumentId(data[0].id);
-          setSelectedDocName(data[0].name || data[0].title || data[0].fileName);
-        }
-      } catch (error) {
-        console.error("Cannot load uploaded documents", error);
-        toast.error("Cannot load uploaded documents");
-      }
-    };
-
     fetchDocuments();
   }, []);
 
-  const handleSelectDocument = (doc: any) => {
-    setSelectedDocumentId(doc.id);
-    setSelectedDocName(doc.name || doc.title || doc.fileName);
+  const fetchDocuments = async () => {
+    try {
+      const data = await documentApi.getAllDocumentsForSelect();
+      setDocuments(data);
+
+      if (data.length > 0) {
+        const firstDoc = data[0];
+        setSelectedDocumentId(firstDoc.id);
+        setSelectedDocName(firstDoc.name || firstDoc.title || firstDoc.fileName || "Untitled");
+      }
+    } catch (error) {
+      console.error("Cannot load uploaded documents:", error);
+      toast.error("Cannot load uploaded documents");
+    }
   };
 
-  const handleStartQuiz = () => {
+  const fetchQuizHistory = async () => {
+    try {
+      const res = await getQuizzesApi(1);
+
+      const data = Array.isArray(res.data)
+        ? res.data
+        : res.data?.content || [];
+
+      setQuizHistoryData(data);
+    } catch (error: any) {
+      console.error("Load quiz history failed:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot load quiz history"
+      );
+    }
+  };
+
+  const normalizeQuestions = (data: any): Question[] => {
+    const rawQuestions =
+      data.questions ||
+      data.items ||
+      data.quizQuestions ||
+      data.questionResponses ||
+      [];
+
+    return rawQuestions.map((q: any) => {
+      const rawOptions =
+        q.options ||
+        q.answers ||
+        q.quizOptions ||
+        q.optionResponses ||
+        [];
+
+      const optionTexts = rawOptions.map((opt: any) => {
+        if (typeof opt === "string") return opt;
+
+        return (
+          opt.optionContent ||
+          opt.optionText ||
+          opt.content ||
+          opt.text ||
+          opt.answerText ||
+          ""
+        );
+      });
+
+      const correctIndex = rawOptions.findIndex(
+        (opt: any) => opt.isCorrect === true || opt.correct === true
+      );
+
+      return {
+        question: q.questionText || q.question || q.content || q.text || "",
+        options: optionTexts,
+        correct: correctIndex >= 0 ? correctIndex : 0,
+        explanation: q.explanation || q.reason || "",
+      };
+    });
+  };
+
+  const handleViewQuizDetail = async (quizId: number) => {
+    try {
+      const res = await getQuizByIdApi(quizId, 1);
+
+      const generatedQuestions = normalizeQuestions(res.data);
+
+      if (!generatedQuestions.length) {
+        toast.error("No questions found");
+        return;
+      }
+
+      setQuestions(generatedQuestions);
+      setCurrentQ(0);
+      setScore(0);
+      setAnswers(new Array(generatedQuestions.length).fill(null));
+      setSelectedAnswer(null);
+      setView("review");
+    } catch (error: any) {
+      console.error("Load quiz detail failed:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot load quiz detail"
+      );
+    }
+  };
+
+  const handleChangeView = (v: View) => {
+    setView(v);
+
+    if (v === "history") {
+      fetchQuizHistory();
+    }
+  };
+
+  const handleSelectDocument = (doc: any) => {
+    setSelectedDocumentId(doc.id);
+    setSelectedDocName(doc.name || doc.title || doc.fileName || "Untitled");
+  };
+
+  const handleStartQuiz = async () => {
     if (!selectedDocumentId) {
       toast.error("Please select a document first");
       return;
     }
 
-    console.log("Generate quiz from document:", {
-      documentId: selectedDocumentId,
-      difficulty,
-      questionCount,
-    });
+    setIsGenerating(true);
 
-    setView("quiz");
-    setCurrentQ(0);
-    setScore(0);
-    setAnswers([]);
-    setSelectedAnswer(null);
+    const difficultyMap: Record<string, string> = {
+      Easy: "EASY",
+      Intermediate: "MEDIUM",
+      Hard: "HARD",
+    };
+
+    try {
+      const res = await generateQuizApi({
+        userId: 1,
+        documentId: selectedDocumentId,
+        questionCount,
+        difficulty: difficultyMap[difficulty],
+        quizType: "MULTIPLE_CHOICE",
+      });
+
+      const generatedQuestions = normalizeQuestions(res.data);
+
+      if (!generatedQuestions.length) {
+        toast.error("No questions returned from API");
+        return;
+      }
+
+      setQuestions(generatedQuestions);
+      setCurrentQ(0);
+      setScore(0);
+      setAnswers(new Array(generatedQuestions.length).fill(null));
+      setSelectedAnswer(null);
+      setView("quiz");
+
+      toast.success("Quiz generated successfully!");
+    } catch (error: any) {
+      console.error("Generate quiz failed:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Generate quiz failed"
+      );
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleAnswer = (idx: number) => {
-    setSelectedAnswer(idx);
-    setAnswers((prev) => [...prev, idx]);
+    if (!questions[currentQ] || selectedAnswer !== null) return;
 
-    if (idx === mockQuestions[currentQ].correct) {
+    setSelectedAnswer(idx);
+
+    setAnswers((prev) => {
+      const updated = [...prev];
+      updated[currentQ] = idx;
+      return updated;
+    });
+
+    if (idx === questions[currentQ].correct) {
       setScore((prev) => prev + 1);
     }
 
     setTimeout(() => {
-      if (currentQ < mockQuestions.length - 1) {
+      if (currentQ < questions.length - 1) {
         setCurrentQ((prev) => prev + 1);
         setSelectedAnswer(null);
       } else {
@@ -141,8 +266,11 @@ export function QuizGeneratorPage() {
     }, 1000);
   };
 
-  const pct = Math.round((score / mockQuestions.length) * 100);
-  const grade = pct >= 90 ? "A" : pct >= 80 ? "B" : pct >= 70 ? "C" : pct >= 60 ? "D" : "F";
+  const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+
+  const grade =
+    pct >= 90 ? "A" : pct >= 80 ? "B" : pct >= 70 ? "C" : pct >= 60 ? "D" : "F";
+
   const gradeColors: Record<string, string> = {
     A: "text-emerald-500",
     B: "text-blue-500",
@@ -150,6 +278,8 @@ export function QuizGeneratorPage() {
     D: "text-orange-500",
     F: "text-red-500",
   };
+
+  const currentQuestion = questions[currentQ];
 
   return (
     <div className="space-y-8">
@@ -164,17 +294,17 @@ export function QuizGeneratorPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {(["setup", "history", "bank", "leaderboard"] as View[]).map((v) => (
+          {(["setup", "history", "leaderboard"] as View[]).map((v) => (
             <button
               key={v}
-              onClick={() => setView(v)}
+              onClick={() => handleChangeView(v)}
               className={`px-4 py-2 rounded-xl text-sm font-bold capitalize transition-all ${
                 view === v
                   ? "bg-blue-600 text-white"
                   : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
               }`}
             >
-              {v === "setup" ? "Create Quiz" : v === "bank" ? "Question Bank" : v}
+              {v === "setup" ? "Create Quiz" : v}
             </button>
           ))}
         </div>
@@ -206,7 +336,7 @@ export function QuizGeneratorPage() {
                     </p>
                   ) : (
                     documents.map((doc) => {
-                      const docName = doc.name || doc.title || doc.fileName || "Untitled document";
+                      const docName = doc.name || doc.title || doc.fileName || "Untitled";
 
                       return (
                         <label
@@ -224,19 +354,8 @@ export function QuizGeneratorPage() {
                             className="sr-only"
                           />
 
-                          <div
-                            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                              selectedDocumentId === doc.id
-                                ? "border-blue-500 bg-blue-600"
-                                : "border-slate-300 dark:border-slate-600"
-                            }`}
-                          >
-                            {selectedDocumentId === doc.id && (
-                              <div className="w-2 h-2 bg-white rounded-full" />
-                            )}
-                          </div>
-
                           <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+
                           <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">
                             {docName}
                           </span>
@@ -255,6 +374,7 @@ export function QuizGeneratorPage() {
                     {["Easy", "Intermediate", "Hard"].map((d) => (
                       <button
                         key={d}
+                        type="button"
                         onClick={() => setDifficulty(d)}
                         className={`py-3 rounded-2xl font-bold text-sm transition-all border-2 ${
                           difficulty === d
@@ -287,22 +407,15 @@ export function QuizGeneratorPage() {
                     onChange={(e) => setQuestionCount(Number(e.target.value))}
                     className="w-full accent-blue-600"
                   />
-
-                  <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    <span>5</span>
-                    <span>10</span>
-                    <span>15</span>
-                    <span>20</span>
-                    <span>25</span>
-                  </div>
                 </div>
 
                 <button
                   onClick={handleStartQuiz}
-                  className="w-full py-4 bg-blue-600 text-white font-extrabold rounded-2xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 text-lg"
+                  disabled={isGenerating || !selectedDocumentId}
+                  className="w-full py-4 bg-blue-600 text-white font-extrabold rounded-2xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 text-lg disabled:opacity-70"
                 >
                   <Sparkles className="w-5 h-5" />
-                  Generate & Start Quiz
+                  {isGenerating ? "Generating..." : "Generate & Start Quiz"}
                 </button>
               </div>
             </div>
@@ -332,15 +445,12 @@ export function QuizGeneratorPage() {
                 <Trophy className="w-8 h-8 mb-3 opacity-80" />
                 <p className="text-sm opacity-70 font-medium">Your streak</p>
                 <p className="text-4xl font-extrabold">🔥 7 days</p>
-                <p className="text-sm opacity-70 mt-2">
-                  Keep going to maintain your streak!
-                </p>
               </div>
             </div>
           </motion.div>
         )}
 
-        {view === "quiz" && (
+        {view === "quiz" && currentQuestion && (
           <motion.div
             key="quiz"
             initial={{ opacity: 0 }}
@@ -352,13 +462,14 @@ export function QuizGeneratorPage() {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Question {currentQ + 1} of {mockQuestions.length}
+                    Question {currentQ + 1} of {questions.length}
                   </span>
+
                   <div className="bg-slate-50 dark:bg-slate-800 h-2 rounded-full mt-2 w-48">
                     <div
                       className="bg-blue-600 h-2 rounded-full transition-all"
                       style={{
-                        width: `${((currentQ + 1) / mockQuestions.length) * 100}%`,
+                        width: `${((currentQ + 1) / questions.length) * 100}%`,
                       }}
                     />
                   </div>
@@ -373,19 +484,19 @@ export function QuizGeneratorPage() {
               </div>
 
               <h2 className="text-xl font-extrabold text-slate-900 dark:text-white mb-6 leading-relaxed">
-                {mockQuestions[currentQ].question}
+                {currentQuestion.question}
               </h2>
 
               <div className="space-y-3">
-                {mockQuestions[currentQ].options.map((opt, i) => {
-                  const isCorrect = i === mockQuestions[currentQ].correct;
+                {currentQuestion.options.map((opt, i) => {
+                  const isCorrect = i === currentQuestion.correct;
                   const isSelected = selectedAnswer === i;
                   const showResult = selectedAnswer !== null;
 
                   return (
                     <button
                       key={i}
-                      onClick={() => selectedAnswer === null && handleAnswer(i)}
+                      onClick={() => handleAnswer(i)}
                       disabled={selectedAnswer !== null}
                       className={`w-full flex items-center gap-4 p-4 border-2 rounded-2xl text-left font-semibold text-sm transition-all ${
                         showResult
@@ -406,6 +517,7 @@ export function QuizGeneratorPage() {
                           String.fromCharCode(65 + i)
                         )}
                       </div>
+
                       {opt}
                     </button>
                   );
@@ -419,12 +531,12 @@ export function QuizGeneratorPage() {
                   className="mt-5 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800"
                 >
                   <p className="text-sm font-bold mb-1">
-                    {selectedAnswer === mockQuestions[currentQ].correct
+                    {selectedAnswer === currentQuestion.correct
                       ? "✓ Correct!"
                       : "✗ Incorrect"}
                   </p>
                   <p className="text-sm text-slate-700 dark:text-slate-300">
-                    {mockQuestions[currentQ].explanation}
+                    {currentQuestion.explanation || "No explanation provided."}
                   </p>
                 </motion.div>
               )}
@@ -451,9 +563,11 @@ export function QuizGeneratorPage() {
           >
             <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-8 text-center">
               <Trophy className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+
               <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-1">
                 Quiz Complete!
               </h2>
+
               <p className="text-slate-500 dark:text-slate-400 mb-8">
                 {selectedDocName}
               </p>
@@ -475,7 +589,7 @@ export function QuizGeneratorPage() {
 
                 <div>
                   <div className="text-6xl font-extrabold text-blue-600">
-                    {score}/{mockQuestions.length}
+                    {score}/{questions.length}
                   </div>
                   <p className="text-sm text-slate-500">Correct</p>
                 </div>
@@ -488,6 +602,7 @@ export function QuizGeneratorPage() {
                 >
                   Retake Quiz
                 </button>
+
                 <button
                   onClick={() => setView("review")}
                   className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-2xl"
@@ -500,18 +615,34 @@ export function QuizGeneratorPage() {
         )}
 
         {view === "review" && (
-          <motion.div key="review" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto space-y-4">
-            <button onClick={() => setView("result")} className="text-sm font-semibold text-slate-500">
-              ← Back to Results
+          <motion.div
+            key="review"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="max-w-2xl mx-auto space-y-4"
+          >
+            <button
+              onClick={() => setView("history")}
+              className="text-sm font-semibold text-slate-500"
+            >
+              ← Back to History
             </button>
 
-            {mockQuestions.map((q, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+            {questions.map((q, i) => (
+              <div
+                key={i}
+                className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6"
+              >
                 <h3 className="font-bold text-slate-900 dark:text-white mb-3">
                   Question {i + 1}: {q.question}
                 </h3>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Explanation: {q.explanation}
+ 
+                <p className="text-sm text-emerald-600 dark:text-emerald-400">
+                  Correct answer: {q.options[q.correct]}
+                </p>
+
+                <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
+                  Explanation: {q.explanation || "No explanation provided."}
                 </p>
               </div>
             ))}
@@ -519,48 +650,65 @@ export function QuizGeneratorPage() {
         )}
 
         {view === "history" && (
-          <motion.div key="history" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
-            {quizHistory.map((q) => (
-              <div key={q.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
-                <p className="font-bold text-slate-900 dark:text-white">{q.topic}</p>
-                <p className="text-sm text-slate-500">
-                  {q.score}% · {q.difficulty} · {q.time} · {q.date}
+          <motion.div
+            key="history"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-5"
+          >
+            {quizHistoryData.length === 0 ? (
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 text-center">
+                <p className="text-slate-500 dark:text-slate-400">
+                  No quiz history found.
                 </p>
               </div>
-            ))}
-          </motion.div>
-        )}
+            ) : (
+              quizHistoryData.map((q) => (
+                <button
+                  key={q.quizId || q.id}
+                  onClick={() => handleViewQuizDetail(q.quizId || q.id)}
+                  className="w-full text-left bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-blue-500 transition"
+                >
+                  <p className="font-bold text-slate-900 dark:text-white">
+                    {q.title || q.documentTitle || q.topic || "Untitled Quiz"}
+                  </p>
 
-        {view === "bank" && (
-          <motion.div key="bank" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 space-y-4">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-              Question Bank
-            </h2>
+                  <p className="text-sm text-slate-500">
+                    {q.score !== undefined ? `${q.score}% · ` : ""}
+                    {q.difficulty || "N/A"} ·{" "}
+                    {q.questionCount || q.totalQuestions || 0} questions
+                  </p>
 
-            {questionBank.map((q) => (
-              <div key={q.id} className="p-4 border border-slate-200 dark:border-slate-700 rounded-2xl">
-                <p className="font-semibold text-slate-700 dark:text-slate-300">
-                  {q.question}
-                </p>
-                <p className="text-xs text-slate-500">
-                  {q.topic} · {q.difficulty}
-                </p>
-              </div>
-            ))}
+                  <p className="text-xs text-slate-400 mt-1">
+                    {q.createdAt || q.date || ""}
+                  </p>
+                </button>
+              ))
+            )}
           </motion.div>
         )}
 
         {view === "leaderboard" && (
-          <motion.div key="leaderboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-xl mx-auto">
+          <motion.div
+            key="leaderboard"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="max-w-xl mx-auto"
+          >
             <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
               <Trophy className="w-10 h-10 text-amber-400 mx-auto mb-2" />
+
               <h2 className="text-xl font-extrabold text-slate-900 dark:text-white text-center mb-6">
                 Leaderboard
               </h2>
 
               {leaderboardData.map((entry) => (
-                <div key={entry.rank} className="flex items-center gap-4 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 mb-3">
+                <div
+                  key={entry.rank}
+                  className="flex items-center gap-4 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 mb-3"
+                >
                   <BadgeIcon badge={entry.badge} />
+
                   <div className="flex-1">
                     <p className="font-bold text-slate-900 dark:text-white">
                       {entry.name}
@@ -569,6 +717,7 @@ export function QuizGeneratorPage() {
                       {entry.quizzes} quizzes completed
                     </p>
                   </div>
+
                   <p className="font-extrabold text-slate-900 dark:text-white">
                     {entry.score}
                   </p>
