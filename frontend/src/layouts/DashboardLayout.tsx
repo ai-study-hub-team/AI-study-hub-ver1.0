@@ -21,6 +21,7 @@ import {
   Zap,
   UploadCloud,
   Folder,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { motion } from "motion/react";
@@ -40,6 +41,7 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
     { to: "/app/categories", icon: Folder, label: "Categories" },
     { to: "/app/upload", icon: UploadCloud, label: "Upload" },
     { to: "/app/library", icon: Library, label: "My Library" },
+    { to: "/app/trash", icon: Trash2, label: "Trash" },
     { to: "/app/chat", icon: MessageSquare, label: "AI Chat" },
     { to: "/app/summary", icon: FileSearch, label: "AI Summary" },
     { to: "/app/quiz", icon: Puzzle, label: "Quiz Generator" },

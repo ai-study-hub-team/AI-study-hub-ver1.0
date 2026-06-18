@@ -14,6 +14,7 @@ import { VerifyEmailSuccessPage } from "./pages/auth/VerifyEmailSuccessPage";
 
 import { StudentDashboard } from "./pages/dashboard/StudentDashboard";
 
+import { TrashPage } from "./pages/trash/TrashPage";
 import { UploadDocumentsPage } from "./pages/upload/UploadDocumentsPage";
 import { MyLibrary } from "./pages/library/MyLibrary";
 import { AllCategoriesPage } from "./pages/library/AllCategoriesPage";
@@ -64,6 +65,7 @@ export const router = createBrowserRouter([
           { path: "library/categories", element: <AllCategoriesPage /> },
           { path: "library/categories/:categoryId", element: <LibraryCategoryDocumentsPage /> },
           { path: "library/documents", element: <AllDocumentsPage /> },
+          { path: "trash", element: <TrashPage /> },
           { path: "chat", element: <AIChatPage /> },
           { path: "summary", element: <AISummaryPage /> },
           { path: "quiz", element: <QuizGeneratorPage /> },
