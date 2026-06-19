@@ -20,6 +20,8 @@ import {
   getSummariesApi,
 } from "../../services/aiApi";
 
+const DISPLAY_LIMIT = 6;
+
 const defaultSummary = {
   title: "AI Summary",
   documentTitle: "",
@@ -32,11 +34,19 @@ const defaultSummary = {
 export function AISummaryPage() {
   const [view, setView] = useState<"summary" | "history">("summary");
   const [documents, setDocuments] = useState<any[]>([]);
+  const [showAllDocuments, setShowAllDocuments] = useState(false);
+
   const [selectedDoc, setSelectedDoc] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [summaryData, setSummaryData] = useState<any>(defaultSummary);
   const [summaryHistory, setSummaryHistory] = useState<any[]>([]);
+
+  const visibleDocuments = showAllDocuments
+    ? documents
+    : documents.slice(0, DISPLAY_LIMIT);
+
+  const hiddenDocumentCount = Math.max(documents.length - DISPLAY_LIMIT, 0);
 
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -74,17 +84,17 @@ export function AISummaryPage() {
     }
   };
 
-const fetchSummaryHistory = async () => {
-  try {
-    const res = await getSummariesApi(1);
+  const fetchSummaryHistory = async () => {
+    try {
+      const res = await getSummariesApi(1);
 
-    setSummaryHistory(res.data || []);
-    setView("history");
-  } catch (error) {
-    console.error("Load summary history failed:", error);
-    toast.error("Cannot load summary history");
-  }
-};
+      setSummaryHistory(res.data || []);
+      setView("history");
+    } catch (error) {
+      console.error("Load summary history failed:", error);
+      toast.error("Cannot load summary history");
+    }
+  };
 
   const handleGenerate = async () => {
     if (!selectedDoc) {
@@ -123,7 +133,9 @@ const fetchSummaryHistory = async () => {
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${summaryData?.documentTitle || selectedDoc?.name || "summary"}.txt`;
+    a.download = `${
+      summaryData?.documentTitle || selectedDoc?.name || "summary"
+    }.txt`;
     a.click();
 
     URL.revokeObjectURL(url);
@@ -193,27 +205,48 @@ const fetchSummaryHistory = async () => {
 
             <div className="space-y-2">
               {documents.length === 0 ? (
-                <p className="text-sm text-slate-500">No uploaded documents found.</p>
+                <p className="text-sm text-slate-500">
+                  No uploaded documents found.
+                </p>
               ) : (
-                documents.map((doc) => (
-                  <button
-                    key={doc.id}
-                    onClick={() => handleSelectDocument(doc)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all ${
-                      selectedDoc?.id === doc.id
-                        ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
-                        : "border-transparent hover:border-slate-200 dark:hover:border-slate-700"
-                    }`}
-                  >
-                    <div className="w-9 h-9 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center">
-                      <FileText className="w-4 h-4 text-slate-500" />
-                    </div>
+                <>
+                  {visibleDocuments.map((doc) => {
+                    const docName =
+                      doc.name || doc.title || doc.fileName || "Untitled";
 
-                    <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                      {doc.name || doc.title || doc.fileName}
-                    </p>
-                  </button>
-                ))
+                    return (
+                      <button
+                        key={doc.id}
+                        onClick={() => handleSelectDocument(doc)}
+                        className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all ${
+                          selectedDoc?.id === doc.id
+                            ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
+                            : "border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                        }`}
+                      >
+                        <div className="w-9 h-9 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center">
+                          <FileText className="w-4 h-4 text-slate-500" />
+                        </div>
+
+                        <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                          {docName}
+                        </p>
+                      </button>
+                    );
+                  })}
+
+                  {documents.length > DISPLAY_LIMIT && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllDocuments(!showAllDocuments)}
+                      className="w-full mt-3 py-3 rounded-2xl border border-dashed border-blue-300 text-blue-600 font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/30 transition"
+                    >
+                      {showAllDocuments
+                        ? "Thu gọn"
+                        : `Xem thêm`}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -247,7 +280,7 @@ const fetchSummaryHistory = async () => {
               ) : (
                 summaryHistory.map((s) => (
                   <button
-                    key={s.summaryId}
+                    key={s.summaryId || s.id}
                     onClick={() => openHistoryItem(s)}
                     className="w-full text-left bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-blue-500 transition-all"
                   >
@@ -276,7 +309,8 @@ const fetchSummaryHistory = async () => {
                     Analyzing Document...
                   </h3>
                   <p className="text-slate-500 dark:text-slate-400 text-sm">
-                    AI is reading and summarizing {selectedDoc?.name || selectedDoc?.title}
+                    AI is reading and summarizing{" "}
+                    {selectedDoc?.name || selectedDoc?.title}
                   </p>
                 </motion.div>
               ) : showSummary && selectedDoc ? (
@@ -297,7 +331,9 @@ const fetchSummaryHistory = async () => {
                         </div>
 
                         <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
-                          {summaryData.documentTitle || selectedDoc.name || selectedDoc.title}
+                          {summaryData.documentTitle ||
+                            selectedDoc.name ||
+                            selectedDoc.title}
                         </h2>
                       </div>
 
@@ -318,14 +354,21 @@ const fetchSummaryHistory = async () => {
                         Key Takeaways
                       </h3>
 
-                      {summaryData.keyTakeaways.map((point: string, i: number) => (
-                        <div key={i} className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl mb-3">
-                          <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 font-extrabold text-xs">
-                            {i + 1}
+                      {summaryData.keyTakeaways.map(
+                        (point: string, i: number) => (
+                          <div
+                            key={i}
+                            className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl mb-3"
+                          >
+                            <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 font-extrabold text-xs">
+                              {i + 1}
+                            </div>
+                            <p className="text-sm text-slate-700 dark:text-slate-300">
+                              {point}
+                            </p>
                           </div>
-                          <p className="text-sm text-slate-700 dark:text-slate-300">{point}</p>
-                        </div>
-                      ))}
+                        )
+                      )}
                     </div>
                   )}
 
@@ -336,19 +379,24 @@ const fetchSummaryHistory = async () => {
                         Key Concepts & Definitions
                       </h3>
 
-                      {summaryData.keyConcepts.map((concept: any, i: number) => (
-                        <div key={i} className="flex gap-3 p-3 border border-slate-200 dark:border-slate-700 rounded-2xl mb-3">
-                          <Tag className="w-4 h-4 text-purple-500 mt-0.5" />
-                          <div>
-                            <p className="font-extrabold text-slate-900 dark:text-white text-sm">
-                              {concept.term}
-                            </p>
-                            <p className="text-sm text-slate-500">
-                              {concept.definition}
-                            </p>
+                      {summaryData.keyConcepts.map(
+                        (concept: any, i: number) => (
+                          <div
+                            key={i}
+                            className="flex gap-3 p-3 border border-slate-200 dark:border-slate-700 rounded-2xl mb-3"
+                          >
+                            <Tag className="w-4 h-4 text-purple-500 mt-0.5" />
+                            <div>
+                              <p className="font-extrabold text-slate-900 dark:text-white text-sm">
+                                {concept.term}
+                              </p>
+                              <p className="text-sm text-slate-500">
+                                {concept.definition}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      )}
                     </div>
                   )}
 
@@ -356,15 +404,22 @@ const fetchSummaryHistory = async () => {
                     <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] p-6 text-white">
                       <div className="flex items-center gap-2 mb-4">
                         <Sparkles className="w-5 h-5" />
-                        <h3 className="text-lg font-extrabold">AI Study Insights</h3>
+                        <h3 className="text-lg font-extrabold">
+                          AI Study Insights
+                        </h3>
                       </div>
 
-                      {summaryData.insights.map((insight: string, i: number) => (
-                        <div key={i} className="flex items-start gap-3 p-3 bg-white/10 rounded-2xl mb-3">
-                          <ChevronRight className="w-4 h-4 mt-0.5" />
-                          <p className="text-sm">{insight}</p>
-                        </div>
-                      ))}
+                      {summaryData.insights.map(
+                        (insight: string, i: number) => (
+                          <div
+                            key={i}
+                            className="flex items-start gap-3 p-3 bg-white/10 rounded-2xl mb-3"
+                          >
+                            <ChevronRight className="w-4 h-4 mt-0.5" />
+                            <p className="text-sm">{insight}</p>
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
                 </motion.div>

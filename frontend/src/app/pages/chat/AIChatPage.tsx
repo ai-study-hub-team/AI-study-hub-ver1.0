@@ -1,7 +1,6 @@
 import {
   ArrowUp,
   BookOpen,
-  FileImage,
   Globe,
   GraduationCap,
   History,
@@ -11,14 +10,25 @@ import {
   Sparkles,
   X,
   Plus,
+  Image as ImageIcon,
+  FileText,
+  Lightbulb,
+  Copy,
+  ThumbsUp,
+  ThumbsDown,
+  RefreshCw,
+  Volume2,
+  HelpCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 
 const API_BASE_URL = "http://localhost:8080/api";
 const userId = 1;
+const userName = "User";
+const MATERIAL_LIMIT = 5;
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -33,32 +43,63 @@ type DocumentItem = {
 };
 
 type ChatSession = {
-  sessionId: string;
-  title: string;
+  sessionId?: string;
+  id?: string;
+  title?: string;
+  sessionTitle?: string;
   createdAt?: string;
+  createdDate?: string;
 };
 
-const suggestions = [
+const quickPrompts = [
   {
-    title: "Walk through calculus problem",
-    icon: <GraduationCap className="w-5 h-5 text-violet-500" />,
+    label: "What is this study set about?",
+    icon: <Globe className="w-3.5 h-3.5" />,
+    color: "text-blue-600 border-blue-200 bg-blue-50",
   },
   {
-    title: "Practice Spanish conversation",
-    icon: <MessageSquare className="w-5 h-5 text-blue-500" />,
+    label: "How do these topics connect?",
+    icon: <Globe className="w-3.5 h-3.5" />,
+    color: "text-blue-600 border-blue-200 bg-blue-50",
   },
   {
-    title: "Summarize this chapter",
-    icon: <BookOpen className="w-5 h-5 text-yellow-500" />,
+    label: "Create a study plan for me",
+    icon: <BookOpen className="w-3.5 h-3.5" />,
+    color: "text-emerald-600 border-emerald-200 bg-emerald-50",
   },
   {
-    title: "Explain photosynthesis in simple terms",
-    icon: <BookOpen className="w-5 h-5 text-emerald-500" />,
+    label: "Quiz me on this study set",
+    icon: <BookOpen className="w-3.5 h-3.5" />,
+    color: "text-emerald-600 border-emerald-200 bg-emerald-50",
+  },
+];
+
+const moreQuickPrompts = [
+  {
+    label: "Generate flashcards for this set",
+    icon: <Sparkles className="w-3.5 h-3.5" />,
+    color: "text-amber-600 border-amber-200 bg-amber-50",
+  },
+  {
+    label: "Create a study summary",
+    icon: <Sparkles className="w-3.5 h-3.5" />,
+    color: "text-amber-600 border-amber-200 bg-amber-50",
+  },
+  {
+    label: "Walk through a tricky problem",
+    icon: <GraduationCap className="w-3.5 h-3.5" />,
+    color: "text-violet-600 border-violet-200 bg-violet-50",
+  },
+  {
+    label: "Explain it in simple terms",
+    icon: <MessageSquare className="w-3.5 h-3.5" />,
+    color: "text-pink-600 border-pink-200 bg-pink-50",
   },
 ];
 
 export function AIChatPage() {
   const navigate = useNavigate();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -69,12 +110,32 @@ export function AIChatPage() {
 
   const [isOpenHistory, setIsOpenHistory] = useState(false);
   const [isOpenMaterials, setIsOpenMaterials] = useState(false);
+  const [isOpenAttach, setIsOpenAttach] = useState(false);
+  const [showMorePrompts, setShowMorePrompts] = useState(false);
+  const [showAllMaterials, setShowAllMaterials] = useState(false);
   const [isSending, setIsSending] = useState(false);
+
+  const visibleMaterials = showAllMaterials
+    ? documents
+    : documents.slice(0, MATERIAL_LIMIT);
+
+  const hiddenMaterialCount = Math.max(documents.length - MATERIAL_LIMIT, 0);
 
   useEffect(() => {
     loadDocuments();
     loadChatSessions();
   }, []);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [messages, isSending]);
+
+  const getSessionId = (session: ChatSession) => {
+    return session.sessionId || session.id || "";
+  };
 
   const loadDocuments = async () => {
     try {
@@ -82,9 +143,9 @@ export function AIChatPage() {
         params: { page: 0, size: 100 },
       });
 
-      setDocuments(res.data.content ?? []);
+      setDocuments(res.data?.content ?? res.data ?? []);
     } catch (error) {
-      console.error(error);
+      console.error("Load documents failed:", error);
     }
   };
 
@@ -94,9 +155,10 @@ export function AIChatPage() {
         params: { userId },
       });
 
-      setChatSessions(res.data.content ?? res.data ?? []);
+      const data = res.data?.content ?? res.data?.data ?? res.data ?? [];
+      setChatSessions(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error(error);
+      console.error("Load chat sessions failed:", error);
     }
   };
 
@@ -107,53 +169,136 @@ export function AIChatPage() {
         title: "New Chat",
       });
 
-      setCurrentSessionId(res.data.sessionId);
+      const newSessionId = res.data?.sessionId || res.data?.id || "";
+
+      setCurrentSessionId(newSessionId);
       setMessages([]);
       await loadChatSessions();
       setIsOpenHistory(false);
     } catch (error) {
-      console.error(error);
+      console.error("Create session failed:", error);
     }
   };
 
-  const loadSessionMessages = async (sessionId: string) => {
+  const formatMessages = (rawMessages: any[]): ChatMessage[] => {
+    const formattedMessages: ChatMessage[] = [];
+
+    rawMessages.forEach((msg: any) => {
+      if (msg.question && msg.answer) {
+        formattedMessages.push({
+          role: "user",
+          text: msg.question,
+        });
+
+        formattedMessages.push({
+          role: "assistant",
+          text: msg.answer,
+        });
+
+        return;
+      }
+
+      if (msg.userMessage || msg.userQuestion) {
+        formattedMessages.push({
+          role: "user",
+          text: msg.userMessage || msg.userQuestion,
+        });
+      }
+
+      if (msg.aiMessage || msg.aiAnswer || msg.botResponse || msg.response) {
+        formattedMessages.push({
+          role: "assistant",
+          text: msg.aiMessage || msg.aiAnswer || msg.botResponse || msg.response,
+        });
+      }
+
+      const roleValue = String(
+        msg.role ||
+          msg.sender ||
+          msg.type ||
+          msg.messageType ||
+          msg.senderType ||
+          "",
+      ).toUpperCase();
+
+      const text =
+        msg.content ||
+        msg.message ||
+        msg.text ||
+        msg.messageText ||
+        msg.answerText ||
+        "";
+
+      if (text) {
+        formattedMessages.push({
+          role: roleValue.includes("USER") ? "user" : "assistant",
+          text,
+        });
+      }
+    });
+
+    return formattedMessages;
+  };
+
+  const loadSessionMessages = async (sessionId?: string) => {
+    if (!sessionId) {
+      console.error("Missing sessionId");
+      return;
+    }
+
     try {
       const res = await axios.get(
         `${API_BASE_URL}/chat/sessions/${sessionId}/messages`,
+        {
+          params: { userId },
+        },
       );
 
-      const data = res.data.content ?? res.data ?? [];
+      console.log("MESSAGES API:", res.data);
+
+      const rawMessages =
+        res.data?.content ||
+        res.data?.messages ||
+        res.data?.data ||
+        res.data ||
+        [];
+
+      const formattedMessages = formatMessages(
+        Array.isArray(rawMessages) ? rawMessages : [],
+      );
 
       setCurrentSessionId(sessionId);
-      setMessages(
-        data.map((msg: any) => ({
-          role:
-            msg.role === "USER" || msg.sender === "USER" || msg.type === "USER"
-              ? "user"
-              : "assistant",
-          text: msg.content ?? msg.message ?? msg.text ?? "",
-        })),
-      );
-
+      setMessages(formattedMessages);
       setIsOpenHistory(false);
+
+      if (formattedMessages.length === 0) {
+        console.warn("No messages found for this session");
+      }
     } catch (error) {
-      console.error(error);
+      console.error("Load session messages failed:", error);
     }
   };
 
   const toggleDocument = (id: number) => {
     setSelectedDocumentIds((prev) =>
-      prev.includes(id) ? prev.filter((docId) => docId !== id) : [...prev, id],
+      prev.includes(id)
+        ? prev.filter((docId) => docId !== id)
+        : [...prev, id],
     );
   };
 
-  const handleSend = async () => {
-    if (!message.trim() || isSending) return;
+  const handleSend = async (overrideText?: string) => {
+    const text = (overrideText ?? message).trim();
+
+    if (!text || isSending) return;
 
     if (selectedDocumentIds.length === 0) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", text: "Please select at least one material first." },
+        {
+          role: "assistant",
+          text: "Please select at least one material first.",
+        },
       ]);
       return;
     }
@@ -167,14 +312,12 @@ export function AIChatPage() {
           title: "New Chat",
         });
 
-        sessionId = sessionRes.data.sessionId;
+        sessionId = sessionRes.data?.sessionId || sessionRes.data?.id || "";
         setCurrentSessionId(sessionId);
         await loadChatSessions();
       }
 
-      const question = message.trim();
-
-      setMessages((prev) => [...prev, { role: "user", text: question }]);
+      setMessages((prev) => [...prev, { role: "user", text }]);
       setMessage("");
       setIsSending(true);
 
@@ -182,32 +325,43 @@ export function AIChatPage() {
         sessionId,
         userId,
         documentIds: selectedDocumentIds,
-        question,
+        question: text,
       });
+
+      const answer =
+        res.data?.answer ||
+        res.data?.response ||
+        res.data?.message ||
+        "AI không có câu trả lời.";
+
+      setMessages((prev) => [...prev, { role: "assistant", text: answer }]);
+
+      await loadChatSessions();
+    } catch (error) {
+      console.error("Send message failed:", error);
 
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          text: res.data.answer || "AI không có câu trả lời.",
+          text: "Cannot connect to AI.",
         },
-      ]);
-
-      await loadChatSessions();
-    } catch (error) {
-      console.error(error);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: "Cannot connect to AI." },
       ]);
     } finally {
       setIsSending(false);
     }
   };
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).catch(() => {});
+  };
+
+  const isEmpty = messages.length === 0;
+
   return (
-    <div className="h-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col font-sans relative">
-      <div className="h-14 flex items-center justify-between px-6 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shrink-0">
+    <div className="h-full overflow-hidden bg-slate-50/50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col font-sans relative">
+      {/* Top bar */}
+      <div className="fixed top-16 left-[260px] right-0 z-50 h-14 flex items-center justify-between px-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
         <div className="flex items-center gap-3 text-sm z-40">
           <button className="font-semibold text-blue-600 hover:underline">
             My First Study Set
@@ -219,7 +373,8 @@ export function AIChatPage() {
             onClick={createNewSession}
             className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 hover:text-blue-600 transition font-medium"
           >
-            <Sparkles className="w-4 h-4 text-sky-500" /> New Chat
+            <Sparkles className="w-4 h-4 text-sky-500" />
+            New Chat
           </button>
 
           <div className="relative">
@@ -234,7 +389,8 @@ export function AIChatPage() {
                   : "text-slate-600 dark:text-slate-300 hover:text-blue-600"
               }`}
             >
-              <History className="w-4 h-4" /> History
+              <History className="w-4 h-4" />
+              History
             </button>
 
             {isOpenHistory && (
@@ -245,6 +401,7 @@ export function AIChatPage() {
 
                 <div className="relative w-full">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+
                   <input
                     type="text"
                     placeholder="Search"
@@ -260,24 +417,31 @@ export function AIChatPage() {
                       </span>
                     </div>
                   ) : (
-                    chatSessions.map((session) => (
-                      <button
-                        key={session.sessionId}
-                        onClick={() => loadSessionMessages(session.sessionId)}
-                        className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
-                          currentSessionId === session.sessionId
-                            ? "border-blue-500 bg-blue-50 text-blue-700"
-                            : "border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                        }`}
-                      >
-                        <p className="font-semibold truncate">
-                          {session.title || "New Chat"}
-                        </p>
-                        <p className="text-[11px] text-slate-400 truncate">
-                          {session.createdAt || session.sessionId}
-                        </p>
-                      </button>
-                    ))
+                    chatSessions.map((session) => {
+                      const sessionId = getSessionId(session);
+
+                      return (
+                        <button
+                          key={sessionId}
+                          onClick={() => loadSessionMessages(sessionId)}
+                          className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
+                            currentSessionId === sessionId
+                              ? "border-blue-500 bg-blue-50 text-blue-700"
+                              : "border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <p className="font-semibold truncate">
+                            {session.title || session.sessionTitle || "New Chat"}
+                          </p>
+
+                          <p className="text-[11px] text-slate-400 truncate">
+                            {session.createdAt ||
+                              session.createdDate ||
+                              sessionId}
+                          </p>
+                        </button>
+                      );
+                    })
                   )}
                 </div>
 
@@ -285,7 +449,8 @@ export function AIChatPage() {
                   onClick={createNewSession}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm py-2 px-4 rounded-xl flex items-center justify-center gap-1.5 transition shadow-sm"
                 >
-                  <span className="text-lg leading-none">+</span> New Chat
+                  <span className="text-lg leading-none">+</span>
+                  New Chat
                 </button>
               </div>
             )}
@@ -293,119 +458,162 @@ export function AIChatPage() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center max-w-4xl w-full mx-auto px-6 pb-6 gap-5">
-        <div className="flex flex-col items-center text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-slate-100 mb-1">
-            Hello, User
-          </h1>
-        </div>
+      {/* Body */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {isEmpty ? (
+          <div className="flex-1 flex flex-col items-center justify-start max-w-3xl w-full mx-auto px-6 pt-32 gap-12">
+            <div className="flex flex-col items-center text-center gap-1">
+              <div className="w-20 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center shadow-md mb-1">
+                <Sparkles className="w-8 h-8 text-white" />
+              </div>
 
-        {messages.length === 0 && (
-          <>
-            <div className="grid grid-cols-2 gap-3 w-full max-w-3xl">
-              {suggestions.map((item, index) => (
+              <h1 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
+                Hello, {userName}
+              </h1>
+
+              <p className="text-sm text-slate-400 dark:text-slate-500">
+                What are we working on today?
+              </p>
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-2 max-w-2xl">
+              {quickPrompts.map((p, i) => (
                 <button
-                  key={index}
-                  onClick={() => setMessage(item.title)}
-                  className="h-[68px] rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-slate-200 dark:border-slate-800 overflow-hidden transition-all text-left flex justify-between items-stretch group shadow-sm"
+                  key={i}
+                  onClick={() => handleSend(p.label)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full border text-[13px] font-medium transition hover:shadow-sm ${p.color}`}
                 >
-                  <div className="flex items-center px-5 flex-1 min-w-0">
-                    <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm md:text-[14px] leading-snug line-clamp-2">
-                      {item.title}
-                    </p>
-                  </div>
-                  <div className="w-14 flex items-center justify-center bg-slate-50/60 dark:bg-slate-800 border-l border-slate-100 dark:border-slate-800 shrink-0">
-                    {item.icon}
-                  </div>
+                  {p.icon}
+                  {p.label}
                 </button>
               ))}
-            </div>
-          </>
-        )}
 
-        {messages.length > 0 && (
-          <div className="w-full max-w-3xl space-y-3 overflow-y-auto max-h-[420px] pr-2">
-            {messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`max-w-[85%] rounded-2xl px-5 py-4 shadow-sm whitespace-pre-wrap break-words ${
-                  msg.role === "user"
-                    ? "ml-auto bg-blue-600 text-white"
-                    : "mr-auto bg-slate-50 dark:bg-slate-900 border-l-4 border-blue-500 text-slate-800 dark:text-slate-100"
-                }`}
-              >
-                <div className="text-[15px] leading-7">
-                  {msg.role === "assistant" ? (
-                    <ReactMarkdown>{msg.text}</ReactMarkdown>
-                  ) : (
-                    msg.text
-                  )}
+              {showMorePrompts &&
+                moreQuickPrompts.map((p, i) => (
+                  <button
+                    key={`more-${i}`}
+                    onClick={() => handleSend(p.label)}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full border text-[13px] font-medium transition hover:shadow-sm ${p.color}`}
+                  >
+                    {p.icon}
+                    {p.label}
+                  </button>
+                ))}
+            </div>
+
+            <button
+              onClick={() => setShowMorePrompts((v) => !v)}
+              className="text-xs font-semibold text-slate-500 hover:text-blue-600 transition"
+            >
+              {showMorePrompts ? "View Less" : "View More"}
+            </button>
+
+            <div className="h-24" />
+
+            <div className="fixed bottom-6 left-[260px] right-0 z-30 flex justify-center">
+              <div className="w-full max-w-3xl px-6">
+                <ChatInput
+                  message={message}
+                  setMessage={setMessage}
+                  onSend={() => handleSend()}
+                  isSending={isSending}
+                  isOpenAttach={isOpenAttach}
+                  setIsOpenAttach={setIsOpenAttach}
+                  selectedCount={selectedDocumentIds.length}
+                  onOpenMaterials={() => setIsOpenMaterials(true)}
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col overflow-hidden max-w-3xl w-full mx-auto px-6 relative">
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto pt-24 pb-32 space-y-6"
+            >
+              {messages.map((msg, index) =>
+                msg.role === "user" ? (
+                  <div key={index} className="flex justify-end">
+                    <div className="max-w-[75%] rounded-2xl px-4 py-2.5 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-[15px] whitespace-pre-wrap break-words">
+                      {msg.text}
+                    </div>
+                  </div>
+                ) : (
+                  <div key={index} className="flex gap-3 group">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center shrink-0 mt-0.5">
+                      <Sparkles className="w-3.5 h-3.5 text-white" />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[15px] leading-7 text-slate-800 dark:text-slate-100 prose-sm max-w-none">
+                        <ReactMarkdown>{msg.text}</ReactMarkdown>
+                      </div>
+
+                      <div className="flex items-center gap-3 mt-1.5 opacity-0 group-hover:opacity-100 transition text-slate-400">
+                        <button
+                          onClick={() => copyToClipboard(msg.text)}
+                          title="Copy"
+                        >
+                          <Copy className="w-3.5 h-3.5 hover:text-slate-600 dark:hover:text-slate-200" />
+                        </button>
+
+                        <button title="Like">
+                          <ThumbsUp className="w-3.5 h-3.5 hover:text-slate-600 dark:hover:text-slate-200" />
+                        </button>
+
+                        <button title="Dislike">
+                          <ThumbsDown className="w-3.5 h-3.5 hover:text-slate-600 dark:hover:text-slate-200" />
+                        </button>
+
+                        <button title="Regenerate">
+                          <RefreshCw className="w-3.5 h-3.5 hover:text-slate-600 dark:hover:text-slate-200" />
+                        </button>
+
+                        <button title="Read aloud">
+                          <Volume2 className="w-3.5 h-3.5 hover:text-slate-600 dark:hover:text-slate-200" />
+                        </button>
+
+                        <button title="Help">
+                          <HelpCircle className="w-3.5 h-3.5 hover:text-slate-600 dark:hover:text-slate-200" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ),
+              )}
+
+              {isSending && (
+                <div className="flex gap-3">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-3.5 h-3.5 text-white" />
+                  </div>
+
+                  <div className="text-sm text-slate-400 mt-1">
+                    AI is thinking...
+                  </div>
                 </div>
-              </div>
-            ))}
+              )}
+            </div>
 
-            {isSending && (
-              <div className="mr-auto rounded-2xl px-4 py-3 text-sm bg-white border border-slate-200 text-slate-500">
-                AI is thinking...
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="w-full max-w-3xl mt-1">
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-4 flex flex-col justify-between min-h-[120px]">
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="Ask your AI tutor anything..."
-              rows={2}
-              className="w-full resize-none outline-none bg-transparent text-sm placeholder:text-slate-400 dark:text-white px-1 py-1"
-            />
-
-            <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-50 dark:border-slate-800/60 w-full">
-              <div className="flex items-center gap-3.5 text-slate-400 dark:text-slate-500">
-                <button>
-                  <FileImage className="w-4 h-4" />
-                </button>
-                <button>
-                  <Globe className="w-4 h-4" />
-                </button>
-                <button>
-                  <GraduationCap className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={() => setIsOpenMaterials(true)}
-                  className="px-2.5 py-1 rounded-md border border-slate-200 text-slate-500 dark:text-slate-400 text-[11px] font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 bg-slate-50 dark:bg-slate-900 transition flex items-center gap-1.5 select-none h-6"
-                >
-                  <span>📝</span> {selectedDocumentIds.length} materials
-                </button>
-              </div>
-
-              <div className="flex items-center gap-3.5">
-                <button className="text-slate-400">
-                  <MicOff className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={handleSend}
-                  disabled={isSending}
-                  className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition shadow-sm active:scale-95 shrink-0 disabled:opacity-50"
-                >
-                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-                </button>
+            <div className="fixed bottom-6 left-[260px] right-0 z-30 flex justify-center bg-gradient-to-t from-slate-50/50 dark:from-slate-950 via-slate-50/50 dark:via-slate-950 to-transparent pt-6 pb-0">
+              <div className="w-full max-w-3xl px-6">
+                <ChatInput
+                  message={message}
+                  setMessage={setMessage}
+                  onSend={() => handleSend()}
+                  isSending={isSending}
+                  isOpenAttach={isOpenAttach}
+                  setIsOpenAttach={setIsOpenAttach}
+                  selectedCount={selectedDocumentIds.length}
+                  onOpenMaterials={() => setIsOpenMaterials(true)}
+                />
               </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
+      {/* Materials modal */}
       {isOpenMaterials && (
         <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col overflow-hidden max-h-[85vh] border border-slate-100 dark:border-slate-800">
@@ -414,6 +622,7 @@ export function AIChatPage() {
                 <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
                   Select Materials
                 </h2>
+
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                   Select materials to use for the chat.
                 </p>
@@ -429,7 +638,9 @@ export function AIChatPage() {
 
             <div className="px-6 py-2 flex justify-end">
               <button
-                onClick={() => setSelectedDocumentIds(documents.map((doc) => doc.id))}
+                onClick={() =>
+                  setSelectedDocumentIds(documents.map((doc) => doc.id))
+                }
                 className="px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 hover:bg-blue-50/50 rounded-xl transition"
               >
                 Select All
@@ -444,12 +655,13 @@ export function AIChatPage() {
                 <div className="w-12 h-12 rounded-full border border-blue-400 flex items-center justify-center text-blue-500">
                   <Plus className="w-6 h-6 stroke-[2.5]" />
                 </div>
+
                 <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
                   Upload New Material
                 </span>
               </button>
 
-              {documents.map((doc) => {
+              {visibleMaterials.map((doc) => {
                 const isSelected = selectedDocumentIds.includes(doc.id);
 
                 return (
@@ -480,6 +692,7 @@ export function AIChatPage() {
                       <span className="text-blue-500 text-sm">
                         {isSelected ? "✅" : "📝"}
                       </span>
+
                       <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate flex-1">
                         {doc.title}
                       </span>
@@ -487,6 +700,20 @@ export function AIChatPage() {
                   </div>
                 );
               })}
+
+              {documents.length > MATERIAL_LIMIT && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllMaterials(!showAllMaterials)}
+                  className="border border-dashed border-blue-300 rounded-xl flex flex-col items-center justify-center p-4 gap-2 bg-blue-50/40 hover:bg-blue-50 dark:bg-blue-950/20 transition text-center min-h-[160px]"
+                >
+                  <span className="text-sm font-bold text-blue-600">
+                    {showAllMaterials
+                      ? "Thu gọn"
+                      : `Xem thêm`}
+                  </span>
+                </button>
+              )}
 
               {documents.length === 0 && (
                 <div className="col-span-3 flex items-center justify-center rounded-xl border border-dashed border-slate-300 p-8 text-sm text-slate-500">
@@ -506,6 +733,113 @@ export function AIChatPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ChatInput({
+  message,
+  setMessage,
+  onSend,
+  isSending,
+  isOpenAttach,
+  setIsOpenAttach,
+  selectedCount,
+  onOpenMaterials,
+}: {
+  message: string;
+  setMessage: (v: string) => void;
+  onSend: () => void;
+  isSending: boolean;
+  isOpenAttach: boolean;
+  setIsOpenAttach: (v: boolean) => void;
+  selectedCount: number;
+  onOpenMaterials: () => void;
+}) {
+  return (
+    <div className="w-full relative">
+      {isOpenAttach && (
+        <div className="absolute bottom-[calc(100%+8px)] left-0 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-2 z-50">
+          {[
+            { icon: <ImageIcon className="w-4 h-4" />, label: "Add image" },
+            { icon: <Globe className="w-4 h-4" />, label: "Web Search" },
+            {
+              icon: <GraduationCap className="w-4 h-4" />,
+              label: "Academic Search",
+            },
+            {
+              icon: <FileText className="w-4 h-4" />,
+              label: "Materials",
+              action: onOpenMaterials,
+            },
+            {
+              icon: <Lightbulb className="w-4 h-4" />,
+              label: "Prompt Suggestions",
+            },
+          ].map((item, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                setIsOpenAttach(false);
+                item.action?.();
+              }}
+              className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm px-4 py-3 flex flex-col gap-2 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition">
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              onSend();
+            }
+          }}
+          placeholder="Ask your AI tutor anything..."
+          rows={1}
+          className="w-full resize-none outline-none bg-transparent text-sm placeholder:text-slate-400 dark:text-white py-1"
+        />
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5 text-slate-400 dark:text-slate-500">
+            <button
+              onClick={() => setIsOpenAttach(!isOpenAttach)}
+              className="hover:text-slate-600 dark:hover:text-slate-200 transition"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={onOpenMaterials}
+              className="px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-[11px] font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 bg-slate-50 dark:bg-slate-900 transition flex items-center gap-1.5 select-none h-6"
+            >
+              <FileText className="w-3 h-3" />
+              {selectedCount} materials
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button className="text-slate-400">
+              <MicOff className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={onSend}
+              disabled={isSending}
+              className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition shadow-sm active:scale-95 shrink-0 disabled:opacity-50"
+            >
+              <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

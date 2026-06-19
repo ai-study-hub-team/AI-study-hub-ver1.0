@@ -29,6 +29,8 @@ type Question = {
   explanation?: string;
 };
 
+const DISPLAY_LIMIT = 6;
+
 const leaderboardData = [
   { rank: 1, name: "James O'Brien", score: 2840, quizzes: 47, badge: "gold" },
   { rank: 2, name: "Emma Rodriguez", score: 2610, quizzes: 41, badge: "silver" },
@@ -58,6 +60,7 @@ export function QuizGeneratorPage() {
   const [questionCount, setQuestionCount] = useState(10);
 
   const [documents, setDocuments] = useState<any[]>([]);
+  const [showAllDocuments, setShowAllDocuments] = useState(false);
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
   const [selectedDocName, setSelectedDocName] = useState("");
 
@@ -69,6 +72,12 @@ export function QuizGeneratorPage() {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [quizHistoryData, setQuizHistoryData] = useState<any[]>([]);
+
+  const visibleDocuments = showAllDocuments
+    ? documents
+    : documents.slice(0, DISPLAY_LIMIT);
+
+  const hiddenDocumentCount = Math.max(documents.length - DISPLAY_LIMIT, 0);
 
   useEffect(() => {
     fetchDocuments();
@@ -82,7 +91,9 @@ export function QuizGeneratorPage() {
       if (data.length > 0) {
         const firstDoc = data[0];
         setSelectedDocumentId(firstDoc.id);
-        setSelectedDocName(firstDoc.name || firstDoc.title || firstDoc.fileName || "Untitled");
+        setSelectedDocName(
+          firstDoc.name || firstDoc.title || firstDoc.fileName || "Untitled"
+        );
       }
     } catch (error) {
       console.error("Cannot load uploaded documents:", error);
@@ -94,9 +105,7 @@ export function QuizGeneratorPage() {
     try {
       const res = await getQuizzesApi(1);
 
-      const data = Array.isArray(res.data)
-        ? res.data
-        : res.data?.content || [];
+      const data = Array.isArray(res.data) ? res.data : res.data?.content || [];
 
       setQuizHistoryData(data);
     } catch (error: any) {
@@ -335,33 +344,48 @@ export function QuizGeneratorPage() {
                       No uploaded documents found.
                     </p>
                   ) : (
-                    documents.map((doc) => {
-                      const docName = doc.name || doc.title || doc.fileName || "Untitled";
+                    <>
+                      {visibleDocuments.map((doc) => {
+                        const docName =
+                          doc.name || doc.title || doc.fileName || "Untitled";
 
-                      return (
-                        <label
-                          key={doc.id}
-                          className={`flex items-center gap-3 p-3.5 border-2 rounded-2xl mb-2 cursor-pointer transition-all ${
-                            selectedDocumentId === doc.id
-                              ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
-                              : "border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
-                          }`}
+                        return (
+                          <label
+                            key={doc.id}
+                            className={`flex items-center gap-3 p-3.5 border-2 rounded-2xl mb-2 cursor-pointer transition-all ${
+                              selectedDocumentId === doc.id
+                                ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
+                                : "border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              checked={selectedDocumentId === doc.id}
+                              onChange={() => handleSelectDocument(doc)}
+                              className="sr-only"
+                            />
+
+                            <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">
+                              {docName}
+                            </span>
+                          </label>
+                        );
+                      })}
+
+                      {documents.length > DISPLAY_LIMIT && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAllDocuments(!showAllDocuments)}
+                          className="w-full mt-3 py-3 rounded-2xl border border-dashed border-blue-300 text-blue-600 font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/30 transition"
                         >
-                          <input
-                            type="radio"
-                            checked={selectedDocumentId === doc.id}
-                            onChange={() => handleSelectDocument(doc)}
-                            className="sr-only"
-                          />
-
-                          <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-
-                          <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">
-                            {docName}
-                          </span>
-                        </label>
-                      );
-                    })
+                          {showAllDocuments
+                            ? "Thu gọn"
+                            : `Xem thêm`}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -636,7 +660,7 @@ export function QuizGeneratorPage() {
                 <h3 className="font-bold text-slate-900 dark:text-white mb-3">
                   Question {i + 1}: {q.question}
                 </h3>
- 
+
                 <p className="text-sm text-emerald-600 dark:text-emerald-400">
                   Correct answer: {q.options[q.correct]}
                 </p>
