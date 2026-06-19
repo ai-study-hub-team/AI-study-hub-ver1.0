@@ -21,16 +21,18 @@ import java.util.stream.Collectors;
  * Hybrid semantic search orchestrator:
  *
  *   1. Call Python /semantic-search with a larger candidateK (topK * 5, min 30, max 100)
- *      to get a wide pool of semantically similar chunks from Pinecone.
+ *      to get a wide pool of semantically similar chunks from the vector store
+ *      (pgvector or Pinecone, depending on VECTOR_STORE config).
  *   2. Extract important terms from the query (Vietnamese stopwords removed).
- *   3. Run a MySQL keyword search using those important terms to add fallback candidates
- *      that Pinecone may have missed (exact keyword match).
+ *   3. Run a PostgreSQL keyword search using those important terms to add fallback
+ *      candidates that vector search may have missed (exact keyword match).
  *   4. Merge & deduplicate the two candidate pools by (documentId, chunkIndex).
- *   5. Enrich every candidate with real chunkText from MySQL.
- *   6. Score every candidate: base Pinecone score + keyword boost → finalScore.
+ *   5. Enrich every candidate with real chunkText from PostgreSQL.
+ *   6. Score every candidate: base vector score + keyword boost → finalScore.
  *   7. Sort by finalScore desc, return the user's requested topK.
  *
- * Pinecone NEVER stores chunkText. MySQL is the sole source of truth for chunk content.
+ * The vector store NEVER stores chunkText. PostgreSQL document_chunks is the sole
+ * source of truth for chunk content.
  */
 @Service
 @RequiredArgsConstructor
@@ -71,12 +73,12 @@ public class SemanticSearchService {
         if (topK == null || topK < 1) topK = DEFAULT_TOP_K;
         if (topK > MAX_TOP_K)         topK = MAX_TOP_K;
 
-        // candidateK: request a wider pool from Pinecone so reranking is effective
+        // candidateK: request a wider pool from vector store so reranking is effective
         int candidateK = Math.min(Math.max(topK * 5, 30), MAX_CANDIDATE);
         log.info("Hybrid search — query='{}', documentId={}, topK={}, candidateK={}",
                 query, documentId, topK, candidateK);
 
-        // ── Step 1: Semantic candidates from Pinecone (via Python) ────────────
+        // ── Step 1: Semantic candidates from vector store (via Python) ────────
         // Map key = "docId_chunkIndex" for deduplication
         Map<String, SemanticSearchResultResponse> candidateMap = new LinkedHashMap<>();
 
@@ -84,7 +86,7 @@ public class SemanticSearchService {
         String pythonError = null;
         try {
             pythonResults = callPythonSemanticSearch(query, documentId, candidateK);
-            log.info("Pinecone returned {} semantic candidates.", pythonResults.size());
+            log.info("Vector store returned {} semantic candidates.", pythonResults.size());
         } catch (ResourceAccessException e) {
             pythonError = "Python AI service is not reachable (" + aiServiceBaseUrl + "): " + e.getMessage();
             log.warn("Semantic step skipped — {}", pythonError);
@@ -103,7 +105,7 @@ public class SemanticSearchService {
             }
         }
 
-        log.info("Batch fetching chunks for {} documents.", docToChunkIndexes.size());
+        log.info("Batch fetching chunks for {} documents from PostgreSQL.", docToChunkIndexes.size());
 
         // Fetch chunks in batch and build lookup map
         Map<String, DocumentChunk> chunkLookupMap = new HashMap<>();
@@ -120,9 +122,9 @@ public class SemanticSearchService {
             }
         }
 
-        log.info("Performed {} batch fetches from MySQL.", batchFetches);
+        log.info("Performed {} batch fetches from PostgreSQL.", batchFetches);
 
-        // Enrich Pinecone candidates with MySQL chunkText
+        // Enrich vector candidates with PostgreSQL chunkText
         int semanticMysqlHits = 0;
         for (Map<String, Object> item : pythonResults) {
             Long    docId      = toLong(item.get("documentId"));
@@ -146,7 +148,7 @@ public class SemanticSearchService {
                 if (c.getDocument() != null) documentTitle = c.getDocument().getTitle();
                 semanticMysqlHits++;
             } else {
-                warning = "Chunk not found in MySQL (documentId=" + docId + ", chunkIndex=" + chunkIndex + ")";
+                warning = "Chunk not found in PostgreSQL (documentId=" + docId + ", chunkIndex=" + chunkIndex + ")";
                 log.warn("Semantic candidate — {}", warning);
             }
 
@@ -166,7 +168,7 @@ public class SemanticSearchService {
                     .build());
         }
 
-        // ── Step 2: Keyword fallback candidates from MySQL ────────────────────
+        // ── Step 2: Keyword fallback candidates from PostgreSQL ───────────────
         List<String> importantTerms = extractImportantTerms(query);
         log.info("Important terms after stopword removal: {}", importantTerms);
 
@@ -175,7 +177,7 @@ public class SemanticSearchService {
             String importantPhrase = String.join(" ", importantTerms);
 
             List<DocumentChunk> keywordChunks = fetchKeywordChunks(documentId, importantPhrase);
-            log.info("MySQL keyword search returned {} candidates for phrase '{}'.",
+            log.info("PostgreSQL keyword search returned {} candidates for phrase '{}'.",
                     keywordChunks.size(), importantPhrase);
 
             for (DocumentChunk c : keywordChunks) {
@@ -184,7 +186,7 @@ public class SemanticSearchService {
                 if (docId == null || chunkIndex == null) continue;
 
                 String key = docId + "_" + chunkIndex;
-                if (candidateMap.containsKey(key)) continue; // already in candidates from Pinecone
+                if (candidateMap.containsKey(key)) continue; // already in candidates from vector search
 
                 String documentTitle = c.getDocument() != null ? c.getDocument().getTitle() : null;
                 String fileName = c.getDocument() != null && c.getDocument().getCloudFile() != null
@@ -237,7 +239,7 @@ public class SemanticSearchService {
                 .limit(topK)
                 .collect(Collectors.toList());
 
-        log.info("Returning {} results (from {} candidates). MySQL semantic hits: {}, keyword added: {}",
+        log.info("Returning {} results (from {} candidates). DB semantic hits: {}, keyword added: {}",
                 finalResults.size(), candidateMap.size(), semanticMysqlHits, keywordAdded);
 
         return SemanticSearchResponse.builder()
@@ -278,8 +280,8 @@ public class SemanticSearchService {
         }
 
         Object resultsObj = response.get("results");
-        if (resultsObj instanceof List<?> list) {
-            return (List<Map<String, Object>>) list;
+        if (resultsObj instanceof List<?>) {
+            return (List<Map<String, Object>>) resultsObj;
         }
         return List.of();
     }
@@ -295,7 +297,7 @@ public class SemanticSearchService {
                 .collect(Collectors.toList());
     }
 
-    // ─── MySQL keyword fallback ───────────────────────────────────────────────
+    // ─── PostgreSQL keyword fallback ──────────────────────────────────────────
 
     private List<DocumentChunk> fetchKeywordChunks(Long documentId, String phrase) {
         try {
@@ -311,7 +313,7 @@ public class SemanticSearchService {
                         .getContent();
             }
         } catch (Exception e) {
-            log.error("MySQL keyword fallback failed for phrase '{}': {}", phrase, e.getMessage());
+            log.error("PostgreSQL keyword fallback failed for phrase '{}': {}", phrase, e.getMessage());
             return List.of();
         }
     }
@@ -437,25 +439,25 @@ public class SemanticSearchService {
 
     private Long toLong(Object obj) {
         if (obj == null) return null;
-        if (obj instanceof Long l)    return l;
-        if (obj instanceof Integer i) return i.longValue();
-        if (obj instanceof Double d)  return d.longValue();
+        if (obj instanceof Long)    return (Long) obj;
+        if (obj instanceof Integer) return ((Integer) obj).longValue();
+        if (obj instanceof Double)  return ((Double) obj).longValue();
         return Long.parseLong(obj.toString());
     }
 
     private Integer toInt(Object obj) {
         if (obj == null) return null;
-        if (obj instanceof Integer i) return i;
-        if (obj instanceof Long l)    return l.intValue();
-        if (obj instanceof Double d)  return d.intValue();
+        if (obj instanceof Integer) return (Integer) obj;
+        if (obj instanceof Long)    return ((Long) obj).intValue();
+        if (obj instanceof Double)  return ((Double) obj).intValue();
         return Integer.parseInt(obj.toString());
     }
 
     private Double toDouble(Object obj) {
         if (obj == null) return null;
-        if (obj instanceof Double d)  return d;
-        if (obj instanceof Integer i) return i.doubleValue();
-        if (obj instanceof Long l)    return l.doubleValue();
+        if (obj instanceof Double)  return (Double) obj;
+        if (obj instanceof Integer) return ((Integer) obj).doubleValue();
+        if (obj instanceof Long)    return ((Long) obj).doubleValue();
         return Double.parseDouble(obj.toString());
     }
 }

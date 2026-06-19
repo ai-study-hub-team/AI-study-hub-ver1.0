@@ -149,32 +149,33 @@ public class FileStorageService {
     public String getMimeTypeFromFileName(String fileName) {
         String ext = getExtension(fileName).toLowerCase();
 
-        return switch (ext) {
+        switch (ext) {
             // Documents
-            case "pdf" -> "application/pdf";
-            case "txt" -> "text/plain";
-            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-            case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            case "pdf": return "application/pdf";
+            case "txt": return "text/plain";
+            case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
             // Images
-            case "png" -> "image/png";
-            case "jpg", "jpeg" -> "image/jpeg";
-            case "webp" -> "image/webp";
-            case "gif" -> "image/gif";
+            case "png": return "image/png";
+            case "jpg":
+            case "jpeg": return "image/jpeg";
+            case "webp": return "image/webp";
+            case "gif": return "image/gif";
 
             // Videos
-            case "mp4" -> "video/mp4";
-            case "mov" -> "video/quicktime";
-            case "avi" -> "video/x-msvideo";
-            case "mkv" -> "video/x-matroska";
+            case "mp4": return "video/mp4";
+            case "mov": return "video/quicktime";
+            case "avi": return "video/x-msvideo";
+            case "mkv": return "video/x-matroska";
 
             // Audio
-            case "mp3" -> "audio/mpeg";
-            case "wav" -> "audio/wav";
-            case "m4a" -> "audio/x-m4a";
-            case "ogg" -> "audio/ogg";
+            case "mp3": return "audio/mpeg";
+            case "wav": return "audio/wav";
+            case "m4a": return "audio/x-m4a";
+            case "ogg": return "audio/ogg";
 
-            default -> "application/octet-stream";
-        };
+            default: return "application/octet-stream";
+        }
     }
 }

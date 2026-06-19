@@ -33,3 +33,17 @@ app:
 ai:
   service:
     base-url: http://localhost:8000
+
+# ── Vector store configuration ─────────────────────────────────────────────────
+# Options: "pgvector" or "pinecone"
+# When "pgvector", semantic search queries pgvector directly from Spring Boot.
+# When "pinecone", semantic search goes through Python AI service (legacy).
+vector:
+  store: pgvector
+
+# ── pgvector datasource (separate from main datasource) ───────────────────────
+pgvector:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/aistudyhub_pgvector_test
+    username: postgres
+    password: 123456

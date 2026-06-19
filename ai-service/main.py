@@ -103,15 +103,23 @@ async def process_document(request: DocumentRequest):
         if chunks:
             logger.info(f"First chunk preview: {chunks[0]['chunkText'][:100]}...")
 
-        # ── 4. Upsert embeddings to Pinecone ──────────────────────────────────
-        # This step is best-effort: if Pinecone fails, we still return PROCESSED
-        # so Spring Boot can save the chunks to MySQL.
+        # ── 4. Upsert embeddings to vector store ─────────────────────────────
+        # Routes to pgvector or Pinecone based on VECTOR_STORE setting.
+        # This step is best-effort: if it fails, we still return PROCESSED
+        # so Spring Boot can save the chunks to PostgreSQL.
         vector_stored = False
         vector_count = 0
         vector_error = None
 
         try:
-            from vector_store import upsert_document_chunks
+            from settings import VECTOR_STORE
+            if VECTOR_STORE == "pgvector":
+                from pgvector_store import upsert_document_chunks
+                logger.info(f"Using pgvector for embedding storage (document ID: {request.documentId})")
+            else:
+                from vector_store import upsert_document_chunks
+                logger.info(f"Using Pinecone for embedding storage (document ID: {request.documentId})")
+
             result = upsert_document_chunks(
                 document_id=request.documentId,
                 original_file_name=request.originalFileName,
@@ -123,23 +131,23 @@ async def process_document(request: DocumentRequest):
 
             if vector_stored:
                 logger.info(
-                    f"Pinecone upsert succeeded: {vector_count} vectors "
+                    f"Vector upsert succeeded ({VECTOR_STORE}): {vector_count} vectors "
                     f"for document ID: {request.documentId}"
                 )
             else:
                 logger.warning(
-                    f"Pinecone upsert failed for document ID: {request.documentId}. "
+                    f"Vector upsert failed ({VECTOR_STORE}) for document ID: {request.documentId}. "
                     f"Error: {vector_error}"
                 )
 
         except Exception as vec_exc:
             vector_error = str(vec_exc)
             logger.error(
-                f"Pinecone step threw an exception for document ID "
+                f"Vector step threw an exception for document ID "
                 f"{request.documentId}: {vector_error}"
             )
 
-        # ── 5. Return result (chunks sent to Spring Boot for MySQL save) ──────
+        # ── 5. Return result (chunks sent to Spring Boot for PostgreSQL save) ─
         return {
             "documentId": request.documentId,
             "status": "PROCESSED",
@@ -173,9 +181,10 @@ async def semantic_search_endpoint(
     topK: int = Query(5, ge=1, le=50, description="Number of results to return"),
 ):
     """
-    Embed the query and search Pinecone for the most semantically similar chunks.
+    Embed the query and search the configured vector store for similar chunks.
+    Routes to pgvector or Pinecone based on VECTOR_STORE setting.
     Returns documentId + chunkIndex metadata only (no chunkText).
-    Spring Boot will use documentId + chunkIndex to fetch chunkText from MySQL.
+    Spring Boot will use documentId + chunkIndex to fetch chunkText from PostgreSQL.
     """
     logger.info(
         f"Semantic search request — query='{query[:80]}', "
@@ -183,7 +192,14 @@ async def semantic_search_endpoint(
     )
 
     try:
-        from vector_store import semantic_search
+        from settings import VECTOR_STORE
+        if VECTOR_STORE == "pgvector":
+            from pgvector_store import semantic_search
+            logger.info("Using pgvector for semantic search")
+        else:
+            from vector_store import semantic_search
+            logger.info("Using Pinecone for semantic search")
+
         results = semantic_search(query=query, document_id=documentId, top_k=topK)
         return {
             "query": query,
@@ -221,14 +237,18 @@ async def chat_endpoint(request: ChatRequest):
     
     # 1. Perform semantic search restricted to request.documentIds
     try:
-        from vector_store import semantic_search
+        from settings import VECTOR_STORE
+        if VECTOR_STORE == "pgvector":
+            from pgvector_store import semantic_search
+        else:
+            from vector_store import semantic_search
         search_results = semantic_search(
             query=request.question,
             document_ids=request.documentIds,
             top_k=5
         )
     except Exception as e:
-        logger.error(f"Error querying Pinecone: {e}")
+        logger.error(f"Error querying vector store: {e}")
         search_results = []
 
     # 2. Build batch chunk resolve request to call Spring Boot
