@@ -255,6 +255,9 @@ public class ChatSessionService {
                     .chunkIndex(savedCitation.getChunkIndex())
                     .score(savedCitation.getScore())
                     .previewText(savedCitation.getPreviewText())
+                    .documentName(pc.getDocumentName())
+                    .type(pc.getType())
+                    .label(pc.getLabel())
                     .build());
         }
 

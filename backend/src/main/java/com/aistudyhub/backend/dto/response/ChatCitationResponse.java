@@ -20,4 +20,7 @@ public class ChatCitationResponse {
     private Integer chunkIndex;
     private Double score;
     private String previewText;
+    private String documentName;
+    private String type;
+    private String label;
 }

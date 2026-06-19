@@ -46,6 +46,9 @@ class CitationResponse(BaseModel):
     chunkIndex: int
     score: float
     previewText: str
+    documentName: str = ""
+    type: str = ""
+    label: str = ""
 
 
 class ChatResponse(BaseModel):
