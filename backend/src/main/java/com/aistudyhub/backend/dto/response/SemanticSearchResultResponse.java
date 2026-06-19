@@ -31,4 +31,8 @@ public class SemanticSearchResultResponse {
 
     // "SEMANTIC" = came from Pinecone, "KEYWORD" = came from MySQL keyword fallback
     private String  source;
+
+    private String  documentName;
+    private String  type;
+    private String  label;
 }

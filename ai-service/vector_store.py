@@ -162,14 +162,20 @@ def upsert_document_chunks(document_id: int, original_file_name: str, chunks: li
             vector_id = f"doc_{document_id}_chunk_{chunk_index}"
 
             # ── IMPORTANT: Do NOT include chunkText in metadata ──
+            ext = original_file_name.split('.')[-1].upper() if '.' in original_file_name else "UNKNOWN"
             metadata = {
                 "documentId": document_id,
                 "chunkIndex": chunk_index,
-                "charStart": chunk["charStart"],
-                "charEnd": chunk["charEnd"],
-                "textLength": chunk["textLength"],
+                "charStart": chunk.get("charStart", 0),
+                "charEnd": chunk.get("charEnd", 0),
+                "textLength": chunk.get("textLength", 0),
                 "originalFileName": original_file_name,
+                "documentType": ext,
             }
+            # Add dynamic fields if present
+            for field in ["sheetIndex", "sheetName", "rowStart", "rowEnd", "slideStart", "slideEnd", "slideType"]:
+                if field in chunk and chunk[field] is not None:
+                    metadata[field] = chunk[field]
 
             vectors.append({
                 "id": vector_id,
@@ -253,7 +259,7 @@ def semantic_search(
         results = []
         for match in query_response.get("matches", []):
             meta = match.get("metadata", {})
-            results.append({
+            res_item = {
                 "documentId": int(meta.get("documentId", 0)),
                 "chunkIndex": int(meta.get("chunkIndex", 0)),
                 "score": round(float(match.get("score", 0.0)), 4),
@@ -261,7 +267,12 @@ def semantic_search(
                 "charEnd": int(meta.get("charEnd", 0)),
                 "textLength": int(meta.get("textLength", 0)),
                 "originalFileName": meta.get("originalFileName", ""),
-            })
+                "documentType": meta.get("documentType", ""),
+            }
+            for field in ["sheetIndex", "sheetName", "rowStart", "rowEnd", "slideStart", "slideEnd", "slideType"]:
+                if field in meta:
+                    res_item[field] = meta[field]
+            results.append(res_item)
 
         logger.info(f"Semantic search returned {len(results)} results.")
         return results

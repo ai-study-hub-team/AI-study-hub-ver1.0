@@ -25,7 +25,7 @@ public class FileStorageService {
     // Allowed file extensions
     private static final List<String> ALLOWED_EXTENSIONS = List.of(
             // Documents
-            "pdf", "docx", "pptx", "txt",
+            "pdf", "docx", "pptx", "txt", "xls", "xlsx", "ppt",
 
             // Images
             "png", "jpg", "jpeg", "webp", "gif",
@@ -61,7 +61,7 @@ public class FileStorageService {
         if (!ALLOWED_EXTENSIONS.contains(extension)) {
             throw new IllegalArgumentException(
                     "Unsupported file type: ." + extension +
-                            ". Allowed types: pdf, docx, pptx, txt, " +
+                            ". Allowed types: pdf, docx, pptx, txt, xls, xlsx, ppt, " +
                             "png, jpg, jpeg, webp, gif, " +
                             "mp4, mov, avi, mkv, " +
                             "mp3, wav, m4a, ogg"
@@ -154,7 +154,10 @@ public class FileStorageService {
             case "pdf" -> "application/pdf";
             case "txt" -> "text/plain";
             case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "ppt" -> "application/vnd.ms-powerpoint";
             case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            case "xls" -> "application/vnd.ms-excel";
+            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
             // Images
             case "png" -> "image/png";
