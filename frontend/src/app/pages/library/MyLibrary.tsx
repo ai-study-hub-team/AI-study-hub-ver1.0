@@ -4,7 +4,6 @@ import {
   Grid,
   List,
   FolderPlus,
-  MoreHorizontal,
   FileText,
   ChevronDown,
   ChevronRight,
@@ -18,6 +17,8 @@ import {
   Trash2,
   Download,
   Upload,
+  Eye,
+  Pencil,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -134,12 +135,16 @@ function DocumentRow({
   onDelete,
   onReprocess,
   onDownload,
+  onViewFile,
+  onEdit,
 }: {
   document: LibraryDocument;
   onToggleFavorite: (documentId: number) => void;
   onDelete: (documentId: number) => void;
   onReprocess: (documentId: number) => void;
   onDownload: (documentId: number, fileName: string) => void;
+  onViewFile: (documentId: number) => void;
+  onEdit: (document: LibraryDocument) => void;
 }) {
   const FileIcon = getFileIcon(document);
   const extension = getFileExtension(document);
@@ -193,6 +198,18 @@ function DocumentRow({
           <Star className={`h-4 w-4 ${document.fav ? "fill-amber-400" : ""}`} />
         </button>
 
+        <button
+          onClick={() => onViewFile(document.id)}
+          className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 dark:text-slate-500 dark:hover:bg-slate-800"
+          title="View file"
+        >
+          <Eye className="h-4 w-4" />
+        </button>
+
+        <button onClick={() => onEdit(document)}>
+          <Pencil className="h-4 w-4" />
+        </button>
+
         <button onClick={() => onDownload(document.id, document.name)}>
           <Download className="h-4 w-4" />
         </button>
@@ -215,44 +232,58 @@ export function MyLibrary() {
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
-  const [statusFilter, setStatusFilter] = useState<AiStatus | "ALL">("ALL");
   const [uploadStatusFilter, setUploadStatusFilter] = useState<string>("ALL");
   const [aiStatusFilter, setAiStatusFilter] = useState<AiStatus | "ALL">("ALL");
   const [showUploadStatusMenu, setShowUploadStatusMenu] = useState(false);
   const [showAiStatusMenu, setShowAiStatusMenu] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [editDocument, setEditDocument] = useState<LibraryDocument | null>(
+    null,
+  );
+  const [editName, setEditName] = useState("");
+  const mapLibraryDocument = (document: any): LibraryDocument => ({
+    id: document.id,
+    categoryId: document.categoryId,
+    name: document.title || document.originalName || document.fileName,
+    folder: document.categoryName || "Uncategorized",
+    date: formatDocumentDate(document.createdAt),
+    createdAt: document.createdAt,
+    type: document.type || document.fileType,
+    aiStatus: document.aiStatus,
+    documentStatus: document.documentStatus,
+    fileSize: document.fileSize ?? 0,
+    fav: false,
+  });
 
   useEffect(() => {
     const loadDocuments = async () => {
       try {
-        const response = await documentApi.getDocuments({
-          page: 0,
-          size: 100,
-        });
+        const keyword = searchQuery.trim();
 
-        setDocuments(
-          response.data.content.map((document) => ({
-            id: document.id,
-            categoryId: document.categoryId,
-            name: document.title || document.originalName || document.fileName,
-            folder: document.categoryName || "Uncategorized",
-            date: formatDocumentDate(document.createdAt),
-            createdAt: document.createdAt,
-            type: document.type,
-            aiStatus: document.aiStatus,
-            documentStatus: document.documentStatus,
-            fileSize: document.fileSize ?? 0,
-            fav: false,
-          })),
-        );
+        const response = keyword
+          ? await documentApi.searchDocuments({
+              keyword,
+              page: 0,
+              size: 100,
+            })
+          : await documentApi.getDocuments({
+              page: 0,
+              size: 100,
+            });
+
+        setDocuments(response.data.content.map(mapLibraryDocument));
       } catch (error) {
         console.error("Cannot load library documents:", error);
         toast.error("Cannot load library documents.");
       }
     };
 
-    loadDocuments();
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      loadDocuments();
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   const toggleFavorite = (documentId: number) => {
     setDocuments((current) =>
@@ -309,6 +340,50 @@ export function MyLibrary() {
     }
   };
 
+  const handleViewFile = (documentId: number) => {
+    navigate(`/app/library/${documentId}/preview`);
+  };
+
+  const handleOpenEdit = (document: LibraryDocument) => {
+    setEditDocument(document);
+    setEditName(document.name);
+  };
+
+  const handleUpdateDocumentName = async () => {
+    if (!editDocument) return;
+
+    const newName = editName.trim();
+
+    if (!newName) {
+      toast.error("Document name cannot be empty.");
+      return;
+    }
+
+    try {
+      const response = await documentApi.updateDocument(editDocument.id, {
+        title: newName,
+      });
+
+      setDocuments((current) =>
+        current.map((document) =>
+          document.id === editDocument.id
+            ? {
+                ...document,
+                name: response.data.name || newName,
+              }
+            : document,
+        ),
+      );
+
+      toast.success("Document name updated successfully.");
+      setEditDocument(null);
+      setEditName("");
+    } catch (error) {
+      console.error("Cannot update document name:", error);
+      toast.error("Cannot update document name.");
+    }
+  };
+
   const categories = useMemo<LibraryCategory[]>(() => {
     const categoryMap = documents.reduce<Record<string, LibraryCategory>>(
       (map, document) => {
@@ -334,26 +409,7 @@ export function MyLibrary() {
   }, [documents]);
 
   const filteredDocuments = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-
     let result = [...documents];
-
-    if (normalizedQuery) {
-      result = result.filter((document) =>
-        [
-          document.name,
-          document.folder,
-          document.type,
-          document.aiStatus,
-          document.documentStatus,
-          String(document.fileSize),
-        ].some((value) =>
-          String(value ?? "")
-            .toLowerCase()
-            .includes(normalizedQuery),
-        ),
-      );
-    }
 
     if (uploadStatusFilter !== "ALL") {
       result = result.filter(
@@ -610,6 +666,22 @@ export function MyLibrary() {
                       </button>
 
                       <button
+                        onClick={() => handleViewFile(document.id)}
+                        className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 dark:text-slate-500 dark:hover:bg-slate-800"
+                        title="View file"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+
+                      <button
+                        onClick={() => handleOpenEdit(document)}
+                        className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 dark:text-slate-500 dark:hover:bg-slate-800"
+                        title="Rename"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+
+                      <button
                         onClick={() =>
                           handleDownload(document.id, document.name)
                         }
@@ -673,6 +745,8 @@ export function MyLibrary() {
                   onDelete={setDeleteId}
                   onReprocess={handleReprocess}
                   onDownload={handleDownload}
+                  onViewFile={handleViewFile}
+                  onEdit={handleOpenEdit}
                 />
               ))
             ) : (
@@ -726,6 +800,53 @@ export function MyLibrary() {
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editDocument && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Rename Document
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Only the document name can be changed.
+            </p>
+
+            <div className="mt-5">
+              <label className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                Document name
+              </label>
+
+              <input
+                type="text"
+                value={editName}
+                onChange={(event) => setEditName(event.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-800"
+                placeholder="Enter document name"
+              />
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setEditDocument(null);
+                  setEditName("");
+                }}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleUpdateDocumentName}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+              >
+                Save
               </button>
             </div>
           </div>
