@@ -1,4 +1,4 @@
-import axios from "axios";
+import { apiClient as api } from "./apiClient";
 import type {
   AiStatus,
   DocumentStatus,
@@ -9,10 +9,6 @@ import type {
   PageDocumentResponse,
   ProcessStatus,
 } from "../types/documents/types";
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8080",
-});
 
 export interface GetDocumentsParams {
   page?: number;
@@ -188,9 +184,6 @@ export const documentApi = {
           visibility: payload.visibility,
           userId: payload.userId,
           categoryId: payload.categoryId,
-        },
-        headers: {
-          "Content-Type": "multipart/form-data",
         },
       })
       .then((response) => ({

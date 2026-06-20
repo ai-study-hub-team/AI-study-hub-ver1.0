@@ -28,7 +28,6 @@ export function CategoriesPage() {
     {},
   );
 
-  // GET /api/categories
   const loadCategories = async () => {
     try {
       const [categoryResponse, documentResponse] = await Promise.all([
@@ -69,7 +68,6 @@ export function CategoriesPage() {
     loadCategories();
   }, []);
 
-  // POST /api/categories
   const handleCreate = async () => {
     if (!name.trim()) {
       toast.error("Please enter category name.");
@@ -104,7 +102,6 @@ export function CategoriesPage() {
     }
   };
 
-  // GET /api/categories/{id}
   const openEditModal = async (id: number) => {
     try {
       const response = await categoryApi.getCategoryById(id);
@@ -119,7 +116,6 @@ export function CategoriesPage() {
     }
   };
 
-  // PUT /api/categories/{id}
   const handleUpdate = async () => {
     if (editId === null) return;
 
@@ -157,7 +153,6 @@ export function CategoriesPage() {
     }
   };
 
-  // DELETE /api/categories/{id}
   const handleDelete = async (id: number): Promise<boolean> => {
     try {
       await categoryApi.deleteCategory(id);
