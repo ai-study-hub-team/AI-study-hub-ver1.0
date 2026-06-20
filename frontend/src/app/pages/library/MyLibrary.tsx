@@ -19,6 +19,8 @@ import {
   Upload,
   Eye,
   Pencil,
+  Save,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -26,6 +28,7 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
 
+import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { documentApi } from "../../services/documentApi";
 import type { AiStatus } from "../../constants/documentStatus";
 
@@ -46,6 +49,8 @@ interface LibraryDocument {
 interface LibraryCategory {
   id: number;
   name: string;
+  description: string;
+  userId: number;
   count: number;
   color: string;
 }
@@ -53,6 +58,11 @@ interface LibraryCategory {
 const categoryColors = ["blue", "emerald", "purple", "amber"];
 const viewToggleButtonBase =
   "flex h-9 w-9 items-center justify-center rounded-lg transition-all";
+const actionIconButtonClass =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-300";
+
+const deleteIconButtonClass =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
 const categoryIconColorClass: Record<string, string> = {
   blue: "bg-blue-50 text-blue-600 dark:bg-slate-800",
   emerald: "bg-emerald-50 text-emerald-600 dark:bg-slate-800",
@@ -104,10 +114,21 @@ const getFileIcon = (document: LibraryDocument): LucideIcon => {
   return FileText;
 };
 
-function CategoryCard({ category }: { category: LibraryCategory }) {
+function CategoryCard({
+  category,
+  onClick,
+  onEdit,
+  onDelete,
+}: {
+  category: LibraryCategory;
+  onClick: () => void;
+  onEdit: (category: LibraryCategory) => void;
+  onDelete: (categoryId: number) => void;
+}) {
   return (
     <motion.div
       whileHover={{ y: -3 }}
+      onClick={onClick}
       className="group flex cursor-pointer items-center gap-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-colors hover:border-blue-100 hover:bg-blue-50/40 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20"
     >
       <div
@@ -119,12 +140,39 @@ function CategoryCard({ category }: { category: LibraryCategory }) {
         <h3 className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
           {category.name}
         </h3>
-        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+        <p className="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">
+          {category.description || "No description"}
+        </p>
+        <p className="mt-3 text-sm font-semibold text-slate-400">
           {category.count} items
         </p>
       </div>
 
-      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600" />
+      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            onEdit(category);
+          }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30 dark:hover:text-blue-300"
+          title="Edit category"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete(category.id);
+          }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-red-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+          title="Delete category"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+
+        <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600" />
+      </div>
     </motion.div>
   );
 }
@@ -150,7 +198,7 @@ function DocumentRow({
   const extension = getFileExtension(document);
 
   return (
-    <div className="grid gap-3 border-t border-slate-100 bg-white p-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70 md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)] md:items-center">
+    <div className="grid grid-cols-[320px_150px_150px_120px_150px_150px_220px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
           <FileIcon className="h-5 w-5" />
@@ -186,39 +234,56 @@ function DocumentRow({
       >
         {document.aiStatus}
       </span>
-      <div className="flex min-w-[120px] items-center justify-end gap-1">
+      <div className="flex min-w-[220px] items-center justify-end gap-1">
         <button
           onClick={() => onToggleFavorite(document.id)}
-          className={`rounded-lg p-2 transition-colors ${
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
             document.fav
               ? "text-amber-400"
               : "text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
           }`}
+          title="Favorite"
         >
           <Star className={`h-4 w-4 ${document.fav ? "fill-amber-400" : ""}`} />
         </button>
 
         <button
           onClick={() => onViewFile(document.id)}
-          className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 dark:text-slate-500 dark:hover:bg-slate-800"
+          className={actionIconButtonClass}
           title="View file"
         >
           <Eye className="h-4 w-4" />
         </button>
 
-        <button onClick={() => onEdit(document)}>
+        <button
+          onClick={() => onEdit(document)}
+          className={actionIconButtonClass}
+          title="Rename"
+        >
           <Pencil className="h-4 w-4" />
         </button>
 
-        <button onClick={() => onDownload(document.id, document.name)}>
+        <button
+          onClick={() => onDownload(document.id, document.name)}
+          className={actionIconButtonClass}
+          title="Download"
+        >
           <Download className="h-4 w-4" />
         </button>
 
-        <button onClick={() => onReprocess(document.id)}>
+        <button
+          onClick={() => onReprocess(document.id)}
+          className={actionIconButtonClass}
+          title="Reprocess"
+        >
           <RotateCcw className="h-4 w-4" />
         </button>
 
-        <button onClick={() => onDelete(document.id)}>
+        <button
+          onClick={() => onDelete(document.id)}
+          className={deleteIconButtonClass}
+          title="Delete"
+        >
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
@@ -230,6 +295,7 @@ export function MyLibrary() {
   const navigate = useNavigate();
   const [view, setView] = useState<"grid" | "list">("grid");
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
+  const [allCategories, setAllCategories] = useState<CategoryResponse[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [uploadStatusFilter, setUploadStatusFilter] = useState<string>("ALL");
@@ -241,6 +307,13 @@ export function MyLibrary() {
     null,
   );
   const [editName, setEditName] = useState("");
+  const [editingCategory, setEditingCategory] =
+    useState<CategoryResponse | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
+  const [editCategoryDescription, setEditCategoryDescription] = useState("");
+  const [deleteCategoryId, setDeleteCategoryId] = useState<number | null>(
+    null,
+  );
   const mapLibraryDocument = (document: any): LibraryDocument => ({
     id: document.id,
     categoryId: document.categoryId,
@@ -254,6 +327,20 @@ export function MyLibrary() {
     fileSize: document.fileSize ?? 0,
     fav: false,
   });
+
+  const loadCategories = async () => {
+    try {
+      const response = await categoryApi.getCategories();
+      setAllCategories(response.data ?? []);
+    } catch (error) {
+      console.error("Cannot load categories:", error);
+      toast.error("Cannot load categories.");
+    }
+  };
+
+  useEffect(() => {
+    loadCategories();
+  }, []);
 
   useEffect(() => {
     const loadDocuments = async () => {
@@ -384,29 +471,68 @@ export function MyLibrary() {
     }
   };
 
+  const handleOpenEditCategory = (category: LibraryCategory) => {
+    setEditingCategory(category);
+    setEditCategoryName(category.name);
+    setEditCategoryDescription(category.description ?? "");
+  };
+
+  const handleUpdateCategory = async () => {
+    if (!editingCategory) return;
+
+    if (!editCategoryName.trim()) {
+      toast.error("Category name is required.");
+      return;
+    }
+
+    try {
+      await categoryApi.updateCategory(editingCategory.id, {
+        name: editCategoryName.trim(),
+        description: editCategoryDescription.trim(),
+        userId: editingCategory.userId,
+      });
+
+      toast.success("Category updated.");
+      setEditingCategory(null);
+      setEditCategoryName("");
+      setEditCategoryDescription("");
+      await loadCategories();
+    } catch (error) {
+      console.error("Cannot update category:", error);
+      toast.error("Cannot update category.");
+    }
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!deleteCategoryId) return;
+
+    try {
+      await categoryApi.deleteCategory(deleteCategoryId);
+      toast.success("Category deleted.");
+      setDeleteCategoryId(null);
+      await loadCategories();
+    } catch (error) {
+      console.error("Cannot delete category:", error);
+      toast.error("Cannot delete category.");
+    }
+  };
+
   const categories = useMemo<LibraryCategory[]>(() => {
-    const categoryMap = documents.reduce<Record<string, LibraryCategory>>(
-      (map, document) => {
-        const key = String(document.categoryId);
+    return allCategories.map((category, index) => {
+      const count = documents.filter(
+        (document) => document.categoryId === category.id,
+      ).length;
 
-        if (!map[key]) {
-          map[key] = {
-            id: document.categoryId,
-            name: document.folder,
-            count: 0,
-            color:
-              categoryColors[Object.keys(map).length % categoryColors.length],
-          };
-        }
-
-        map[key].count += 1;
-        return map;
-      },
-      {},
-    );
-
-    return Object.values(categoryMap);
-  }, [documents]);
+      return {
+        id: category.id,
+        name: category.name,
+        description: category.description,
+        userId: category.userId,
+        count,
+        color: categoryColors[index % categoryColors.length],
+      };
+    });
+  }, [allCategories, documents]);
 
   const filteredDocuments = useMemo(() => {
     let result = [...documents];
@@ -528,13 +654,17 @@ export function MyLibrary() {
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {categories.map((category) => (
-            <button
+            <CategoryCard
               key={category.id}
-              onClick={() => navigate(`/app/library/categories/${category.id}`)}
-              className="text-left"
-            >
-              <CategoryCard category={category} />
-            </button>
+              category={category}
+              onClick={() =>
+                navigate(`/app/categories/${category.id}`, {
+                  state: { from: "/app/library" },
+                })
+              }
+              onEdit={handleOpenEditCategory}
+              onDelete={setDeleteCategoryId}
+            />
           ))}
         </div>
       </section>
@@ -646,28 +776,29 @@ export function MyLibrary() {
                   whileHover={{ y: -3 }}
                   className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
                 >
-                  <div className="mb-4 flex items-start justify-between">
+                  <div className="mb-4 flex items-start justify-between gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
                       <FileIcon className="h-5 w-5" />
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                       <button
                         onClick={() => toggleFavorite(document.id)}
-                        className={`rounded-lg p-2 ${
-                          document.fav ? "text-amber-400" : "text-slate-400"
+                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                          document.fav
+                            ? "text-amber-400"
+                            : "text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                         }`}
+                        title="Favorite"
                       >
                         <Star
-                          className={`h-4 w-4 ${
-                            document.fav ? "fill-amber-400" : ""
-                          }`}
+                          className={`h-4 w-4 ${document.fav ? "fill-amber-400" : ""}`}
                         />
                       </button>
 
                       <button
                         onClick={() => handleViewFile(document.id)}
-                        className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 dark:text-slate-500 dark:hover:bg-slate-800"
+                        className={actionIconButtonClass}
                         title="View file"
                       >
                         <Eye className="h-4 w-4" />
@@ -675,7 +806,7 @@ export function MyLibrary() {
 
                       <button
                         onClick={() => handleOpenEdit(document)}
-                        className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 dark:text-slate-500 dark:hover:bg-slate-800"
+                        className={actionIconButtonClass}
                         title="Rename"
                       >
                         <Pencil className="h-4 w-4" />
@@ -685,15 +816,25 @@ export function MyLibrary() {
                         onClick={() =>
                           handleDownload(document.id, document.name)
                         }
+                        className={actionIconButtonClass}
+                        title="Download"
                       >
                         <Download className="h-4 w-4" />
                       </button>
 
-                      <button onClick={() => handleReprocess(document.id)}>
+                      <button
+                        onClick={() => handleReprocess(document.id)}
+                        className={actionIconButtonClass}
+                        title="Reprocess"
+                      >
                         <RotateCcw className="h-4 w-4" />
                       </button>
 
-                      <button onClick={() => setDeleteId(document.id)}>
+                      <button
+                        onClick={() => setDeleteId(document.id)}
+                        className={deleteIconButtonClass}
+                        title="Delete"
+                      >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
@@ -725,45 +866,47 @@ export function MyLibrary() {
             })}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="hidden bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 md:grid md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)]">
-              <span>Document Name</span>
-              <span>Category</span>
-              <span>Date Added</span>
-              <span>Size</span>
-              <span>Upload Status</span>
-              <span>AI Status</span>
-              <span className="text-right">Actions</span>
-            </div>
-
-            {filteredDocuments.length > 0 ? (
-              filteredDocuments.map((document) => (
-                <DocumentRow
-                  key={document.id}
-                  document={document}
-                  onToggleFavorite={toggleFavorite}
-                  onDelete={setDeleteId}
-                  onReprocess={handleReprocess}
-                  onDownload={handleDownload}
-                  onViewFile={handleViewFile}
-                  onEdit={handleOpenEdit}
-                />
-              ))
-            ) : (
-              <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 dark:bg-slate-800">
-                  <Search className="h-6 w-6" />
-                </div>
-
-                <h3 className="font-bold text-slate-900 dark:text-slate-100">
-                  No documents found
-                </h3>
-
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Try a different search term.
-                </p>
+          <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="min-w-[1260px]">
+              <div className="grid grid-cols-[320px_150px_150px_120px_150px_150px_220px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60">
+                <div>Document Name</div>
+                <div>Category</div>
+                <div>Date Added</div>
+                <div>Size</div>
+                <div>Upload Status</div>
+                <div>AI Status</div>
+                <div className="text-right">Actions</div>
               </div>
-            )}
+
+              {filteredDocuments.length > 0 ? (
+                filteredDocuments.map((document) => (
+                  <DocumentRow
+                    key={document.id}
+                    document={document}
+                    onToggleFavorite={toggleFavorite}
+                    onDelete={setDeleteId}
+                    onReprocess={handleReprocess}
+                    onDownload={handleDownload}
+                    onViewFile={handleViewFile}
+                    onEdit={handleOpenEdit}
+                  />
+                ))
+              ) : (
+                <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 dark:bg-slate-800">
+                    <Search className="h-6 w-6" />
+                  </div>
+
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100">
+                    No documents found
+                  </h3>
+
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Try a different search term.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </section>
@@ -847,6 +990,102 @@ export function MyLibrary() {
                 className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
               >
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                Edit Category
+              </h2>
+
+              <button
+                onClick={() => setEditingCategory(null)}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Name
+                </label>
+                <input
+                  value={editCategoryName}
+                  onChange={(event) => setEditCategoryName(event.target.value)}
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  placeholder="Category name"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Description
+                </label>
+                <textarea
+                  value={editCategoryDescription}
+                  onChange={(event) =>
+                    setEditCategoryDescription(event.target.value)
+                  }
+                  className="mt-2 min-h-24 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  placeholder="Category description"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => setEditingCategory(null)}
+                className="rounded-xl px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleUpdateCategory}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+              >
+                <Save className="h-4 w-4" />
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteCategoryId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+              Delete Category?
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              This action cannot be undone. If this category contains documents,
+              the server may prevent deletion.
+            </p>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteCategoryId(null)}
+                className="rounded-xl px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleDeleteCategory}
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+              >
+                Delete
               </button>
             </div>
           </div>
