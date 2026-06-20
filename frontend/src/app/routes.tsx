@@ -14,11 +14,13 @@ import { VerifyEmailSuccessPage } from "./pages/auth/VerifyEmailSuccessPage";
 
 import { StudentDashboard } from "./pages/dashboard/StudentDashboard";
 
+import { TrashPage } from "./pages/trash/TrashPage";
 import { UploadDocumentsPage } from "./pages/upload/UploadDocumentsPage";
 import { MyLibrary } from "./pages/library/MyLibrary";
 import { AllCategoriesPage } from "./pages/library/AllCategoriesPage";
 import { LibraryCategoryDocumentsPage } from "./pages/library/LibraryCategoryDocumentsPage";
 import { AllDocumentsPage } from "./pages/library/AllDocumentsPage";
+import { DocumentPreviewPage } from "./pages/library/DocumentPreviewPage";
 import { AIChatPage } from "./pages/chat/AIChatPage";
 import { AISummaryPage } from "./pages/summary/AISummaryPage";
 import { QuizGeneratorPage } from "./pages/quiz/QuizGeneratorPage";
@@ -62,15 +64,26 @@ export const router = createBrowserRouter([
           { path: "upload", element: <UploadDocumentsPage /> },
           { path: "library", element: <MyLibrary /> },
           { path: "library/categories", element: <AllCategoriesPage /> },
-          { path: "library/categories/:categoryId", element: <LibraryCategoryDocumentsPage /> },
+          {
+            path: "library/categories/:categoryId",
+            element: <LibraryCategoryDocumentsPage />,
+          },
           { path: "library/documents", element: <AllDocumentsPage /> },
+          {
+            path: "library/:id/preview",
+            element: <DocumentPreviewPage />,
+          },
+          { path: "trash", element: <TrashPage /> },
           { path: "chat", element: <AIChatPage /> },
           { path: "summary", element: <AISummaryPage /> },
           { path: "quiz", element: <QuizGeneratorPage /> },
           { path: "profile", element: <ProfilePage /> },
           { path: "storage", element: <StorageDashboard /> },
           { path: "categories", element: <CategoriesPage /> },
-          { path: "categories/:categoryId", element: <CategoryDocumentsPage /> },
+          {
+            path: "categories/:categoryId",
+            element: <CategoryDocumentsPage />,
+          },
           { path: "subscription", element: <SubscriptionDashboard /> },
           { path: "subscription/upgrade", element: <UpgradePlanPage /> },
         ],
