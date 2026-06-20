@@ -7,12 +7,6 @@ import {
   Trash2,
   ArrowLeft,
   Upload,
-  Grid3X3,
-  List,
-  Eye,
-  Pencil,
-  Save,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
@@ -73,16 +67,12 @@ function DocumentRow({
   onDelete,
   onReprocess,
   onDownload,
-  onViewFile,
-  onEdit,
 }: {
   document: LibraryDocument;
   onToggleFavorite: (documentId: number) => void;
   onDelete: (documentId: number) => void;
   onReprocess: (documentId: number) => void;
   onDownload: (documentId: number, fileName: string) => void;
-  onViewFile: (documentId: number) => void;
-  onEdit: (document: LibraryDocument) => void;
 }) {
   return (
     <div className="grid gap-3 border-t border-slate-100 bg-white p-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70 md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)] md:items-center">
@@ -136,22 +126,6 @@ function DocumentRow({
         </button>
 
         <button
-          onClick={() => onViewFile(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-          title="View file"
-        >
-          <Eye className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onEdit(document)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-          title="Rename"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-
-        <button
           onClick={() => onDownload(document.id, document.name)}
           className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
         >
@@ -176,155 +150,11 @@ function DocumentRow({
   );
 }
 
-function DocumentCard({
-  document,
-  onToggleFavorite,
-  onDelete,
-  onReprocess,
-  onDownload,
-  onViewFile,
-  onEdit,
-}: {
-  document: LibraryDocument;
-  onToggleFavorite: (documentId: number) => void;
-  onDelete: (documentId: number) => void;
-  onReprocess: (documentId: number) => void;
-  onDownload: (documentId: number, fileName: string) => void;
-  onViewFile: (documentId: number) => void;
-  onEdit: (document: LibraryDocument) => void;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
-          <FileText className="h-6 w-6" />
-        </div>
-
-        <button
-          onClick={() => onToggleFavorite(document.id)}
-          className={`rounded-lg p-2 transition-colors ${
-            document.fav ? "text-amber-400" : "text-slate-400"
-          }`}
-        >
-          <Star className={`h-4 w-4 ${document.fav ? "fill-amber-400" : ""}`} />
-        </button>
-      </div>
-
-      <div className="mt-4">
-        <h3 className="line-clamp-2 min-h-[40px] text-sm font-extrabold text-slate-900 dark:text-slate-100">
-          {document.name}
-        </h3>
-
-        <p className="mt-1 text-[11px] font-bold uppercase text-slate-400">
-          {getFileExtension(document)}
-        </p>
-      </div>
-
-      <div className="mt-4 space-y-2 text-sm">
-        <div className="flex justify-between gap-3">
-          <span className="text-slate-400">Category</span>
-          <span className="truncate font-bold text-slate-600 dark:text-slate-300">
-            {document.folder}
-          </span>
-        </div>
-
-        <div className="flex justify-between gap-3">
-          <span className="text-slate-400">Date</span>
-          <span className="font-semibold text-slate-600 dark:text-slate-300">
-            {document.date}
-          </span>
-        </div>
-
-        <div className="flex justify-between gap-3">
-          <span className="text-slate-400">Size</span>
-          <span className="font-semibold text-slate-600 dark:text-slate-300">
-            {(document.fileSize / 1024).toFixed(1)} KB
-          </span>
-        </div>
-      </div>
-
-<div className="mt-4 space-y-2">
-  <div className="flex items-center justify-between gap-3">
-    <span className="text-sm text-slate-400">Upload Status</span>
-    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800">
-      {document.documentStatus}
-    </span>
-  </div>
-
-  <div className="flex items-center justify-between gap-3">
-    <span className="text-sm text-slate-400">AI Status</span>
-    <span
-      className={`rounded-full px-2.5 py-1 text-[11px] font-extrabold ring-1 ${statusBadgeClass[document.aiStatus]}`}
-    >
-      {document.aiStatus}
-    </span>
-  </div>
-</div>
-
-      <div className="mt-5 flex items-center justify-end gap-1 border-t border-slate-100 pt-4 dark:border-slate-800">
-        <button
-          onClick={() => onViewFile(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-          title="View file"
-        >
-          <Eye className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onEdit(document)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-          title="Rename"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onDownload(document.id, document.name)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-        >
-          <Download className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onReprocess(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onDelete(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function EmptyDocuments() {
-  return (
-    <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
-      <h3 className="font-bold text-slate-900 dark:text-slate-100">
-        No documents found
-      </h3>
-      <p className="text-sm text-slate-500 dark:text-slate-400">
-        Upload a document to see it here.
-      </p>
-    </div>
-  );
-}
-
 export function AllDocumentsPage() {
   const navigate = useNavigate();
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
-  const [editingDocument, setEditingDocument] =
-    useState<LibraryDocument | null>(null);
-  const [editTitle, setEditTitle] = useState("");
 
   const loadDocuments = async () => {
     try {
@@ -418,37 +248,6 @@ export function AllDocumentsPage() {
     }
   };
 
-  const handleViewFile = (documentId: number) => {
-    navigate(`/app/library/${documentId}/preview`);
-  };
-
-  const handleOpenEdit = (document: LibraryDocument) => {
-    setEditingDocument(document);
-    setEditTitle(document.name);
-  };
-
-  const handleUpdateDocumentName = async () => {
-    if (!editingDocument) return;
-
-    const title = editTitle.trim();
-
-    if (!title) {
-      toast.error("Document name cannot be empty.");
-      return;
-    }
-
-    try {
-      await documentApi.updateDocument(editingDocument.id, { title });
-      await loadDocuments();
-      toast.success("Document name updated successfully.");
-      setEditingDocument(null);
-      setEditTitle("");
-    } catch (error) {
-      console.error("Cannot update document name:", error);
-      toast.error("Cannot update document name.");
-    }
-  };
-
   return (
     <div className="space-y-6">
       <button
@@ -469,104 +268,55 @@ export function AllDocumentsPage() {
             View all uploaded documents.
           </p>
         </div>
-        <div className="inline-flex w-full flex-wrap items-center gap-2 sm:w-auto md:justify-end">
-  <div className="inline-flex h-10 shrink-0 items-center rounded-xl bg-slate-100 p-0.5 dark:bg-slate-800">
-    <button
-      onClick={() => setViewMode("grid")}
-      className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
-        viewMode === "grid"
-          ? "bg-white text-blue-600 shadow-sm"
-          : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-      }`}
-    >
-      <Grid3X3 className="h-4.5 w-4.5" />
-    </button>
 
-    <button
-      onClick={() => setViewMode("list")}
-      className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
-        viewMode === "list"
-          ? "bg-white text-blue-600 shadow-sm"
-          : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-      }`}
-    >
-      <List className="h-4.5 w-4.5" />
-    </button>
-  </div>
-
-  <button
-    onClick={() => navigate("/app/upload")}
-    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-700"
-  >
-    <Upload className="h-4.5 w-4.5" />
-    Upload Document
-  </button>
-</div>
+        <button
+          onClick={() => navigate("/app/upload")}
+          className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition hover:bg-blue-700"
+        >
+          <Upload className="h-4 w-4" />
+          Upload Document
+        </button>
       </div>
 
-      {viewMode === "list" ? (
-        <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="hidden bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:bg-slate-950 md:grid md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)]">
-            <span>Document Name</span>
-            <span>Category</span>
-            <span>Date Added</span>
-            <span>Size</span>
-            <span>Upload Status</span>
-            <span>AI Status</span>
-            <span className="text-right">Actions</span>
-          </div>
+      <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="hidden bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:bg-slate-950 md:grid md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)]">
+          <span>Document Name</span>
+          <span>Category</span>
+          <span>Date Added</span>
+          <span>Size</span>
+          <span>Upload Status</span>
+          <span>AI Status</span>
+          <span className="text-right">Actions</span>
+        </div>
 
-          {isLoading ? (
-            <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
-              <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                Loading documents...
-              </p>
-            </div>
-          ) : documents.length > 0 ? (
-            documents.map((document) => (
-              <DocumentRow
-                key={document.id}
-                document={document}
-                onToggleFavorite={toggleFavorite}
-                onDelete={setDeleteId}
-                onReprocess={handleReprocess}
-                onDownload={handleDownload}
-                onViewFile={handleViewFile}
-                onEdit={handleOpenEdit}
-              />
-            ))
-          ) : (
-            <EmptyDocuments />
-          )}
-        </div>
-      ) : (
-        <div>
-          {isLoading ? (
-            <div className="rounded-2xl border border-slate-100 bg-white px-4 py-16 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                Loading documents...
-              </p>
-            </div>
-          ) : documents.length > 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {documents.map((document) => (
-                <DocumentCard
-                  key={document.id}
-                  document={document}
-                  onToggleFavorite={toggleFavorite}
-                  onDelete={setDeleteId}
-                  onReprocess={handleReprocess}
-                  onDownload={handleDownload}
-                  onViewFile={handleViewFile}
-                  onEdit={handleOpenEdit}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyDocuments />
-          )}
-        </div>
-      )}
+        {isLoading ? (
+          <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
+            <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+              Loading documents...
+            </p>
+          </div>
+        ) : documents.length > 0 ? (
+          documents.map((document) => (
+            <DocumentRow
+              key={document.id}
+              document={document}
+              onToggleFavorite={toggleFavorite}
+              onDelete={setDeleteId}
+              onReprocess={handleReprocess}
+              onDownload={handleDownload}
+            />
+          ))
+        ) : (
+          <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
+            <h3 className="font-bold text-slate-900 dark:text-slate-100">
+              No documents found
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Upload a document to see it here.
+            </p>
+          </div>
+        )}
+      </div>
       {deleteId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
@@ -600,55 +350,6 @@ export function AllDocumentsPage() {
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
               >
                 Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editingDocument && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
-              Rename Document
-            </h2>
-
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Only the document name can be changed.
-            </p>
-
-            <div className="mt-5">
-              <label className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-200">
-                Document name
-              </label>
-
-              <input
-                type="text"
-                value={editTitle}
-                onChange={(event) => setEditTitle(event.target.value)}
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-800"
-                placeholder="Enter document name"
-              />
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setEditingDocument(null);
-                  setEditTitle("");
-                }}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                <X className="h-4 w-4" />
-                Cancel
-              </button>
-
-              <button
-                onClick={handleUpdateDocumentName}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
-              >
-                <Save className="h-4 w-4" />
-                Save
               </button>
             </div>
           </div>

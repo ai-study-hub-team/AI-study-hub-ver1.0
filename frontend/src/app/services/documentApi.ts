@@ -36,66 +36,6 @@ export interface UploadDocumentPayload {
   categoryId?: number;
 }
 
-export interface CreateDocumentPayload {
-  title: string;
-  description?: string;
-  tags?: string;
-  userId: number;
-  categoryId?: number;
-  originalName?: string;
-  fileUrl?: string;
-  fileType?: string;
-  fileSize?: number;
-}
-
-export interface UpdateDocumentPayload {
-  title?: string;
-  description?: string;
-  tags?: string;
-  userId?: number;
-  categoryId?: number;
-  originalName?: string;
-  fileUrl?: string;
-  fileType?: string;
-  fileSize?: number;
-}
-
-export interface SearchDocumentsParams {
-  keyword: string;
-  page?: number;
-  size?: number;
-}
-
-export interface SemanticSearchParams {
-  query: string;
-  documentId?: number;
-  topK?: number;
-}
-
-export interface SemanticSearchResult {
-  documentId: number;
-  documentTitle: string;
-  chunkIndex: number;
-  score: number;
-  finalScore: number;
-  chunkText: string;
-  charStart: number;
-  charEnd: number;
-  textLength: number;
-  originalFileName: string;
-  warning?: string;
-  source?: string;
-}
-
-export interface SemanticSearchResponse {
-  query: string;
-  documentId: number;
-  topK: number;
-  resultCount: number;
-  results: SemanticSearchResult[];
-  error?: string;
-}
-
 const mapDocumentStatus = (status: string | undefined): DocumentStatus => {
   if (status === "DELETED") return "DELETED";
   return "ACTIVE";
@@ -129,7 +69,6 @@ const mapPageDocumentResponse = (
 });
 
 export const documentApi = {
-  // GET /api/documents
   getDocuments(params?: GetDocumentsParams) {
     return api
       .get<PageDocumentResponse>("/api/documents", { params })
@@ -139,42 +78,19 @@ export const documentApi = {
       }));
   },
 
-  // GET /api/documents/{id}
-  getDocumentById(id: number) {
+  getAllDocumentsForSelect() {
     return api
-      .get<DocumentResponse>(`/api/documents/${id}`)
-      .then((response) => ({
-        ...response,
-        data: mapDocumentResponse(response.data),
-      }));
+      .get<PageDocumentResponse>("/api/documents", {
+        params: {
+          page: 0,
+          size: 100,
+        },
+      })
+      .then((response) =>
+        (response.data.content ?? []).map(mapDocumentResponse)
+      );
   },
 
-  // POST /api/documents
-  createDocument(payload: CreateDocumentPayload) {
-    return api
-      .post<DocumentResponse>("/api/documents", payload)
-      .then((response) => ({
-        ...response,
-        data: mapDocumentResponse(response.data),
-      }));
-  },
-
-  // PUT /api/documents/{id}
-  updateDocument(id: number, payload: UpdateDocumentPayload) {
-    return api
-      .put<DocumentResponse>(`/api/documents/${id}`, payload)
-      .then((response) => ({
-        ...response,
-        data: mapDocumentResponse(response.data),
-      }));
-  },
-
-  // DELETE /api/documents/{id}
-  deleteDocument(id: number) {
-    return api.delete(`/api/documents/${id}`);
-  },
-
-  // POST /api/documents/upload
   uploadDocument(payload: UploadDocumentPayload) {
     const formData = new FormData();
     formData.append("file", payload.file);
@@ -199,7 +115,6 @@ export const documentApi = {
       }));
   },
 
-  // POST /api/documents/{id}/reprocess
   reprocessDocument(id: number) {
     return api
       .post<DocumentResponse>(`/api/documents/${id}/reprocess`)
@@ -209,48 +124,13 @@ export const documentApi = {
       }));
   },
 
-  // GET /api/documents/{id}/file
-  getDocumentFile(id: number) {
-    return api.get(`/api/documents/${id}/file`, {
-      responseType: "blob",
-    });
-  },
-
-  // GET /api/documents/{id}/download
   downloadDocument(id: number) {
-    return api.get(`/api/documents/${id}/download`, {
-      responseType: "blob",
-    });
-  },
+  return api.get(`/api/documents/${id}/download`, {
+    responseType: "blob",
+  });
+},
 
-  // GET /api/documents/search
-  searchDocuments(params: SearchDocumentsParams) {
-    return api
-      .get<PageDocumentResponse>("/api/documents/search", { params })
-      .then((response) => ({
-        ...response,
-        data: mapPageDocumentResponse(response.data),
-      }));
-  },
-
-  // GET /api/documents/semantic-search
-  semanticSearchDocuments(params: SemanticSearchParams) {
-    return api.get<SemanticSearchResponse>("/api/documents/semantic-search", {
-      params,
-    });
-  },
-
-  // Dùng cho dropdown/select
-  getAllDocumentsForSelect() {
-    return api
-      .get<PageDocumentResponse>("/api/documents", {
-        params: {
-          page: 0,
-          size: 100,
-        },
-      })
-      .then((response) =>
-        (response.data.content ?? []).map(mapDocumentResponse)
-      );
+  deleteDocument(id: number) {
+    return api.delete(`/api/documents/${id}`);
   },
 };
