@@ -13,12 +13,14 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from "recharts";
+
 import { documentApi } from "../../services/documentApi";
 import {
   generateQuizApi,
   getQuizzesApi,
   getQuizByIdApi,
 } from "../../services/aiApi";
+import { getCurrentUserId } from "../../services/apiClient";
 
 type View = "setup" | "quiz" | "result" | "history" | "leaderboard" | "review";
 
@@ -61,7 +63,9 @@ export function QuizGeneratorPage() {
 
   const [documents, setDocuments] = useState<any[]>([]);
   const [showAllDocuments, setShowAllDocuments] = useState(false);
-  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(
+    null,
+  );
   const [selectedDocName, setSelectedDocName] = useState("");
 
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -83,27 +87,54 @@ export function QuizGeneratorPage() {
     fetchDocuments();
   }, []);
 
+  const getProcessStatus = (doc: any) => {
+    return doc?.processStatus || doc?.aiStatus || "";
+  };
+
+  const isDocumentProcessed = (doc: any) => {
+    const processStatus = getProcessStatus(doc);
+
+    if (!processStatus) return true;
+
+    return processStatus === "PROCESSED";
+  };
+
   const fetchDocuments = async () => {
     try {
       const data = await documentApi.getAllDocumentsForSelect();
       setDocuments(data);
 
       if (data.length > 0) {
-        const firstDoc = data[0];
+        const firstProcessedDoc = data.find((doc: any) =>
+          isDocumentProcessed(doc),
+        );
+        const firstDoc = firstProcessedDoc || data[0];
+
         setSelectedDocumentId(firstDoc.id);
         setSelectedDocName(
-          firstDoc.name || firstDoc.title || firstDoc.fileName || "Untitled"
+          firstDoc.name || firstDoc.title || firstDoc.fileName || "Untitled",
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Cannot load uploaded documents:", error);
-      toast.error("Cannot load uploaded documents");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot load uploaded documents",
+      );
     }
   };
 
   const fetchQuizHistory = async () => {
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     try {
-      const res = await getQuizzesApi(1);
+      const res = await getQuizzesApi(userId);
 
       const data = Array.isArray(res.data) ? res.data : res.data?.content || [];
 
@@ -113,7 +144,7 @@ export function QuizGeneratorPage() {
       toast.error(
         error?.response?.data?.message ||
           error?.response?.data?.error ||
-          "Cannot load quiz history"
+          "Cannot load quiz history",
       );
     }
   };
@@ -148,7 +179,7 @@ export function QuizGeneratorPage() {
       });
 
       const correctIndex = rawOptions.findIndex(
-        (opt: any) => opt.isCorrect === true || opt.correct === true
+        (opt: any) => opt.isCorrect === true || opt.correct === true,
       );
 
       return {
@@ -161,8 +192,15 @@ export function QuizGeneratorPage() {
   };
 
   const handleViewQuizDetail = async (quizId: number) => {
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     try {
-      const res = await getQuizByIdApi(quizId, 1);
+      const res = await getQuizByIdApi(quizId, userId);
 
       const generatedQuestions = normalizeQuestions(res.data);
 
@@ -182,7 +220,7 @@ export function QuizGeneratorPage() {
       toast.error(
         error?.response?.data?.message ||
           error?.response?.data?.error ||
-          "Cannot load quiz detail"
+          "Cannot load quiz detail",
       );
     }
   };
@@ -196,13 +234,36 @@ export function QuizGeneratorPage() {
   };
 
   const handleSelectDocument = (doc: any) => {
+    if (!isDocumentProcessed(doc)) {
+      toast.error(
+        "This document is not processed yet. Please wait until AI Status is PROCESSED.",
+      );
+      return;
+    }
+
     setSelectedDocumentId(doc.id);
     setSelectedDocName(doc.name || doc.title || doc.fileName || "Untitled");
   };
 
   const handleStartQuiz = async () => {
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     if (!selectedDocumentId) {
       toast.error("Please select a document first");
+      return;
+    }
+
+    const selectedDoc = documents.find((doc) => doc.id === selectedDocumentId);
+
+    if (selectedDoc && !isDocumentProcessed(selectedDoc)) {
+      toast.error(
+        "This document is not processed yet. Please wait until AI Status is PROCESSED.",
+      );
       return;
     }
 
@@ -216,7 +277,7 @@ export function QuizGeneratorPage() {
 
     try {
       const res = await generateQuizApi({
-        userId: 1,
+        userId,
         documentId: selectedDocumentId,
         questionCount,
         difficulty: difficultyMap[difficulty],
@@ -243,7 +304,7 @@ export function QuizGeneratorPage() {
       toast.error(
         error?.response?.data?.message ||
           error?.response?.data?.error ||
-          "Generate quiz failed"
+          "Generate quiz failed",
       );
     } finally {
       setIsGenerating(false);
@@ -275,7 +336,8 @@ export function QuizGeneratorPage() {
     }, 1000);
   };
 
-  const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+  const pct =
+    questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
 
   const grade =
     pct >= 90 ? "A" : pct >= 80 ? "B" : pct >= 70 ? "C" : pct >= 60 ? "D" : "F";
@@ -349,10 +411,17 @@ export function QuizGeneratorPage() {
                         const docName =
                           doc.name || doc.title || doc.fileName || "Untitled";
 
+                        const processStatus = getProcessStatus(doc);
+                        const isProcessed = isDocumentProcessed(doc);
+
                         return (
                           <label
                             key={doc.id}
-                            className={`flex items-center gap-3 p-3.5 border-2 rounded-2xl mb-2 cursor-pointer transition-all ${
+                            className={`flex items-center gap-3 p-3.5 border-2 rounded-2xl mb-2 transition-all ${
+                              isProcessed
+                                ? "cursor-pointer"
+                                : "cursor-not-allowed opacity-60"
+                            } ${
                               selectedDocumentId === doc.id
                                 ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
                                 : "border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -370,6 +439,18 @@ export function QuizGeneratorPage() {
                             <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">
                               {docName}
                             </span>
+
+                            {processStatus && (
+                              <span
+                                className={`ml-auto text-[11px] font-bold ${
+                                  isProcessed
+                                    ? "text-emerald-600"
+                                    : "text-amber-600"
+                                }`}
+                              >
+                                {processStatus}
+                              </span>
+                            )}
                           </label>
                         );
                       })}
@@ -382,7 +463,7 @@ export function QuizGeneratorPage() {
                         >
                           {showAllDocuments
                             ? "Thu gọn"
-                            : `Xem thêm`}
+                            : `Xem thêm ${hiddenDocumentCount} file`}
                         </button>
                       )}
                     </>
@@ -527,8 +608,8 @@ export function QuizGeneratorPage() {
                           ? isCorrect
                             ? "border-emerald-500 bg-emerald-50 text-emerald-700"
                             : isSelected
-                            ? "border-red-400 bg-red-50 text-red-600"
-                            : "border-slate-200 text-slate-500"
+                              ? "border-red-400 bg-red-50 text-red-600"
+                              : "border-slate-200 text-slate-500"
                           : "border-slate-200 hover:border-blue-400 text-slate-700"
                       }`}
                     >
@@ -598,7 +679,9 @@ export function QuizGeneratorPage() {
 
               <div className="flex items-center justify-center gap-8 mb-8">
                 <div>
-                  <div className={`text-6xl font-extrabold ${gradeColors[grade]}`}>
+                  <div
+                    className={`text-6xl font-extrabold ${gradeColors[grade]}`}
+                  >
                     {grade}
                   </div>
                   <p className="text-sm text-slate-500">Grade</p>

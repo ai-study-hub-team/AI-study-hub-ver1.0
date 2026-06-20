@@ -1,24 +1,28 @@
-import axios from "axios";
-
-const API_BASE = "http://localhost:8080/api";
+import { apiClient } from "./apiClient";
 
 export const generateSummaryApi = (userId: number, documentId: number) => {
-  return axios.post(`${API_BASE}/summaries/generate`, {
+  return apiClient.post("/api/summaries/generate", {
     userId,
     documentId,
     summaryType: "SHORT",
   });
 };
 
-export const getSummaryByDocumentApi = (documentId: number) => {
-  return axios.get(`${API_BASE}/summaries/document/${documentId}`);
-};
-
-export const getSummariesApi = (userId: number) => {
-  return axios.get(`${API_BASE}/summaries`, {
+export const getSummaryByDocumentApi = (
+  documentId: number,
+  userId: number
+) => {
+  return apiClient.get(`/api/summaries/document/${documentId}`, {
     params: { userId },
   });
 };
+
+export const getSummariesApi = (userId: number) => {
+  return apiClient.get("/api/summaries", {
+    params: { userId },
+  });
+};
+
 export const generateQuizApi = (data: {
   userId: number;
   documentId: number;
@@ -26,17 +30,17 @@ export const generateQuizApi = (data: {
   difficulty: string;
   quizType: string;
 }) => {
-  return axios.post(`${API_BASE}/quizzes/generate`, data);
+  return apiClient.post("/api/quizzes/generate", data);
 };
 
 export const getQuizzesApi = (userId: number) => {
-  return axios.get(`${API_BASE}/quizzes`, {
+  return apiClient.get("/api/quizzes", {
     params: { userId },
   });
 };
 
 export const getQuizByIdApi = (quizId: number, userId: number) => {
-  return axios.get(`${API_BASE}/quizzes/${quizId}`, {
+  return apiClient.get(`/api/quizzes/${quizId}`, {
     params: { userId },
   });
 };

@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from "react-router";
 import { FcGoogle } from "react-icons/fc";
 import { Mail, Lock, ArrowRight, Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { loginApi } from "../../services/authApi";
 
@@ -14,8 +14,14 @@ export function LoginPage() {
 
   const navigate = useNavigate();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (!email.trim() || !password.trim()) {
+      toast.error("Please enter email and password");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -23,25 +29,70 @@ export function LoginPage() {
 
       console.log("Login response:", res.data);
 
-      const token =
-        res.data.token ||
+      const accessToken =
         res.data.accessToken ||
+        res.data.token ||
         res.data.jwt;
 
-      if (token) {
-        localStorage.setItem("token", token);
-      }
+      const refreshToken = res.data.refreshToken;
 
-      if (res.data.user) {
-        localStorage.setItem("user", JSON.stringify(res.data.user));
-      }
-
-      toast.success("Login successful!");
+      const userId =
+        res.data.userId ||
+        res.data.id ||
+        res.data.user?.id;
 
       const role =
         res.data.role ||
         res.data.user?.role ||
         res.data.user?.roles?.[0];
+
+      const fullName =
+        res.data.fullName ||
+        res.data.user?.fullName ||
+        res.data.user?.name ||
+        "";
+
+      const userEmail =
+        res.data.email ||
+        res.data.user?.email ||
+        email;
+
+      if (accessToken) {
+        localStorage.setItem("token", accessToken);
+        localStorage.setItem("accessToken", accessToken);
+      }
+
+      if (refreshToken) {
+        localStorage.setItem("refreshToken", refreshToken);
+      }
+
+      if (userId) {
+        localStorage.setItem("userId", String(userId));
+      }
+
+      if (role) {
+        localStorage.setItem("role", role);
+      }
+
+      if (userEmail) {
+        localStorage.setItem("email", userEmail);
+      }
+
+      if (fullName) {
+        localStorage.setItem("fullName", fullName);
+      }
+
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          id: userId,
+          email: userEmail,
+          fullName,
+          role,
+        })
+      );
+
+      toast.success("Login successful!");
 
       if (role === "ADMIN" || role === "ROLE_ADMIN") {
         navigate("/admin");

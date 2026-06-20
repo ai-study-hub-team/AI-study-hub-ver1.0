@@ -1,42 +1,54 @@
-import axios from "axios";
+import { apiClient } from "./apiClient";
 
-const API_BASE = "http://localhost:8080/api";
+// Đăng ký
+export const registerApi = (data: {
+  fullName: string;
+  email: string;
+  password: string;
+}) => {
+  return apiClient.post("/api/auth/register", data);
+};
 
-// Chỉ giữ nếu backend có thật API login
+// Đăng nhập
 export const loginApi = (email: string, password: string) => {
-  return axios.post(`${API_BASE}/auth/login`, {
+  return apiClient.post("/api/auth/login", {
     email,
     password,
   });
 };
 
-const getAuthHeader = () => ({
-  headers: {
-    Authorization: `Bearer ${localStorage.getItem("token")}`,
-  },
-});
+// Lấy user đang đăng nhập
+export const getAuthMeApi = () => {
+  return apiClient.get("/api/auth/me");
+};
+
+// Làm mới token
+export const refreshTokenApi = (refreshToken: string) => {
+  return apiClient.post("/api/auth/refresh", {
+    refreshToken,
+  });
+};
+
+// Đăng xuất
+export const logoutApi = () => {
+  return apiClient.post("/api/auth/logout", {
+    refreshToken: localStorage.getItem("refreshToken"),
+  });
+};
 
 // Profile
 export const getMyAccountApi = () => {
-  return axios.get(`${API_BASE}/account/me`, getAuthHeader());
+  return apiClient.get("/api/account/me");
 };
 
 export const updateMyAccountApi = (data: any) => {
-  return axios.put(
-    `${API_BASE}/account/me`,
-    data,
-    getAuthHeader()
-  );
+  return apiClient.put("/api/account/me", data);
 };
 
-// Change Password
+// Đổi mật khẩu
 export const changePasswordApi = (data: {
-  oldPassword: string;
+  currentPassword: string;
   newPassword: string;
 }) => {
-  return axios.put(
-    `${API_BASE}/account/change-password`,
-    data,
-    getAuthHeader()
-  );
+  return apiClient.put("/api/account/change-password", data);
 };

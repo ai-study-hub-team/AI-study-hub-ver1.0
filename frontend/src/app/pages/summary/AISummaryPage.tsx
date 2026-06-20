@@ -13,12 +13,14 @@ import {
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
+
 import { documentApi } from "../../services/documentApi";
 import {
   generateSummaryApi,
   getSummaryByDocumentApi,
   getSummariesApi,
 } from "../../services/aiApi";
+import { getCurrentUserId } from "../../services/apiClient";
 
 const DISPLAY_LIMIT = 6;
 
@@ -57,9 +59,13 @@ export function AISummaryPage() {
         if (data.length > 0) {
           setSelectedDoc(data[0]);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Load documents failed:", error);
-        toast.error("Cannot load uploaded documents");
+        toast.error(
+          error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            "Cannot load uploaded documents",
+        );
       }
     };
 
@@ -67,13 +73,20 @@ export function AISummaryPage() {
   }, []);
 
   const handleSelectDocument = async (doc: any) => {
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     setSelectedDoc(doc);
     setShowSummary(false);
     setSummaryData(defaultSummary);
     setView("summary");
 
     try {
-      const res = await getSummaryByDocumentApi(doc.id);
+      const res = await getSummaryByDocumentApi(doc.id, userId);
 
       if (res.data) {
         setSummaryData(res.data);
@@ -85,20 +98,45 @@ export function AISummaryPage() {
   };
 
   const fetchSummaryHistory = async () => {
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     try {
-      const res = await getSummariesApi(1);
+      const res = await getSummariesApi(userId);
 
       setSummaryHistory(res.data || []);
       setView("history");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Load summary history failed:", error);
-      toast.error("Cannot load summary history");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot load summary history",
+      );
     }
   };
 
   const handleGenerate = async () => {
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     if (!selectedDoc) {
       toast.error("Please select a document first");
+      return;
+    }
+
+    const processStatus = selectedDoc.processStatus || selectedDoc.aiStatus;
+
+    if (processStatus && processStatus !== "PROCESSED") {
+      toast.error("This document is not processed yet. Please wait until AI Status is PROCESSED.");
       return;
     }
 
@@ -107,7 +145,7 @@ export function AISummaryPage() {
     setView("summary");
 
     try {
-      const res = await generateSummaryApi(1, selectedDoc.id);
+      const res = await generateSummaryApi(userId, selectedDoc.id);
 
       setSummaryData(res.data);
       setShowSummary(true);
@@ -119,7 +157,7 @@ export function AISummaryPage() {
       toast.error(
         error?.response?.data?.message ||
           error?.response?.data?.error ||
-          "Generate summary failed"
+          "Generate summary failed",
       );
     } finally {
       setIsGenerating(false);
@@ -214,6 +252,10 @@ export function AISummaryPage() {
                     const docName =
                       doc.name || doc.title || doc.fileName || "Untitled";
 
+                    const processStatus = doc.processStatus || doc.aiStatus;
+                    const isProcessed =
+                      !processStatus || processStatus === "PROCESSED";
+
                     return (
                       <button
                         key={doc.id}
@@ -228,9 +270,23 @@ export function AISummaryPage() {
                           <FileText className="w-4 h-4 text-slate-500" />
                         </div>
 
-                        <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                          {docName}
-                        </p>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                            {docName}
+                          </p>
+
+                          {processStatus && (
+                            <p
+                              className={`text-[11px] font-semibold ${
+                                isProcessed
+                                  ? "text-emerald-600"
+                                  : "text-amber-600"
+                              }`}
+                            >
+                              AI Status: {processStatus}
+                            </p>
+                          )}
+                        </div>
                       </button>
                     );
                   })}
@@ -243,7 +299,7 @@ export function AISummaryPage() {
                     >
                       {showAllDocuments
                         ? "Thu gọn"
-                        : `Xem thêm`}
+                        : `Xem thêm ${hiddenDocumentCount} file`}
                     </button>
                   )}
                 </>
@@ -367,7 +423,7 @@ export function AISummaryPage() {
                               {point}
                             </p>
                           </div>
-                        )
+                        ),
                       )}
                     </div>
                   )}
@@ -395,7 +451,7 @@ export function AISummaryPage() {
                               </p>
                             </div>
                           </div>
-                        )
+                        ),
                       )}
                     </div>
                   )}
@@ -418,7 +474,7 @@ export function AISummaryPage() {
                             <ChevronRight className="w-4 h-4 mt-0.5" />
                             <p className="text-sm">{insight}</p>
                           </div>
-                        )
+                        ),
                       )}
                     </div>
                   )}

@@ -1,33 +1,32 @@
 import {
   ArrowUp,
   BookOpen,
+  ChevronRight,
+  Copy,
+  FileText,
   Globe,
   GraduationCap,
+  HelpCircle,
   History,
+  Lightbulb,
   MessageSquare,
   MicOff,
+  Plus,
+  RefreshCw,
   Search,
   Sparkles,
-  X,
-  Plus,
-  Image as ImageIcon,
-  FileText,
-  Lightbulb,
-  Copy,
-  ThumbsUp,
   ThumbsDown,
-  RefreshCw,
+  ThumbsUp,
   Volume2,
-  HelpCircle,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import axios from "axios";
 import ReactMarkdown from "react-markdown";
+import { toast } from "sonner";
 
-const API_BASE_URL = "http://localhost:8080/api";
-const userId = 1;
-const userName = "User";
+import { apiClient, getCurrentUserId } from "../../services/apiClient";
+
 const MATERIAL_LIMIT = 5;
 
 type ChatMessage = {
@@ -37,9 +36,13 @@ type ChatMessage = {
 
 type DocumentItem = {
   id: number;
-  title: string;
+  title?: string;
+  name?: string;
+  fileName?: string;
+  category?: string;
   categoryName?: string;
   processStatus?: string;
+  status?: string;
 };
 
 type ChatSession = {
@@ -49,6 +52,21 @@ type ChatSession = {
   sessionTitle?: string;
   createdAt?: string;
   createdDate?: string;
+};
+
+const getStoredUserName = () => {
+  try {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+    return (
+      localStorage.getItem("fullName") ||
+      user?.fullName ||
+      user?.name ||
+      "User"
+    );
+  } catch {
+    return "User";
+  }
 };
 
 const quickPrompts = [
@@ -101,6 +119,9 @@ export function AIChatPage() {
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const userId = getCurrentUserId();
+  const userName = getStoredUserName();
+
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
@@ -120,11 +141,19 @@ export function AIChatPage() {
     : documents.slice(0, MATERIAL_LIMIT);
 
   const hiddenMaterialCount = Math.max(documents.length - MATERIAL_LIMIT, 0);
+  const isEmpty = messages.length === 0;
 
   useEffect(() => {
+    if (!userId) {
+      toast.error("Please login again.");
+      navigate("/login");
+      return;
+    }
+
     loadDocuments();
     loadChatSessions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -139,32 +168,50 @@ export function AIChatPage() {
 
   const loadDocuments = async () => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/documents`, {
+      const res = await apiClient.get("/api/documents", {
         params: { page: 0, size: 100 },
       });
 
-      setDocuments(res.data?.content ?? res.data ?? []);
-    } catch (error) {
+      const data = res.data?.content ?? res.data?.data ?? res.data ?? [];
+      setDocuments(Array.isArray(data) ? data : []);
+    } catch (error: any) {
       console.error("Load documents failed:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot load documents.",
+      );
     }
   };
 
   const loadChatSessions = async () => {
+    if (!userId) return;
+
     try {
-      const res = await axios.get(`${API_BASE_URL}/chat/sessions`, {
+      const res = await apiClient.get("/api/chat/sessions", {
         params: { userId },
       });
 
       const data = res.data?.content ?? res.data?.data ?? res.data ?? [];
       setChatSessions(Array.isArray(data) ? data : []);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Load chat sessions failed:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot load chat sessions.",
+      );
     }
   };
 
   const createNewSession = async () => {
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     try {
-      const res = await axios.post(`${API_BASE_URL}/chat/sessions`, {
+      const res = await apiClient.post("/api/chat/sessions", {
         userId,
         title: "New Chat",
       });
@@ -175,8 +222,13 @@ export function AIChatPage() {
       setMessages([]);
       await loadChatSessions();
       setIsOpenHistory(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Create session failed:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot create chat session.",
+      );
     }
   };
 
@@ -241,20 +293,18 @@ export function AIChatPage() {
   };
 
   const loadSessionMessages = async (sessionId?: string) => {
-    if (!sessionId) {
-      console.error("Missing sessionId");
+    if (!sessionId || !userId) {
+      toast.error("Missing session or user.");
       return;
     }
 
     try {
-      const res = await axios.get(
-        `${API_BASE_URL}/chat/sessions/${sessionId}/messages`,
+      const res = await apiClient.get(
+        `/api/chat/sessions/${sessionId}/messages`,
         {
           params: { userId },
         },
       );
-
-      console.log("MESSAGES API:", res.data);
 
       const rawMessages =
         res.data?.content ||
@@ -270,12 +320,13 @@ export function AIChatPage() {
       setCurrentSessionId(sessionId);
       setMessages(formattedMessages);
       setIsOpenHistory(false);
-
-      if (formattedMessages.length === 0) {
-        console.warn("No messages found for this session");
-      }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Load session messages failed:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot load session messages.",
+      );
     }
   };
 
@@ -292,6 +343,11 @@ export function AIChatPage() {
 
     if (!text || isSending) return;
 
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     if (selectedDocumentIds.length === 0) {
       setMessages((prev) => [
         ...prev,
@@ -303,11 +359,31 @@ export function AIChatPage() {
       return;
     }
 
+    const selectedDocs = documents.filter((doc) =>
+      selectedDocumentIds.includes(doc.id),
+    );
+
+    const notProcessedDoc = selectedDocs.find(
+      (doc) => doc.processStatus && doc.processStatus !== "PROCESSED",
+    );
+
+    if (notProcessedDoc) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text:
+            "This material is not processed yet. Please wait until AI Status is PROCESSED before chatting.",
+        },
+      ]);
+      return;
+    }
+
     let sessionId = currentSessionId;
 
     try {
       if (!sessionId) {
-        const sessionRes = await axios.post(`${API_BASE_URL}/chat/sessions`, {
+        const sessionRes = await apiClient.post("/api/chat/sessions", {
           userId,
           title: "New Chat",
         });
@@ -321,7 +397,7 @@ export function AIChatPage() {
       setMessage("");
       setIsSending(true);
 
-      const res = await axios.post(`${API_BASE_URL}/chat/ask`, {
+      const res = await apiClient.post("/api/chat/ask", {
         sessionId,
         userId,
         documentIds: selectedDocumentIds,
@@ -337,14 +413,17 @@ export function AIChatPage() {
       setMessages((prev) => [...prev, { role: "assistant", text: answer }]);
 
       await loadChatSessions();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Send message failed:", error);
 
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          text: "Cannot connect to AI.",
+          text:
+            error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            "Cannot connect to AI.",
         },
       ]);
     } finally {
@@ -356,11 +435,8 @@ export function AIChatPage() {
     navigator.clipboard.writeText(text).catch(() => {});
   };
 
-  const isEmpty = messages.length === 0;
-
   return (
     <div className="h-full overflow-hidden bg-slate-50/50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col font-sans relative">
-      {/* Top bar */}
       <div className="fixed top-16 left-[260px] right-0 z-50 h-14 flex items-center justify-between px-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
         <div className="flex items-center gap-3 text-sm z-40">
           <button className="font-semibold text-blue-600 hover:underline">
@@ -458,10 +534,9 @@ export function AIChatPage() {
         </div>
       </div>
 
-      {/* Body */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {isEmpty ? (
-          <div className="flex-1 flex flex-col items-center justify-start max-w-3xl w-full mx-auto px-6 pt-32 gap-12">
+          <div className="flex-1 flex flex-col items-center justify-start max-w-3xl w-full mx-auto px-6 pt-24 gap-12">
             <div className="flex flex-col items-center text-center gap-1">
               <div className="w-20 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center shadow-md mb-1">
                 <Sparkles className="w-8 h-8 text-white" />
@@ -503,7 +578,7 @@ export function AIChatPage() {
 
             <button
               onClick={() => setShowMorePrompts((v) => !v)}
-              className="text-xs font-semibold text-slate-500 hover:text-blue-600 transition"
+              className="text-xs font-semibold text-slate-400 hover:text-blue-600 transition"
             >
               {showMorePrompts ? "View Less" : "View More"}
             </button>
@@ -613,10 +688,9 @@ export function AIChatPage() {
         )}
       </div>
 
-      {/* Materials modal */}
       {isOpenMaterials && (
-        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col overflow-hidden max-h-[85vh] border border-slate-100 dark:border-slate-800">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-4xl h-[80vh] shadow-2xl flex flex-col overflow-hidden border border-slate-100 dark:border-slate-800">
             <div className="flex items-center justify-between px-6 pt-5 pb-3">
               <div>
                 <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
@@ -639,7 +713,14 @@ export function AIChatPage() {
             <div className="px-6 py-2 flex justify-end">
               <button
                 onClick={() =>
-                  setSelectedDocumentIds(documents.map((doc) => doc.id))
+                  setSelectedDocumentIds(
+                    documents
+                      .filter(
+                        (doc) =>
+                          !doc.processStatus || doc.processStatus === "PROCESSED",
+                      )
+                      .map((doc) => doc.id),
+                  )
                 }
                 className="px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 hover:bg-blue-50/50 rounded-xl transition"
               >
@@ -647,7 +728,7 @@ export function AIChatPage() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-4 gap-4">
+            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-4 gap-4 content-start">
               <button
                 onClick={() => navigate("/app/upload")}
                 className="border-2 border-dashed border-blue-400 rounded-xl flex flex-col items-center justify-center p-4 gap-3 bg-white hover:bg-blue-50/50 dark:bg-slate-900 dark:hover:bg-blue-950/20 transition group text-center min-h-[160px]"
@@ -663,12 +744,29 @@ export function AIChatPage() {
 
               {visibleMaterials.map((doc) => {
                 const isSelected = selectedDocumentIds.includes(doc.id);
+                const docName =
+                  doc.title || doc.name || doc.fileName || "Untitled";
+                const isProcessed =
+                  !doc.processStatus || doc.processStatus === "PROCESSED";
 
                 return (
                   <div
                     key={doc.id}
-                    onClick={() => toggleDocument(doc.id)}
-                    className={`border rounded-xl flex flex-col overflow-hidden shadow-sm hover:shadow transition cursor-pointer ${
+                    onClick={() => {
+                      if (!isProcessed) {
+                        toast.error(
+                          "This material is not processed yet. Please wait until AI Status is PROCESSED.",
+                        );
+                        return;
+                      }
+
+                      toggleDocument(doc.id);
+                    }}
+                    className={`min-h-[160px] border rounded-xl flex flex-col overflow-hidden shadow-sm hover:shadow transition ${
+                      isProcessed
+                        ? "cursor-pointer"
+                        : "cursor-not-allowed opacity-60"
+                    } ${
                       isSelected
                         ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
                         : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
@@ -676,15 +774,16 @@ export function AIChatPage() {
                   >
                     <div className="flex-1 p-4 bg-slate-50/40 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800">
                       <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 tracking-tight line-clamp-2 uppercase">
-                        {doc.title}
+                        {docName}
                       </div>
 
                       <p className="mt-2 text-[10px] text-slate-400 dark:text-slate-500 leading-normal">
                         ID: {doc.id}
                         <br />
-                        Category: {doc.categoryName || "No category"}
+                        Category:{" "}
+                        {doc.categoryName || doc.category || "No category"}
                         <br />
-                        Status: {doc.processStatus || "Unknown"}
+                        Status: {doc.processStatus || doc.status || "Unknown"}
                       </p>
                     </div>
 
@@ -694,7 +793,7 @@ export function AIChatPage() {
                       </span>
 
                       <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate flex-1">
-                        {doc.title}
+                        {docName}
                       </span>
                     </div>
                   </div>
@@ -710,7 +809,7 @@ export function AIChatPage() {
                   <span className="text-sm font-bold text-blue-600">
                     {showAllMaterials
                       ? "Thu gọn"
-                      : `Xem thêm`}
+                      : `Xem thêm ${hiddenMaterialCount} file`}
                   </span>
                 </button>
               )}
@@ -756,17 +855,47 @@ function ChatInput({
   selectedCount: number;
   onOpenMaterials: () => void;
 }) {
+  const [showEmptyAlert, setShowEmptyAlert] = useState(false);
+
+  const handleSubmit = () => {
+    if (!message.trim()) {
+      setShowEmptyAlert(true);
+      return;
+    }
+
+    setShowEmptyAlert(false);
+    onSend();
+  };
+
   return (
     <div className="w-full relative">
+      {showEmptyAlert && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/30 backdrop-blur-[1px]">
+          <div className="w-[360px] overflow-hidden rounded-3xl bg-white shadow-2xl text-center">
+            <div className="px-8 py-7">
+              <h2 className="text-xl font-extrabold text-slate-900">
+                Unable to send message
+              </h2>
+
+              <p className="mt-2 text-base text-slate-700 leading-snug">
+                Please enter your content before submitting.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowEmptyAlert(false)}
+              className="w-full border-t border-slate-200 py-4 text-lg font-semibold text-blue-500 hover:bg-slate-50 transition"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
       {isOpenAttach && (
         <div className="absolute bottom-[calc(100%+8px)] left-0 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-2 z-50">
           {[
-            { icon: <ImageIcon className="w-4 h-4" />, label: "Add image" },
-            { icon: <Globe className="w-4 h-4" />, label: "Web Search" },
-            {
-              icon: <GraduationCap className="w-4 h-4" />,
-              label: "Academic Search",
-            },
             {
               icon: <FileText className="w-4 h-4" />,
               label: "Materials",
@@ -799,7 +928,7 @@ function ChatInput({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              onSend();
+              handleSubmit();
             }
           }}
           placeholder="Ask your AI tutor anything..."
@@ -820,7 +949,7 @@ function ChatInput({
               onClick={onOpenMaterials}
               className="px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-[11px] font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 bg-slate-50 dark:bg-slate-900 transition flex items-center gap-1.5 select-none h-6"
             >
-              <FileText className="w-3 h-3" />
+              <FileText className="w-4 h-4" />
               {selectedCount} materials
             </button>
           </div>
@@ -831,7 +960,7 @@ function ChatInput({
             </button>
 
             <button
-              onClick={onSend}
+              onClick={handleSubmit}
               disabled={isSending}
               className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition shadow-sm active:scale-95 shrink-0 disabled:opacity-50"
             >
