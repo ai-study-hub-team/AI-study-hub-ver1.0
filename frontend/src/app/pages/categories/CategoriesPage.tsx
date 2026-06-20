@@ -7,11 +7,12 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import axios from "axios";
 import { useNavigate } from "react-router";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 
-const API_BASE_URL = "http://localhost:8080/api";
+import { categoryApi } from "../../services/categoryApi";
+import { documentApi } from "../../services/documentApi";
+import { getCurrentUserId } from "../../services/apiClient";
 
 export function CategoriesPage() {
   const navigate = useNavigate();
@@ -34,6 +35,9 @@ export function CategoriesPage() {
     try {
       const [categoryResponse, documentResponse] = await Promise.all([
         categoryApi.getCategories(),
+        documentApi.getDocuments({
+          page: 0,
+          size: 100,
         axios.get(`${API_BASE_URL}/documents`, {
           params: {
             page: 0,
@@ -59,9 +63,13 @@ export function CategoriesPage() {
 
       setCategories(categoryData);
       setCategoryCounts(counts);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Cannot load categories.");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot load categories.",
+      );
     }
   };
 
@@ -76,20 +84,33 @@ export function CategoriesPage() {
       return;
     }
 
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     try {
       await categoryApi.createCategory({
         name: name.trim(),
         description: description.trim(),
-        userId: 1,
+        userId,
       });
 
       toast.success("Category created.");
       setName("");
       setDescription("");
+      loadCategories();
+    } catch (error: any) {
       await loadCategories();
     } catch (error) {
       console.error(error);
-      toast.error("Cannot create category.");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot create category.",
+      );
     }
   };
 
@@ -143,9 +164,13 @@ export function CategoriesPage() {
       toast.success("Category deleted.");
       await loadCategories();
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Cannot delete category.");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot delete category.",
+      );
       return false;
     }
   };
