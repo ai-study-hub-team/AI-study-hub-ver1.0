@@ -7,11 +7,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import axios from "axios";
 import { useNavigate } from "react-router";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
-
-const API_BASE_URL = "http://localhost:8080/api";
+import { documentApi } from "../../services/documentApi";
+import { getCurrentUserId } from "../../services/apiClient";
 
 export function CategoriesPage() {
   const navigate = useNavigate();
@@ -34,11 +33,9 @@ export function CategoriesPage() {
     try {
       const [categoryResponse, documentResponse] = await Promise.all([
         categoryApi.getCategories(),
-        axios.get(`${API_BASE_URL}/documents`, {
-          params: {
-            page: 0,
-            size: 100,
-          },
+        documentApi.getDocuments({
+          page: 0,
+          size: 100,
         }),
       ]);
 
@@ -48,8 +45,7 @@ export function CategoriesPage() {
       const counts = documentData.reduce(
         (result: Record<number, number>, document: any) => {
           if (document.categoryId) {
-            result[document.categoryId] =
-              (result[document.categoryId] ?? 0) + 1;
+            result[document.categoryId] = (result[document.categoryId] ?? 0) + 1;
           }
 
           return result;
@@ -59,9 +55,13 @@ export function CategoriesPage() {
 
       setCategories(categoryData);
       setCategoryCounts(counts);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Cannot load categories.");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot load categories.",
+      );
     }
   };
 
@@ -76,20 +76,31 @@ export function CategoriesPage() {
       return;
     }
 
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     try {
       await categoryApi.createCategory({
         name: name.trim(),
         description: description.trim(),
-        userId: 1,
+        userId,
       });
 
       toast.success("Category created.");
       setName("");
       setDescription("");
       await loadCategories();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Cannot create category.");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot create category.",
+      );
     }
   };
 
@@ -117,11 +128,18 @@ export function CategoriesPage() {
       return;
     }
 
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     try {
       await categoryApi.updateCategory(editId, {
         name: editName.trim(),
         description: editDescription.trim(),
-        userId: 1,
+        userId,
       });
 
       toast.success("Category updated.");
@@ -129,9 +147,13 @@ export function CategoriesPage() {
       setEditName("");
       setEditDescription("");
       await loadCategories();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Cannot update category.");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot update category.",
+      );
     }
   };
 
@@ -143,9 +165,13 @@ export function CategoriesPage() {
       toast.success("Category deleted.");
       await loadCategories();
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Cannot delete category.");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot delete category.",
+      );
       return false;
     }
   };
@@ -225,19 +251,17 @@ export function CategoriesPage() {
                     </div>
 
                     <div className="min-w-0">
-                      <div className="min-w-0">
-                        <p className="truncate font-extrabold text-slate-950 dark:text-white">
-                          {category.name}
-                        </p>
+                      <p className="truncate font-extrabold text-slate-950 dark:text-white">
+                        {category.name}
+                      </p>
 
-                        <p className="mt-1 line-clamp-1 text-sm text-slate-500 dark:text-slate-400">
-                          {category.description?.trim() || "No description"}
-                        </p>
+                      <p className="mt-1 line-clamp-1 text-sm text-slate-500 dark:text-slate-400">
+                        {category.description?.trim() || "No description"}
+                      </p>
 
-                        <p className="mt-1 text-xs font-bold text-slate-400 dark:text-slate-500">
-                          {itemCount} {itemCount === 1 ? "Item" : "Items"}
-                        </p>
-                      </div>
+                      <p className="mt-1 text-xs font-bold text-slate-400 dark:text-slate-500">
+                        {itemCount} {itemCount === 1 ? "Item" : "Items"}
+                      </p>
                     </div>
                   </div>
 
