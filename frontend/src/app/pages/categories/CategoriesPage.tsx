@@ -9,8 +9,6 @@ import {
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
-
-import { categoryApi } from "../../services/categoryApi";
 import { documentApi } from "../../services/documentApi";
 import { getCurrentUserId } from "../../services/apiClient";
 
@@ -30,7 +28,6 @@ export function CategoriesPage() {
     {},
   );
 
-  // GET /api/categories
   const loadCategories = async () => {
     try {
       const [categoryResponse, documentResponse] = await Promise.all([
@@ -38,11 +35,6 @@ export function CategoriesPage() {
         documentApi.getDocuments({
           page: 0,
           size: 100,
-        axios.get(`${API_BASE_URL}/documents`, {
-          params: {
-            page: 0,
-            size: 100,
-          },
         }),
       ]);
 
@@ -52,8 +44,7 @@ export function CategoriesPage() {
       const counts = documentData.reduce(
         (result: Record<number, number>, document: any) => {
           if (document.categoryId) {
-            result[document.categoryId] =
-              (result[document.categoryId] ?? 0) + 1;
+            result[document.categoryId] = (result[document.categoryId] ?? 0) + 1;
           }
 
           return result;
@@ -77,7 +68,6 @@ export function CategoriesPage() {
     loadCategories();
   }, []);
 
-  // POST /api/categories
   const handleCreate = async () => {
     if (!name.trim()) {
       toast.error("Please enter category name.");
@@ -101,10 +91,8 @@ export function CategoriesPage() {
       toast.success("Category created.");
       setName("");
       setDescription("");
-      loadCategories();
-    } catch (error: any) {
       await loadCategories();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
       toast.error(
         error?.response?.data?.message ||
@@ -114,7 +102,6 @@ export function CategoriesPage() {
     }
   };
 
-  // GET /api/categories/{id}
   const openEditModal = async (id: number) => {
     try {
       const response = await categoryApi.getCategoryById(id);
@@ -129,7 +116,6 @@ export function CategoriesPage() {
     }
   };
 
-  // PUT /api/categories/{id}
   const handleUpdate = async () => {
     if (editId === null) return;
 
@@ -138,11 +124,18 @@ export function CategoriesPage() {
       return;
     }
 
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     try {
       await categoryApi.updateCategory(editId, {
         name: editName.trim(),
         description: editDescription.trim(),
-        userId: 1,
+        userId,
       });
 
       toast.success("Category updated.");
@@ -150,13 +143,16 @@ export function CategoriesPage() {
       setEditName("");
       setEditDescription("");
       await loadCategories();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Cannot update category.");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot update category.",
+      );
     }
   };
 
-  // DELETE /api/categories/{id}
   const handleDelete = async (id: number): Promise<boolean> => {
     try {
       await categoryApi.deleteCategory(id);
@@ -250,19 +246,17 @@ export function CategoriesPage() {
                     </div>
 
                     <div className="min-w-0">
-                      <div className="min-w-0">
-                        <p className="truncate font-extrabold text-slate-950 dark:text-white">
-                          {category.name}
-                        </p>
+                      <p className="truncate font-extrabold text-slate-950 dark:text-white">
+                        {category.name}
+                      </p>
 
-                        <p className="mt-1 line-clamp-1 text-sm text-slate-500 dark:text-slate-400">
-                          {category.description?.trim() || "No description"}
-                        </p>
+                      <p className="mt-1 line-clamp-1 text-sm text-slate-500 dark:text-slate-400">
+                        {category.description?.trim() || "No description"}
+                      </p>
 
-                        <p className="mt-1 text-xs font-bold text-slate-400 dark:text-slate-500">
-                          {itemCount} {itemCount === 1 ? "Item" : "Items"}
-                        </p>
-                      </div>
+                      <p className="mt-1 text-xs font-bold text-slate-400 dark:text-slate-500">
+                        {itemCount} {itemCount === 1 ? "Item" : "Items"}
+                      </p>
                     </div>
                   </div>
 
