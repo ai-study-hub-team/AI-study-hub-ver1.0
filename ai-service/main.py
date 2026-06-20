@@ -87,7 +87,7 @@ async def process_document(request: DocumentRequest):
             )
 
         # ── 3. Chunk text ─────────────────────────────────────────────────────
-        chunks = chunk_text(text)
+        chunks = chunk_text(text, file_type=request.fileType)
         chunk_count = len(chunks)
 
         if not chunks:
@@ -322,6 +322,26 @@ Quy tắc bắt buộc:
         answer = f"Lỗi khi gọi mô hình AI: {str(e)}"
 
     # 6. Map search results into Citations response (only if found and text resolved)
+    def generate_citation_label(meta: dict) -> str:
+        doc_type = meta.get("documentType", "").upper()
+        if doc_type in ["XLS", "XLSX"]:
+            sheet = meta.get("sheetName", "Unknown")
+            start = meta.get("rowStart")
+            end = meta.get("rowEnd")
+            if start is not None and end is not None:
+                return f"Sheet {sheet} (Rows {int(start)}-{int(end)})"
+            return f"Sheet {sheet}"
+        elif doc_type in ["PPT", "PPTX"]:
+            start = meta.get("slideStart")
+            end = meta.get("slideEnd")
+            if start is not None and end is not None:
+                if start == end:
+                    return f"Slide {int(start)}"
+                return f"Slides {int(start)}-{int(end)}"
+            return "Slides"
+        else:
+            return f"Chunk {meta.get('chunkIndex', 0)}"
+
     citations = []
     for res in search_results:
         key = (res["documentId"], res["chunkIndex"])
@@ -334,7 +354,10 @@ Quy tắc bắt buộc:
                     documentId=res["documentId"],
                     chunkIndex=res["chunkIndex"],
                     score=res["score"],
-                    previewText=preview
+                    previewText=preview,
+                    documentName=res.get("originalFileName", "Unknown"),
+                    type=res.get("documentType", "UNKNOWN"),
+                    label=generate_citation_label(res)
                 )
             )
 

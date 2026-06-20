@@ -18,4 +18,7 @@ public class ChunkSearchResponse {
     private Integer charStart;
     private Integer charEnd;
     private Integer textLength;
+    private String documentName;
+    private String type;
+    private String label;
 }

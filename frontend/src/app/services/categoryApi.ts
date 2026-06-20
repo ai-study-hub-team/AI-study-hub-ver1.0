@@ -20,6 +20,10 @@ export const categoryApi = {
     return api.get<CategoryResponse[]>("/api/categories");
   },
 
+  getCategoryById(id: number) {
+    return api.get<CategoryResponse>(`/api/categories/${id}`);
+  },
+
   createCategory(data: CategoryRequest) {
     return api.post<CategoryResponse>("/api/categories", data);
   },
@@ -29,6 +33,6 @@ export const categoryApi = {
   },
 
   deleteCategory(id: number) {
-    return api.delete(`/api/categories/${id}`);
+    return api.delete<void>(`/api/categories/${id}`);
   },
 };

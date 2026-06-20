@@ -7,6 +7,7 @@ import com.aistudyhub.backend.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -18,21 +19,36 @@ public class AccountController {
 
     @GetMapping("/me")
     public ResponseEntity<UserResponse> getMe(
-            @RequestParam(defaultValue = "1") Long userId) {
-        return ResponseEntity.ok(userService.getById(userId));
+            Authentication authentication
+    ) {
+        return ResponseEntity.ok(
+                userService.getByEmail(authentication.getName())
+        );
     }
 
     @PutMapping("/me")
     public ResponseEntity<UserResponse> updateMe(
-            @RequestParam(defaultValue = "1") Long userId,
-            @Valid @RequestBody UserUpdateRequest request) {
-        return ResponseEntity.ok(userService.update(userId, request));
+            Authentication authentication,
+            @Valid @RequestBody UserUpdateRequest request
+    ) {
+        return ResponseEntity.ok(
+                userService.updateCurrentUser(
+                        authentication.getName(),
+                        request
+                )
+        );
     }
 
     @PutMapping("/change-password")
     public ResponseEntity<UserResponse> changePassword(
-            @RequestParam(defaultValue = "1") Long userId,
-            @Valid @RequestBody ChangePasswordRequest request) {
-        return ResponseEntity.ok(userService.changePassword(userId, request));
+            Authentication authentication,
+            @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        return ResponseEntity.ok(
+                userService.changeCurrentUserPassword(
+                        authentication.getName(),
+                        request
+                )
+        );
     }
 }
