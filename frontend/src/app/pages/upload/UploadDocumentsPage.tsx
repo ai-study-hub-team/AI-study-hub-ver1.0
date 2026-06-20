@@ -13,6 +13,7 @@ import { toast } from "sonner";
 
 import { documentApi } from "../../services/documentApi";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
+import { getCurrentUserId } from "../../services/apiClient";
 import { CollaborationCard } from "./components/CollaborationCard";
 import { RecentUploadsCard } from "./components/RecentUploadsCard";
 import { StudyMaterialsCard } from "./components/StudyMaterialsCard";
@@ -140,6 +141,13 @@ export function UploadDocumentsPage() {
         return;
       }
 
+      const userId = getCurrentUserId();
+
+      if (!userId) {
+        toast.error("Please login again.");
+        return;
+      }
+
       try {
         setIsUploading(true);
 
@@ -147,7 +155,7 @@ export function UploadDocumentsPage() {
           await documentApi.uploadDocument({
             file,
             title: file.name,
-            userId: 1,
+            userId,
             description: details.notes,
             documentType: file.type,
             visibility: "PRIVATE",
@@ -158,8 +166,13 @@ export function UploadDocumentsPage() {
         await loadRecentUploads();
         setStep(3);
         toast.success("Upload complete. Study materials are being generated.");
-      } catch (error) {
-        toast.error("Upload failed. Please try again.");
+      } catch (error: any) {
+        console.error("Upload failed:", error);
+        toast.error(
+          error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            "Upload failed. Please try again.",
+        );
       } finally {
         setIsUploading(false);
       }
@@ -169,6 +182,10 @@ export function UploadDocumentsPage() {
   const resetFlow = () => {
     setStep(1);
     setFiles([]);
+    setDetails({
+      categoryId: "",
+      notes: "",
+    });
   };
 
   return (
@@ -299,6 +316,7 @@ export function UploadDocumentsPage() {
                   Back
                 </button>
               )}
+
               {step < 3 ? (
                 <button
                   onClick={goNext}

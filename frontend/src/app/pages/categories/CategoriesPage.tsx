@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { ChevronRight, FolderPlus, Library, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import axios from "axios";
 import { useNavigate } from "react-router";
 
-const API_BASE_URL = "http://localhost:8080/api";
+import { categoryApi } from "../../services/categoryApi";
+import { documentApi } from "../../services/documentApi";
+import { getCurrentUserId } from "../../services/apiClient";
 
 interface CategoryItem {
   id: number;
@@ -25,12 +26,10 @@ export function CategoriesPage() {
   const loadCategories = async () => {
     try {
       const [categoryResponse, documentResponse] = await Promise.all([
-        axios.get(`${API_BASE_URL}/categories`),
-        axios.get(`${API_BASE_URL}/documents`, {
-          params: {
-            page: 0,
-            size: 100,
-          },
+        categoryApi.getCategories(),
+        documentApi.getDocuments({
+          page: 0,
+          size: 100,
         }),
       ]);
 
@@ -51,9 +50,13 @@ export function CategoriesPage() {
 
       setCategories(categoryData);
       setCategoryCounts(counts);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Cannot load categories.");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot load categories.",
+      );
     }
   };
 
@@ -67,33 +70,48 @@ export function CategoriesPage() {
       return;
     }
 
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     try {
-      await axios.post(`${API_BASE_URL}/categories`, {
+      await categoryApi.createCategory({
         name: name.trim(),
         description: description.trim(),
-        userId: 1,
+        userId,
       });
 
       toast.success("Category created.");
       setName("");
       setDescription("");
       loadCategories();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Cannot create category.");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot create category.",
+      );
     }
   };
 
   const handleDelete = async (id: number): Promise<boolean> => {
     try {
-      await axios.delete(`${API_BASE_URL}/categories/${id}`);
+      await categoryApi.deleteCategory(id);
 
       toast.success("Category deleted.");
       await loadCategories();
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Cannot delete category.");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot delete category.",
+      );
       return false;
     }
   };
@@ -201,6 +219,7 @@ export function CategoriesPage() {
           </div>
         )}
       </section>
+
       {deleteId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
