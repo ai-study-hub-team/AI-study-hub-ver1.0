@@ -255,10 +255,15 @@ def extract_text(file_path: str, file_type: str) -> str:
     # Try generic mime types handling as well
     if 'pdf' in file_type or ext == 'pdf':
         return extract_text_from_pdf(file_path)
-    elif 'document' in file_type or 'docx' in file_type or ext == 'docx':
-        return extract_text_from_docx(file_path)
+    elif 'excel' in file_type or 'spreadsheet' in file_type or ext in ['xls', 'xlsx']:
+        return extract_text_from_excel(file_path, file_type)
     elif 'text' in file_type or 'txt' in file_type or ext == 'txt':
         return extract_text_from_txt(file_path)
+
+    elif 'powerpoint' in file_type or 'presentation' in file_type or ext in ['ppt', 'pptx']:
+        return extract_text_from_pptx(file_path)
+    elif 'document' in file_type or 'docx' in file_type or ext == 'docx':
+        return extract_text_from_docx(file_path)
     else:
         raise ValueError(f"Unsupported file type: {file_type} / {ext}")
 
@@ -326,3 +331,204 @@ def extract_text_from_docx(file_path: str) -> str:
         f"and {len(doc.tables)} tables"
     )
     return extracted_text
+
+
+def extract_text_from_excel(file_path: str, file_type: str = "") -> str:
+    ext = os.path.splitext(file_path)[1].lower().strip('.')
+    
+    if ext == 'xls':
+        try:
+            import xlrd
+        except ImportError:
+            raise ImportError("xlrd is required for .xls files. pip install xlrd")
+        
+        wb = xlrd.open_workbook(file_path)
+        text_parts = []
+        
+        for sheet in wb.sheets():
+            text_parts.append(f"<<<SHEET:{sheet.name}>>>")
+            is_header = True
+            for rowx in range(sheet.nrows):
+                row_values = sheet.row_values(rowx)
+                if all(cell == "" for cell in row_values):
+                    continue
+                row_str_parts = [str(cell).strip().replace("\n", " ") for cell in row_values]
+                row_text = " | ".join(row_str_parts)
+                
+                if is_header:
+                    text_parts.append("<<<HEADER>>>")
+                    text_parts.append(row_text)
+                    is_header = False
+                else:
+                    text_parts.append(f"<<<ROW:{rowx+1}>>>")
+                    text_parts.append(row_text)
+                    
+        return "\n".join(text_parts)
+    
+    else:
+        try:
+            import openpyxl
+        except ImportError:
+            raise ImportError("openpyxl is required. pip install openpyxl")
+        
+        wb = openpyxl.load_workbook(file_path, data_only=True)
+        text_parts = []
+        for sheet_name in wb.sheetnames:
+            sheet = wb[sheet_name]
+            text_parts.append(f"<<<SHEET:{sheet_name}>>>")
+            is_header = True
+            for idx, row in enumerate(sheet.iter_rows(values_only=True), start=1):
+                if all(cell is None or str(cell).strip() == "" for cell in row):
+                    continue
+                row_str_parts = [str(cell).strip().replace("\n", " ") if cell is not None else "" for cell in row]
+                row_text = " | ".join(row_str_parts)
+                if is_header:
+                    text_parts.append("<<<HEADER>>>")
+                    text_parts.append(row_text)
+                    is_header = False
+                else:
+                    text_parts.append(f"<<<ROW:{idx}>>>")
+                    text_parts.append(row_text)
+                    
+        return "\n".join(text_parts)
+
+
+PPTX_IMAGE_PROMPT = """Bạn là Kiến trúc sư Hệ thống và Chuyên gia Phân tích. Hãy trả về kết quả theo format sau:
+DÒNG 1: [TYPE] -> Chọn 1 trong 4: DIAGRAM, CHART, PHOTO, LOGO.
+DÒNG 2 TRỞ ĐI: [ANALYSIS]
+- Nếu là DIAGRAM (Sơ đồ): Phân tích Purpose, Main Actors, Input, Output, Components, Relationships, Data Flow, Key Concepts. Không mô tả màu sắc/hình dạng.
+- Nếu là CHART (Biểu đồ): Mô tả Loại biểu đồ, Trục X, Trục Y, Legend, Peak, Lowest Point, Trend, Trend Change, Anomaly.
+- Nếu là PHOTO (Ảnh/Screenshot): Mô tả tổng quan nội dung, văn bản trong ảnh, ý nghĩa học tập.
+- Nếu là LOGO (Logo/Icon/Watermark): Trả về mô tả ngắn gọn."""
+
+def extract_text_from_pptx(file_path: str) -> str:
+    ext = os.path.splitext(file_path)[1].lower().strip('.')
+    if ext == 'ppt':
+        raise ValueError("Định dạng .ppt cũ không được hỗ trợ để bóc tách. Vui lòng chuyển đổi sang .pptx trước khi upload.")
+        
+    try:
+        from pptx import Presentation
+        from pptx.enum.shapes import MSO_SHAPE_TYPE
+    except ImportError:
+        raise ImportError("python-pptx is required. pip install python-pptx")
+        
+    try:
+        import imagehash
+        from PIL import Image
+        import io
+    except ImportError:
+        raise ImportError("Pillow and ImageHash are required. pip install Pillow ImageHash")
+
+    prs = Presentation(file_path)
+    text_parts = []
+    
+    phash_cache = {}
+    
+    for idx, slide in enumerate(prs.slides, start=1):
+        slide_types = set()
+        slide_text_parts = []
+        
+        slide_title = ""
+        if slide.shapes.title:
+            slide_title = slide.shapes.title.text.strip()
+            
+        if slide_title:
+            slide_text_parts.append(f"Title: {slide_title}")
+            
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                text = shape.text.strip()
+                if text and text != slide_title:
+                    slide_text_parts.append(text)
+                    if "public class " in text or "def " in text or "SELECT " in text.upper():
+                        slide_types.add("CODE")
+                    else:
+                        slide_types.add("TEXT")
+                        
+            elif shape.has_table:
+                slide_types.add("TABLE")
+                for row in shape.table.rows:
+                    row_data = []
+                    for cell in row.cells:
+                        row_data.append(cell.text.strip().replace("\n", " "))
+                    slide_text_parts.append(" | ".join(row_data))
+                    
+            elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                image_blob = shape.image.blob
+                img = Image.open(io.BytesIO(image_blob))
+                h = imagehash.phash(img)
+                
+                # Check cache for perceptual hash <= 5 diff
+                cached_desc = None
+                for cached_hash, desc in phash_cache.items():
+                    if abs(h - cached_hash) <= 5:
+                        cached_desc = desc
+                        break
+                        
+                if cached_desc:
+                    slide_text_parts.append(cached_desc)
+                    slide_types.add("IMAGE")
+                else:
+                    import tempfile
+                    img_ext = shape.image.ext
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{img_ext}") as tmp:
+                        tmp.write(image_blob)
+                        tmp_path = tmp.name
+                    
+                    try:
+                        mime_type = guess_media_mime_type(tmp_path, f"image/{img_ext}")
+                        client = get_gemini_client()
+                        uploaded_file = client.files.upload(file=tmp_path)
+                        uploaded_file = wait_for_gemini_file_active(client, uploaded_file)
+                        
+                        response = client.models.generate_content(
+                            model=GEMINI_MODEL,
+                            contents=[uploaded_file, PPTX_IMAGE_PROMPT]
+                        )
+                        text_res = response.text.strip()
+                        
+                        client.files.delete(name=uploaded_file.name)
+                        
+                        lines = text_res.split("\n", 1)
+                        if lines:
+                            type_line = lines[0].upper()
+                            if "DIAGRAM" in type_line:
+                                slide_types.add("DIAGRAM")
+                            elif "CHART" in type_line:
+                                slide_types.add("CHART")
+                            elif "LOGO" in type_line:
+                                slide_types.add("IMAGE")
+                                phash_cache[h] = text_res
+                            else:
+                                slide_types.add("IMAGE")
+                                
+                        slide_text_parts.append(text_res)
+                    except Exception as e:
+                        logger.error(f"Failed to process image with Gemini: {e}")
+                        slide_text_parts.append("[Image extraction failed]")
+                        slide_types.add("IMAGE")
+                    finally:
+                        if os.path.exists(tmp_path):
+                            os.remove(tmp_path)
+            
+            elif shape.shape_type == MSO_SHAPE_TYPE.MEDIA:
+                slide_text_parts.append("[Embedded Media: Không hỗ trợ trong Phase 1]")
+                slide_types.add("MIXED")
+                
+        if len(slide_types) == 0:
+            slide_type = "TEXT"
+        elif len(slide_types) == 1:
+            slide_type = list(slide_types)[0]
+        else:
+            if "DIAGRAM" in slide_types:
+                slide_type = "DIAGRAM"
+            elif "CHART" in slide_types:
+                slide_type = "CHART"
+            else:
+                slide_type = "MIXED"
+                
+        text_parts.append(f"<<<SLIDE_START:{idx}|TYPE:{slide_type}>>>")
+        text_parts.append(f"[Slide {idx}]")
+        text_parts.append("\n\n".join(slide_text_parts))
+        
+    return "\n".join(text_parts)

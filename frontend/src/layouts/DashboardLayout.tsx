@@ -21,8 +21,9 @@ import {
   Zap,
   UploadCloud,
   Folder,
+  Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { useTheme } from "./ThemeProvider";
 
@@ -30,16 +31,97 @@ interface DashboardLayoutProps {
   isAdmin?: boolean;
 }
 
+type StoredUser = {
+  id?: number;
+  userId?: number;
+  fullName?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+};
+
+const getStoredUser = (): StoredUser | null => {
+  try {
+    const rawUser = localStorage.getItem("user");
+
+    if (!rawUser) return null;
+
+    return JSON.parse(rawUser);
+  } catch {
+    return null;
+  }
+};
+
+const getCurrentFullName = () => {
+  const storedUser = getStoredUser();
+
+  return (
+    localStorage.getItem("fullName") ||
+    storedUser?.fullName ||
+    storedUser?.name ||
+    localStorage.getItem("email") ||
+    storedUser?.email ||
+    "User"
+  );
+};
+
+const getCurrentRole = () => {
+  const storedUser = getStoredUser();
+
+  return localStorage.getItem("role") || storedUser?.role || "STUDENT";
+};
+
+const getInitials = (name: string) => {
+  const cleanName = name.trim();
+
+  if (!cleanName) return "U";
+
+  const parts = cleanName.split(/\s+/);
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+};
+
 export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [displayName, setDisplayName] = useState(getCurrentFullName());
+  const [displayRole, setDisplayRole] = useState(getCurrentRole());
+
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    setDisplayName(getCurrentFullName());
+    setDisplayRole(getCurrentRole());
+  }, [location.pathname]);
+
+  const avatarText = useMemo(() => {
+    return getInitials(displayName);
+  }, [displayName]);
+
+  const roleText = useMemo(() => {
+    const role = displayRole?.toUpperCase();
+
+    if (isAdmin || role === "ADMIN" || role === "ROLE_ADMIN") {
+      return "Administrator";
+    }
+
+    return "Student · Pro";
+  }, [displayRole, isAdmin]);
 
   const studentLinks = [
     { to: "/app/dashboard", icon: LayoutDashboard, label: "Dashboard" },
     { to: "/app/categories", icon: Folder, label: "Categories" },
     { to: "/app/upload", icon: UploadCloud, label: "Upload" },
     { to: "/app/library", icon: Library, label: "My Library" },
+    { to: "/app/trash", icon: Trash2, label: "Trash" },
     { to: "/app/chat", icon: MessageSquare, label: "AI Chat" },
     { to: "/app/summary", icon: FileSearch, label: "AI Summary" },
     { to: "/app/quiz", icon: Puzzle, label: "Quiz Generator" },
@@ -65,48 +147,60 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
     return location.pathname.startsWith(to);
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("role");
+    localStorage.removeItem("email");
+    localStorage.removeItem("fullName");
+    localStorage.removeItem("user");
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-      {/* Sidebar */}
       <motion.aside
         initial={false}
         animate={{ width: isSidebarOpen ? 260 : 80 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
         className="relative z-20 flex flex-col h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-sm"
       >
-        {/* Logo */}
         <div className="flex items-center h-16 px-4 border-b border-slate-100 shrink-0">
           <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap">
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-600 text-white shrink-0">
               <span className="font-bold text-lg">A</span>
             </div>
+
             {isSidebarOpen && (
               <motion.span
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="font-bold text-xl text-slate-800 tracking-tight"
+                className="font-bold text-xl text-slate-800 dark:text-white tracking-tight"
               >
                 AI Study Hub
               </motion.span>
             )}
           </div>
+
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="ml-auto p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors shrink-0"
+            className="ml-auto p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors shrink-0"
           >
             <Menu className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Nav Links */}
         <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto overflow-x-hidden">
           {isAdmin && isSidebarOpen && (
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest px-3 pb-2">
               Admin Panel
             </p>
           )}
+
           {links.map((link) => {
             const active = isExactActive(link.to);
+
             return (
               <NavLink
                 key={link.to}
@@ -123,8 +217,13 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
                 title={!isSidebarOpen ? link.label : undefined}
               >
                 <link.icon
-                  className={`w-5 h-5 shrink-0 transition-colors ${active ? "text-white" : "text-slate-400 group-hover:text-slate-600 dark:group-hover:text-white"}`}
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    active
+                      ? "text-white"
+                      : "text-slate-400 group-hover:text-slate-600 dark:group-hover:text-white"
+                  }`}
                 />
+
                 {isSidebarOpen && (
                   <motion.span
                     initial={{ opacity: 0 }}
@@ -134,6 +233,7 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
                     {link.label}
                   </motion.span>
                 )}
+
                 {!isSidebarOpen && link.label === "Reports" && (
                   <div className="absolute left-14 w-2 h-2 bg-red-500 rounded-full" />
                 )}
@@ -142,14 +242,15 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
           })}
         </nav>
 
-        {/* Bottom */}
         <div className="p-3 border-t border-slate-100 shrink-0 space-y-1">
           <NavLink
-            to="/"
+            to="/login"
+            onClick={handleLogout}
             className="flex items-center gap-3 px-3 py-2.5 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
             title={!isSidebarOpen ? "Log Out" : undefined}
           >
             <LogOut className="w-5 h-5 shrink-0" />
+
             {isSidebarOpen && (
               <span className="text-sm font-medium">Log Out</span>
             )}
@@ -157,12 +258,9 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
         </div>
       </motion.aside>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top Header */}
         <header className="h-16 flex items-center px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div className="ml-auto flex items-center gap-3">
-            {/* Upgrade Badge for non-admin */}
             {!isAdmin && (
               <NavLink
                 to="/app/subscription/upgrade"
@@ -198,20 +296,21 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-medium text-slate-900 dark:text-white leading-none">
-                  Alex Johnson
+                  {displayName}
                 </p>
+
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  {isAdmin ? "Administrator" : "Student · Pro"}
+                  {roleText}
                 </p>
               </div>
+
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 border-2 border-white dark:border-slate-900 shadow-sm flex items-center justify-center text-white font-bold text-sm">
-                AJ
+                {avatarText}
               </div>
             </div>
           </div>
         </header>
 
-        {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50 dark:bg-slate-950">
           <div className="max-w-7xl mx-auto">
             <Outlet />

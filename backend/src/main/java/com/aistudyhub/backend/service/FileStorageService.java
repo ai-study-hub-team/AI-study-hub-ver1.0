@@ -25,7 +25,7 @@ public class FileStorageService {
     // Allowed file extensions
     private static final List<String> ALLOWED_EXTENSIONS = List.of(
             // Documents
-            "pdf", "docx", "pptx", "txt",
+            "pdf", "docx", "pptx", "txt", "xls", "xlsx", "ppt",
 
             // Images
             "png", "jpg", "jpeg", "webp", "gif",
@@ -61,7 +61,7 @@ public class FileStorageService {
         if (!ALLOWED_EXTENSIONS.contains(extension)) {
             throw new IllegalArgumentException(
                     "Unsupported file type: ." + extension +
-                            ". Allowed types: pdf, docx, pptx, txt, " +
+                            ". Allowed types: pdf, docx, pptx, txt, xls, xlsx, ppt, " +
                             "png, jpg, jpeg, webp, gif, " +
                             "mp4, mov, avi, mkv, " +
                             "mp3, wav, m4a, ogg"
@@ -87,6 +87,7 @@ public class FileStorageService {
 
         return uniqueFileName;
     }
+
     /**
      * Returns the MIME type of the file.
      * Falls back to extension-based detection if MultipartFile content type is unknown.
@@ -151,31 +152,54 @@ public class FileStorageService {
 
         switch (ext) {
             // Documents
-            case "pdf": return "application/pdf";
-            case "txt": return "text/plain";
-            case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-            case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            case "pdf":
+                return "application/pdf";
+            case "txt":
+                return "text/plain";
+            case "docx":
+                return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "ppt":
+                return "application/vnd.ms-powerpoint";
+            case "pptx":
+                return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            case "xls":
+                return "application/vnd.ms-excel";
+            case "xlsx":
+                return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
             // Images
-            case "png": return "image/png";
+            case "png":
+                return "image/png";
             case "jpg":
-            case "jpeg": return "image/jpeg";
-            case "webp": return "image/webp";
-            case "gif": return "image/gif";
+            case "jpeg":
+                return "image/jpeg";
+            case "webp":
+                return "image/webp";
+            case "gif":
+                return "image/gif";
 
             // Videos
-            case "mp4": return "video/mp4";
-            case "mov": return "video/quicktime";
-            case "avi": return "video/x-msvideo";
-            case "mkv": return "video/x-matroska";
+            case "mp4":
+                return "video/mp4";
+            case "mov":
+                return "video/quicktime";
+            case "avi":
+                return "video/x-msvideo";
+            case "mkv":
+                return "video/x-matroska";
 
             // Audio
-            case "mp3": return "audio/mpeg";
-            case "wav": return "audio/wav";
-            case "m4a": return "audio/x-m4a";
-            case "ogg": return "audio/ogg";
+            case "mp3":
+                return "audio/mpeg";
+            case "wav":
+                return "audio/wav";
+            case "m4a":
+                return "audio/x-m4a";
+            case "ogg":
+                return "audio/ogg";
 
-            default: return "application/octet-stream";
+            default:
+                return "application/octet-stream";
         }
     }
 }

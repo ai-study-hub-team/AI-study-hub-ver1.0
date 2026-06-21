@@ -1,15 +1,9 @@
 import { NavLink, useNavigate } from "react-router";
 import { FcGoogle } from "react-icons/fc";
-import {
-  Mail,
-  Lock,
-  Github,
-  ArrowRight,
-  Eye,
-  EyeOff,
-} from "lucide-react";
-import { useState } from "react";
+import { Mail, Lock, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
+import { loginApi } from "../../services/authApi";
 
 export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -20,33 +14,102 @@ export function LoginPage() {
 
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (!email.trim() || !password.trim()) {
+      toast.error("Please enter email and password");
+      return;
+    }
+
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      const res = await loginApi(email, password);
 
-      if (
-        email === "admin@gmail.com" &&
-        password === "123"
-      ) {
-        toast.success("Welcome Admin!");
+      console.log("Login response:", res.data);
+
+      const accessToken =
+        res.data.accessToken ||
+        res.data.token ||
+        res.data.jwt;
+
+      const refreshToken = res.data.refreshToken;
+
+      const userId =
+        res.data.userId ||
+        res.data.id ||
+        res.data.user?.id;
+
+      const role =
+        res.data.role ||
+        res.data.user?.role ||
+        res.data.user?.roles?.[0];
+
+      const fullName =
+        res.data.fullName ||
+        res.data.user?.fullName ||
+        res.data.user?.name ||
+        "";
+
+      const userEmail =
+        res.data.email ||
+        res.data.user?.email ||
+        email;
+
+      if (accessToken) {
+        localStorage.setItem("token", accessToken);
+        localStorage.setItem("accessToken", accessToken);
+      }
+
+      if (refreshToken) {
+        localStorage.setItem("refreshToken", refreshToken);
+      }
+
+      if (userId) {
+        localStorage.setItem("userId", String(userId));
+      }
+
+      if (role) {
+        localStorage.setItem("role", role);
+      }
+
+      if (userEmail) {
+        localStorage.setItem("email", userEmail);
+      }
+
+      if (fullName) {
+        localStorage.setItem("fullName", fullName);
+      }
+
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          id: userId,
+          email: userEmail,
+          fullName,
+          role,
+        })
+      );
+
+      toast.success("Login successful!");
+
+      if (role === "ADMIN" || role === "ROLE_ADMIN") {
         navigate("/admin");
-        return;
-      }
-
-      if (
-        email === "user@gmail.com" &&
-        password === "123"
-      ) {
-        toast.success("Welcome User!");
+      } else {
         navigate("/app/dashboard");
-        return;
       }
+    } catch (error: any) {
+      console.error("Login error:", error);
 
-      toast.error("Invalid email or password");
-    }, 1000);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Invalid email or password"
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -57,6 +120,7 @@ export function LoginPage() {
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
               A
             </div>
+
             <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
               AI Study Hub
             </span>
@@ -65,6 +129,7 @@ export function LoginPage() {
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2">
             Welcome Back!
           </h1>
+
           <p className="text-slate-500 dark:text-slate-400">
             Sign in to continue your learning journey
           </p>
@@ -97,9 +162,12 @@ export function LoginPage() {
                   Password
                 </label>
 
-                <NavLink to="/forgot-password" className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300">
-                    Forgot password?
-                 </NavLink>
+                <NavLink
+                  to="/forgot-password"
+                  className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                >
+                  Forgot password?
+                </NavLink>
               </div>
 
               <div className="relative group">
@@ -116,7 +184,7 @@ export function LoginPage() {
 
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setShowPassword((prev) => !prev)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                 >
                   {showPassword ? (
@@ -139,7 +207,7 @@ export function LoginPage() {
 
             <div className="relative my-8">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-200 dark:border-slate-700"></div>
+                <div className="w-full border-t border-slate-200 dark:border-slate-700" />
               </div>
 
               <div className="relative flex justify-center text-xs uppercase">
@@ -149,20 +217,18 @@ export function LoginPage() {
               </div>
             </div>
 
-            <div>
-         <button
-            type="button"
-            className="w-full flex items-center justify-center gap-3 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-semibold text-slate-900 dark:text-white"
-  >
-             <FcGoogle className="w-5 h-5" />
-                   Continue with Google
-         </button>
-            </div>
+            <button
+              type="button"
+              className="w-full flex items-center justify-center gap-3 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-semibold text-slate-900 dark:text-white"
+            >
+              <FcGoogle className="w-5 h-5" />
+              Continue with Google
+            </button>
           </form>
         </div>
 
         <p className="text-center mt-8 text-slate-500 dark:text-slate-400 font-medium">
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <NavLink
             to="/register"
             className="text-blue-600 dark:text-blue-400 font-bold hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
