@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 import {
   CheckCircle2,
   ChevronRight,
@@ -51,6 +52,7 @@ const formatUploadedAt = (date: string | undefined) => {
 };
 
 export function UploadDocumentsPage() {
+  const navigate = useNavigate();
   const [step, setStep] = useState<UploadStep>(1);
   const [files, setFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -64,8 +66,20 @@ export function UploadDocumentsPage() {
 
   const loadCategories = useCallback(async () => {
     try {
+      const userId = getCurrentUserId();
+
+      if (!userId) {
+        toast.error("Please login again.");
+        return;
+      }
+
       const response = await categoryApi.getCategories();
-      setCategories(response.data ?? []);
+
+      setCategories(
+        (response.data ?? []).filter(
+          (category) => Number(category.userId) === userId,
+        ),
+      );
     } catch (error) {
       console.error("Cannot load categories:", error);
       toast.error("Cannot load categories.");
@@ -74,12 +88,21 @@ export function UploadDocumentsPage() {
 
   const loadRecentUploads = useCallback(async () => {
     try {
+      const userId = getCurrentUserId();
+
+      if (!userId) {
+        toast.error("Please login again.");
+        return;
+      }
+
       const response = await documentApi.getDocuments({
+        userId,
         page: 0,
         size: 20,
       });
 
-      const mappedUploads = response.data.content
+      const mappedUploads = (response.data.content ?? [])
+        .filter((document) => Number(document.userId) === userId)
         .sort((left, right) => {
           const leftDate = new Date(left.uploadedAt || "").getTime();
           const rightDate = new Date(right.uploadedAt || "").getTime();
@@ -131,11 +154,23 @@ export function UploadDocumentsPage() {
     }
 
     if (step === 1) {
+      if (categories.length === 0) {
+        toast.error("Please create a category before uploading documents.");
+        navigate("/app/categories");
+        return;
+      }
+
       setStep(2);
       return;
     }
 
     if (step === 2) {
+      if (categories.length === 0) {
+        toast.error("Please create a category before uploading documents.");
+        navigate("/app/categories");
+        return;
+      }
+
       if (!details.categoryId) {
         toast.error("Please select a category.");
         return;
@@ -239,6 +274,23 @@ export function UploadDocumentsPage() {
                     Select a category and add notes for this upload.
                   </p>
                 </div>
+
+                {categories.length === 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+                    <h3 className="font-bold text-amber-900 dark:text-amber-200">
+                      No categories yet
+                    </h3>
+                    <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                      Please create a category before uploading documents.
+                    </p>
+                    <button
+                      onClick={() => navigate("/app/categories")}
+                      className="mt-3 rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700"
+                    >
+                      Create Category
+                    </button>
+                  </div>
+                )}
 
                 <UploadFileList files={files} onRemove={removeFile} />
 

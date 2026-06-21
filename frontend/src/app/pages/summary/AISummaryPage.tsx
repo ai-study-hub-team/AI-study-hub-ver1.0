@@ -53,7 +53,14 @@ export function AISummaryPage() {
   useEffect(() => {
     const fetchDocuments = async () => {
       try {
-        const data = await documentApi.getAllDocumentsForSelect();
+        const userId = getCurrentUserId();
+
+        if (!userId) {
+          toast.error("Please login again.");
+          return;
+        }
+
+        const data = await documentApi.getAllDocumentsForSelect(userId);
         setDocuments(data);
 
         if (data.length > 0) {

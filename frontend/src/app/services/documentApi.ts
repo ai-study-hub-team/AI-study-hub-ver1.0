@@ -11,6 +11,7 @@ import type {
 } from "../types/documents/types";
 
 export interface GetDocumentsParams {
+  userId?: number;
   page?: number;
   size?: number;
   keyword?: string;
@@ -58,6 +59,7 @@ export interface UpdateDocumentPayload {
 
 export interface SearchDocumentsParams {
   keyword: string;
+  userId?: number;
   page?: number;
   size?: number;
 }
@@ -133,6 +135,10 @@ export const documentApi = {
         ...response,
         data: mapPageDocumentResponse(response.data),
       }));
+  },
+
+  getDocumentsByUserId(userId: number, params?: GetDocumentsParams) {
+    return this.getDocuments({ ...params, userId });
   },
 
   // GET /api/documents/{id}
@@ -234,12 +240,13 @@ export const documentApi = {
   },
 
   // Dùng cho dropdown/select
-  getAllDocumentsForSelect() {
+  getAllDocumentsForSelect(userId: number) {
     return api
       .get<PageDocumentResponse>("/api/documents", {
         params: {
           page: 0,
           size: 100,
+          userId,
         },
       })
       .then((response) =>

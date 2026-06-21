@@ -5,6 +5,30 @@ import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { loginApi } from "../../services/authApi";
 
+type JwtPayload = {
+  id?: number | string;
+  userId?: number | string;
+  role?: string;
+  roles?: string[];
+  fullName?: string;
+  name?: string;
+  email?: string;
+};
+
+const decodeJwtPayload = (token?: string): JwtPayload => {
+  try {
+    const encodedPayload = token?.split(".")[1];
+
+    if (!encodedPayload) return {};
+
+    return JSON.parse(
+      atob(encodedPayload.replace(/-/g, "+").replace(/_/g, "/")),
+    ) as JwtPayload;
+  } catch {
+    return {};
+  }
+};
+
 export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -33,29 +57,49 @@ export function LoginPage() {
         res.data.accessToken ||
         res.data.token ||
         res.data.jwt;
+      const tokenPayload = decodeJwtPayload(accessToken);
 
       const refreshToken = res.data.refreshToken;
 
       const userId =
         res.data.userId ||
         res.data.id ||
-        res.data.user?.id;
+        res.data.user?.id ||
+        res.data.user?.userId ||
+        tokenPayload.id ||
+        tokenPayload.userId;
 
       const role =
         res.data.role ||
         res.data.user?.role ||
-        res.data.user?.roles?.[0];
+        res.data.user?.roles?.[0] ||
+        tokenPayload.role ||
+        tokenPayload.roles?.[0];
 
       const fullName =
         res.data.fullName ||
         res.data.user?.fullName ||
         res.data.user?.name ||
+        tokenPayload.fullName ||
+        tokenPayload.name ||
         "";
 
       const userEmail =
         res.data.email ||
         res.data.user?.email ||
+        tokenPayload.email ||
         email;
+
+      localStorage.removeItem("token");
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("jwt");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("userId");
+      localStorage.removeItem("role");
+      localStorage.removeItem("email");
+      localStorage.removeItem("fullName");
+      localStorage.removeItem("name");
+      localStorage.removeItem("user");
 
       if (accessToken) {
         localStorage.setItem("token", accessToken);
@@ -84,12 +128,23 @@ export function LoginPage() {
 
       localStorage.setItem(
         "user",
-        JSON.stringify({
-          id: userId,
-          email: userEmail,
-          fullName,
-          role,
-        })
+        JSON.stringify(
+          res.data.user
+            ? {
+                ...res.data.user,
+                id: res.data.user.id ?? res.data.user.userId ?? userId,
+                email: res.data.user.email ?? userEmail,
+                fullName:
+                  res.data.user.fullName ?? res.data.user.name ?? fullName,
+                role: res.data.user.role ?? res.data.user.roles?.[0] ?? role,
+              }
+            : {
+                id: userId,
+                email: userEmail,
+                fullName,
+                role,
+              },
+        ),
       );
 
       toast.success("Login successful!");
