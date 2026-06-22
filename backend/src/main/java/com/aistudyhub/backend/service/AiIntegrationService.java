@@ -28,10 +28,18 @@ public class AiIntegrationService {
 
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository documentChunkRepository;
+    private final PgvectorSearchService pgvectorSearchService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
     private String aiServiceBaseUrl;
+
+    /**
+     * Active vector store backend. Matches the {@code vector.store} property.
+     * Defaults to "pgvector" to align with the current migration state.
+     */
+    @Value("${vector.store:pgvector}")
+    private String vectorStore;
 
     // ─── Main entry point ─────────────────────────────────────────────────────
 
@@ -74,6 +82,13 @@ public class AiIntegrationService {
                     log.info("Python returned PROCESSED for document ID: {}", documentId);
                     log.info("Text length: {} | Preview: {}", body.get("textLength"), body.get("previewText"));
 
+                    // Log vector storage result from Python (informational)
+                    Boolean vectorStored = (Boolean) body.get("vectorStored");
+                    Object vectorCount  = body.get("vectorCount");
+                    Object vectorError  = body.get("vectorError");
+                    log.info("Python vector storage — stored={}, count={}, error={}",
+                            vectorStored, vectorCount, vectorError);
+
                     int savedChunkCount = 0;
                     try {
                         if (body.containsKey("chunks")) {
@@ -97,6 +112,23 @@ public class AiIntegrationService {
                         updateDocumentMetadata(documentId, DocumentProcessStatus.FAILED, errMsg, null);
                         return DocumentProcessStatus.FAILED;
                     }
+
+                    // --- Add Verification ---
+                    if ("pgvector".equalsIgnoreCase(vectorStore)) {
+                        long embeddingCount = pgvectorSearchService.countEmbeddingsByDocumentId(documentId);
+                        if (savedChunkCount <= 0) {
+                             String errMsg = "No chunks were saved from extraction.";
+                             updateDocumentMetadata(documentId, DocumentProcessStatus.FAILED, errMsg, null);
+                             return DocumentProcessStatus.FAILED;
+                        }
+                        if (embeddingCount != savedChunkCount) {
+                             String errMsg = "Embedding count mismatch: expected " + savedChunkCount + " embeddings but found " + embeddingCount + " in pgvector.";
+                             updateDocumentMetadata(documentId, DocumentProcessStatus.FAILED, errMsg, null);
+                             return DocumentProcessStatus.FAILED;
+                        }
+                        log.info("Verified pgvector embedding count: {} (matches chunk count)", embeddingCount);
+                    }
+                    // -------------------------
 
                     log.info("Finalizing document ID: {} → PROCESSED, chunkCount={}", documentId, savedChunkCount);
                     updateDocumentMetadata(documentId, DocumentProcessStatus.PROCESSED, null, savedChunkCount);
@@ -148,11 +180,39 @@ public class AiIntegrationService {
 
     // ─── Save chunks (atomic: delete old → insert new) ────────────────────────
 
+    /**
+     * Atomically replaces all chunks for the given document.
+     *
+     * <p>Steps performed inside a single transaction:
+     * <ol>
+     *   <li>Delete old rows from {@code document_chunks} for this document.</li>
+     *   <li>If {@code vector.store=pgvector}, defensively delete stale rows from
+     *       {@code document_chunk_embeddings} via {@link PgvectorSearchService}.
+     *       This is a safety net — the Python AI service already deletes before
+     *       upserting, but doing it here from Spring ensures no stale embeddings
+     *       survive if chunk counts differ between runs.</li>
+     *   <li>Insert the new chunks.</li>
+     * </ol>
+     *
+     * <p><strong>Note:</strong> This method must be {@code public} for Spring's
+     * proxy-based {@code @Transactional} to work correctly. A {@code protected}
+     * or package-private method is NOT intercepted by the proxy.</p>
+     *
+     * @param documentId  the document being reprocessed
+     * @param chunksData  list of chunk maps as returned by the Python AI service
+     */
     @Transactional
-    protected void saveChunks(Long documentId, List<Map<String, Object>> chunksData) {
+    public void saveChunks(Long documentId, List<Map<String, Object>> chunksData) {
         documentRepository.findById(documentId).ifPresent(document -> {
-            documentChunkRepository.deleteByDocumentId(documentId);
 
+            // Step 1: Delete old document_chunks from the relational DB
+            documentChunkRepository.deleteByDocumentId(documentId);
+            log.info("Deleted old document_chunks for document ID: {}", documentId);
+
+            // Step 2: (Removed) We no longer delete pgvector embeddings here because Python
+            // already does it before upserting. Deleting here would wipe the newly saved embeddings.
+
+            // Step 3: Insert new chunks
             for (Map<String, Object> chunkData : chunksData) {
                 DocumentChunk chunk = DocumentChunk.builder()
                         .document(document)

@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.service;
 
+import com.aistudyhub.backend.dto.python.PythonContextChunk;
 import com.aistudyhub.backend.dto.response.SemanticSearchResponse;
 import com.aistudyhub.backend.dto.response.SemanticSearchResultResponse;
 import com.aistudyhub.backend.entity.DocumentChunk;
@@ -7,10 +8,12 @@ import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.*;
 import java.util.Locale;
@@ -40,6 +43,7 @@ import java.util.stream.Collectors;
 public class SemanticSearchService {
 
     private final DocumentChunkRepository documentChunkRepository;
+    private final PgvectorSearchService   pgvectorSearchService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
@@ -78,94 +82,59 @@ public class SemanticSearchService {
         log.info("Hybrid search — query='{}', documentId={}, topK={}, candidateK={}",
                 query, documentId, topK, candidateK);
 
-        // ── Step 1: Semantic candidates from vector store (via Python) ────────
-        // Map key = "docId_chunkIndex" for deduplication
+        // ── Step 1: Get query embedding from Python /embed-query, then search pgvector directly ──
         Map<String, SemanticSearchResultResponse> candidateMap = new LinkedHashMap<>();
 
-        List<Map<String, Object>> pythonResults = List.of();
         String pythonError = null;
         try {
-            pythonResults = callPythonSemanticSearch(query, documentId, candidateK);
-            log.info("Vector store returned {} semantic candidates.", pythonResults.size());
-        } catch (ResourceAccessException e) {
-            pythonError = "Python AI service is not reachable (" + aiServiceBaseUrl + "): " + e.getMessage();
-            log.warn("Semantic step skipped — {}", pythonError);
+            List<Map<String, Object>> pgvectorRows = callEmbedAndSearch(query, documentId, null, candidateK);
+            log.info("[pgvector direct] Returned {} semantic candidates.", pgvectorRows.size());
+
+            // Batch fetch chunks by docId
+            Map<Long, Set<Integer>> docToIndexes = new HashMap<>();
+            for (Map<String, Object> row : pgvectorRows) {
+                Long   docId = toLong(row.get("document_id"));
+                Integer ci   = toInt(row.get("chunk_index"));
+                if (docId != null && ci != null)
+                    docToIndexes.computeIfAbsent(docId, k -> new HashSet<>()).add(ci);
+            }
+
+            Map<String, DocumentChunk> chunkLookup = new HashMap<>();
+            for (Map.Entry<Long, Set<Integer>> e : docToIndexes.entrySet()) {
+                Long docId = e.getKey();
+                List<DocumentChunk> chunks = documentChunkRepository
+                        .findByDocument_IdAndChunkIndexIn(docId, e.getValue());
+                for (DocumentChunk c : chunks)
+                    chunkLookup.put(docId + ":" + c.getChunkIndex(), c);
+            }
+
+            for (Map<String, Object> row : pgvectorRows) {
+                Long    docId      = toLong(row.get("document_id"));
+                Integer chunkIndex = toInt(row.get("chunk_index"));
+                Double  score      = toDouble(row.get("score"));
+                if (docId == null || chunkIndex == null) continue;
+
+                DocumentChunk c     = chunkLookup.get(docId + ":" + chunkIndex);
+                String chunkText    = c != null ? c.getChunkText() : null;
+                String docTitle     = (c != null && c.getDocument() != null) ? c.getDocument().getTitle() : null;
+                String fileName     = (c != null && c.getDocument() != null
+                        && c.getDocument().getCloudFile() != null)
+                        ? c.getDocument().getCloudFile().getOriginalName() : null;
+
+                String key = docId + "_" + chunkIndex;
+                candidateMap.put(key, SemanticSearchResultResponse.builder()
+                        .documentId(docId.intValue())
+                        .documentTitle(docTitle)
+                        .chunkIndex(chunkIndex)
+                        .score(score)
+                        .chunkText(chunkText)
+                        .originalFileName(fileName)
+                        .source("SEMANTIC")
+                        .build());
+            }
         } catch (Exception e) {
-            pythonError = "Unexpected error calling Python: " + e.getMessage();
+            pythonError = "Embedding/pgvector error: " + e.getMessage();
             log.warn("Semantic step skipped — {}", pythonError);
-        }
-
-        // Group candidates by documentId to fix N+1 query issue
-        Map<Long, Set<Integer>> docToChunkIndexes = new HashMap<>();
-        for (Map<String, Object> item : pythonResults) {
-            Long    docId      = toLong(item.get("documentId"));
-            Integer chunkIndex = toInt(item.get("chunkIndex"));
-            if (docId != null && chunkIndex != null) {
-                docToChunkIndexes.computeIfAbsent(docId, k -> new HashSet<>()).add(chunkIndex);
-            }
-        }
-
-        log.info("Batch fetching chunks for {} documents from PostgreSQL.", docToChunkIndexes.size());
-
-        // Fetch chunks in batch and build lookup map
-        Map<String, DocumentChunk> chunkLookupMap = new HashMap<>();
-        int batchFetches = 0;
-        for (Map.Entry<Long, Set<Integer>> entry : docToChunkIndexes.entrySet()) {
-            Long docId = entry.getKey();
-            Set<Integer> chunkIndexes = entry.getValue();
-            if (!chunkIndexes.isEmpty()) {
-                List<DocumentChunk> chunks = documentChunkRepository.findByDocument_IdAndChunkIndexIn(docId, chunkIndexes);
-                for (DocumentChunk chunk : chunks) {
-                    chunkLookupMap.put(docId + ":" + chunk.getChunkIndex(), chunk);
-                }
-                batchFetches++;
-            }
-        }
-
-        log.info("Performed {} batch fetches from PostgreSQL.", batchFetches);
-
-        // Enrich vector candidates with PostgreSQL chunkText
-        int semanticMysqlHits = 0;
-        for (Map<String, Object> item : pythonResults) {
-            Long    docId      = toLong(item.get("documentId"));
-            Integer chunkIndex = toInt(item.get("chunkIndex"));
-            if (docId == null || chunkIndex == null) continue;
-
-            Double  score      = toDouble(item.get("score"));
-            Integer charStart  = toInt(item.get("charStart"));
-            Integer charEnd    = toInt(item.get("charEnd"));
-            Integer textLength = toInt(item.get("textLength"));
-            String  fileName   = (String) item.get("originalFileName");
-
-            String chunkText    = null;
-            String documentTitle = null;
-            String warning       = null;
-
-            String lookupKey = docId + ":" + chunkIndex;
-            DocumentChunk c = chunkLookupMap.get(lookupKey);
-            if (c != null) {
-                chunkText = c.getChunkText();
-                if (c.getDocument() != null) documentTitle = c.getDocument().getTitle();
-                semanticMysqlHits++;
-            } else {
-                warning = "Chunk not found in PostgreSQL (documentId=" + docId + ", chunkIndex=" + chunkIndex + ")";
-                log.warn("Semantic candidate — {}", warning);
-            }
-
-            String key = docId + "_" + chunkIndex;
-            candidateMap.put(key, SemanticSearchResultResponse.builder()
-                    .documentId(docId.intValue())
-                    .documentTitle(documentTitle)
-                    .chunkIndex(chunkIndex)
-                    .score(score)
-                    .chunkText(chunkText)
-                    .charStart(charStart)
-                    .charEnd(charEnd)
-                    .textLength(textLength)
-                    .originalFileName(fileName)
-                    .warning(warning)
-                    .source("SEMANTIC")
-                    .build());
         }
 
         // ── Step 2: Keyword fallback candidates from PostgreSQL ───────────────
@@ -186,7 +155,7 @@ public class SemanticSearchService {
                 if (docId == null || chunkIndex == null) continue;
 
                 String key = docId + "_" + chunkIndex;
-                if (candidateMap.containsKey(key)) continue; // already in candidates from vector search
+                if (candidateMap.containsKey(key)) continue;
 
                 String documentTitle = c.getDocument() != null ? c.getDocument().getTitle() : null;
                 String fileName = c.getDocument() != null && c.getDocument().getCloudFile() != null
@@ -196,7 +165,7 @@ public class SemanticSearchService {
                         .documentId(docId.intValue())
                         .documentTitle(documentTitle)
                         .chunkIndex(chunkIndex)
-                        .score(0.0)          // no Pinecone score for keyword candidates
+                        .score(0.0)
                         .chunkText(c.getChunkText())
                         .charStart(c.getCharStart())
                         .charEnd(c.getCharEnd())
@@ -208,8 +177,7 @@ public class SemanticSearchService {
             }
         }
 
-        log.info("Candidate pool: {} semantic + {} new keyword = {} total",
-                pythonResults.size(), keywordAdded, candidateMap.size());
+        log.info("Candidate pool: {} total ({} keyword added)", candidateMap.size(), keywordAdded);
 
         // ── Step 3: Score all candidates with keyword boost, sort, trim ───────
         List<String> importantTermsForBoost = importantTerms;
@@ -239,8 +207,8 @@ public class SemanticSearchService {
                 .limit(topK)
                 .collect(Collectors.toList());
 
-        log.info("Returning {} results (from {} candidates). DB semantic hits: {}, keyword added: {}",
-                finalResults.size(), candidateMap.size(), semanticMysqlHits, keywordAdded);
+        log.info("Returning {} results (from {} candidates, {} keyword added).",
+                finalResults.size(), candidateMap.size(), keywordAdded);
 
         return SemanticSearchResponse.builder()
                 .query(query)
@@ -252,38 +220,46 @@ public class SemanticSearchService {
                 .build();
     }
 
-    // ─── Internal: call Python /semantic-search ───────────────────────────────
+    // ─── Internal: call Python /embed-query then search pgvector directly ─────
+
+    /**
+     * Get a query embedding from Python /embed-query, then query pgvector directly
+     * via PgvectorSearchService.searchByEmbedding().
+     * This replaces the old Python /semantic-search flow.
+     */
+    private List<Map<String, Object>> callEmbedAndSearch(
+            String query, Long documentId, List<Long> documentIds, int topK) {
+
+        // Step A: Get embedding from Python
+        float[] embedding = callEmbedQuery(query);
+
+        // Step B: Query pgvector directly from Spring Boot via JDBC
+        return pgvectorSearchService.searchByEmbedding(embedding, documentId, documentIds, topK);
+    }
 
     @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> callPythonSemanticSearch(
-            String query, Long documentId, int candidateK) {
+    private float[] callEmbedQuery(String text) {
+        String url = aiServiceBaseUrl + "/embed-query";
+        log.info("[embed-query] Calling Python at {} for text (len={})", url, text.length());
 
-        UriComponentsBuilder uriBuilder = UriComponentsBuilder
-                .fromHttpUrl(aiServiceBaseUrl + "/semantic-search")
-                .queryParam("query", query)
-                .queryParam("topK",  candidateK);
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        java.util.Map<String, String> body = java.util.Map.of("text", text);
+        org.springframework.http.HttpEntity<java.util.Map<String, String>> entity =
+                new org.springframework.http.HttpEntity<>(body, headers);
 
-        if (documentId != null) uriBuilder.queryParam("documentId", documentId);
+        org.springframework.http.ResponseEntity<java.util.Map> resp =
+                restTemplate.postForEntity(url, entity, java.util.Map.class);
 
-        String url = uriBuilder.toUriString();
-        log.info("Calling Python semantic-search (candidateK={}): {}", candidateK, url);
-
-        @SuppressWarnings("rawtypes")
-        Map response = restTemplate.getForObject(url, Map.class);
-
-        if (response == null) {
-            log.warn("Python semantic-search returned null body.");
-            return List.of();
-        }
-        if (response.containsKey("error") && response.get("error") != null) {
-            log.error("Python semantic-search error: {}", response.get("error"));
+        if (resp.getBody() == null || !resp.getBody().containsKey("embedding")) {
+            throw new RuntimeException("Python /embed-query returned invalid response");
         }
 
-        Object resultsObj = response.get("results");
-        if (resultsObj instanceof List<?>) {
-            return (List<Map<String, Object>>) resultsObj;
-        }
-        return List.of();
+        java.util.List<Number> embList = (java.util.List<Number>) resp.getBody().get("embedding");
+        float[] arr = new float[embList.size()];
+        for (int i = 0; i < embList.size(); i++) arr[i] = embList.get(i).floatValue();
+        log.info("[embed-query] Received embedding dim={}", arr.length);
+        return arr;
     }
 
     // ─── Vietnamese keyword extraction (stopword removal) ─────────────────────
@@ -435,7 +411,145 @@ public class SemanticSearchService {
                 .collect(Collectors.toList());
     }
 
-    // ─── Type-safe converters (Python JSON numbers may be Integer or Double) ──
+    // ─── Internal: Chat AI context retrieval ─────────────────────────────────
+    // Called by ChatSessionService instead of delegating retrieval to Python.
+    // Returns up to topK resolved chunks (full text) filtered to documentIds.
+
+    /**
+     * Perform hybrid semantic search scoped to the provided list of document IDs.
+     * Used by Chat AI to prepare context chunks before calling Python /generate-answer.
+     *
+     * @param query       The user's question.
+     * @param documentIds List of document IDs to restrict search to (1–5).
+     * @param topK        Number of chunks to return (typically 5).
+     * @return List of PythonContextChunk with full chunk text resolved from PostgreSQL.
+     */
+    public List<PythonContextChunk> retrieveForChat(String query, List<Long> documentIds, int topK) {
+        if (query == null || query.isBlank() || documentIds == null || documentIds.isEmpty()) {
+            return List.of();
+        }
+        if (topK < 1) topK = 5;
+
+        // candidateK: wider pool so reranking is more effective
+        int candidateK = Math.min(Math.max(topK * 5, 30), MAX_CANDIDATE);
+        log.info("[Chat RAG] retrieveForChat — query='{}', documentIds={}, topK={}, candidateK={}",
+                query, documentIds, topK, candidateK);
+
+        Map<String, SemanticSearchResultResponse> candidateMap = new LinkedHashMap<>();
+
+        // ── Step 1: Embed query → pgvector direct search ─────────────────────
+        for (Long docId : documentIds) {
+            try {
+                List<Map<String, Object>> rows =
+                        callEmbedAndSearch(query, docId, null, candidateK);
+                log.info("[Chat RAG] pgvector direct returned {} rows for docId={}.", rows.size(), docId);
+
+                Set<Integer> chunkIndexes = new HashSet<>();
+                for (Map<String, Object> row : rows) {
+                    Integer ci = toInt(row.get("chunk_index"));
+                    if (ci != null) chunkIndexes.add(ci);
+                }
+
+                Map<String, DocumentChunk> chunkLookup = new HashMap<>();
+                if (!chunkIndexes.isEmpty()) {
+                    List<DocumentChunk> chunks = documentChunkRepository
+                            .findByDocument_IdAndChunkIndexIn(docId, chunkIndexes);
+                    for (DocumentChunk c : chunks)
+                        chunkLookup.put(docId + ":" + c.getChunkIndex(), c);
+                }
+
+                for (Map<String, Object> row : rows) {
+                    Integer chunkIndex = toInt(row.get("chunk_index"));
+                    Double  score      = toDouble(row.get("score"));
+                    if (chunkIndex == null) continue;
+
+                    DocumentChunk c    = chunkLookup.get(docId + ":" + chunkIndex);
+                    String chunkText   = c != null ? c.getChunkText() : null;
+                    String docTitle    = (c != null && c.getDocument() != null)
+                            ? c.getDocument().getTitle() : null;
+
+                    String key = docId + "_" + chunkIndex;
+                    candidateMap.putIfAbsent(key, SemanticSearchResultResponse.builder()
+                            .documentId(docId.intValue())
+                            .documentTitle(docTitle)
+                            .chunkIndex(chunkIndex)
+                            .score(score)
+                            .chunkText(chunkText)
+                            .source("SEMANTIC")
+                            .build());
+                }
+            } catch (Exception e) {
+                log.warn("[Chat RAG] Vector search failed for docId={}: {}. Falling back to keyword only.",
+                        docId, e.getMessage());
+            }
+        }
+
+        // ── Step 2: Keyword fallback per document ─────────────────────────────
+        List<String> importantTerms = extractImportantTerms(query);
+        if (!importantTerms.isEmpty()) {
+            String phrase = String.join(" ", importantTerms);
+            for (Long docId : documentIds) {
+                try {
+                    List<DocumentChunk> keywordChunks = documentChunkRepository
+                            .findByDocumentIdAndChunkTextContainingIgnoreCaseOrderByChunkIndexAsc(docId, phrase);
+                    for (DocumentChunk c : keywordChunks) {
+                        String key = docId + "_" + c.getChunkIndex();
+                        if (!candidateMap.containsKey(key)) {
+                            String docTitle = c.getDocument() != null ? c.getDocument().getTitle() : null;
+                            candidateMap.put(key, SemanticSearchResultResponse.builder()
+                                    .documentId(docId.intValue())
+                                    .documentTitle(docTitle)
+                                    .chunkIndex(c.getChunkIndex())
+                                    .score(0.0)
+                                    .chunkText(c.getChunkText())
+                                    .source("KEYWORD")
+                                    .build());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("[Chat RAG] Keyword fallback failed for docId={}: {}", docId, e.getMessage());
+                }
+            }
+        }
+
+        // ── Step 3: Score with keyword boost, sort, trim ──────────────────────
+        List<String> termsForBoost = importantTerms;
+        int finalTopK = topK;
+        List<PythonContextChunk> results = candidateMap.values().stream()
+                .map(r -> {
+                    double boost = calculateKeywordBoost(query, termsForBoost,
+                            r.getChunkText(), r.getDocumentTitle(), r.getOriginalFileName());
+                    double base = r.getScore() != null ? r.getScore() : 0.0;
+                    return new Object[]{r, base + boost};
+                })
+                .sorted((a, b) -> Double.compare((double) b[1], (double) a[1]))
+                .limit(finalTopK)
+                .map(pair -> {
+                    SemanticSearchResultResponse r = (SemanticSearchResultResponse) pair[0];
+                    double finalScore = (double) pair[1];
+                    return PythonContextChunk.builder()
+                            .documentId((long) r.getDocumentId())
+                            .documentTitle(r.getDocumentTitle())
+                            .chunkIndex(r.getChunkIndex())
+                            .chunkText(r.getChunkText())
+                            .score(finalScore)
+                            .sourceLabel("Chunk " + r.getChunkIndex())
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        log.info("[Chat RAG] retrieveForChat returned {} context chunks from {} candidates.",
+                results.size(), candidateMap.size());
+        return results;
+    }
+
+    private Double toDouble(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof Double)  return (Double) obj;
+        if (obj instanceof Integer) return ((Integer) obj).doubleValue();
+        if (obj instanceof Long)    return ((Long) obj).doubleValue();
+        return Double.parseDouble(obj.toString());
+    }
 
     private Long toLong(Object obj) {
         if (obj == null) return null;
@@ -452,12 +566,5 @@ public class SemanticSearchService {
         if (obj instanceof Double)  return ((Double) obj).intValue();
         return Integer.parseInt(obj.toString());
     }
-
-    private Double toDouble(Object obj) {
-        if (obj == null) return null;
-        if (obj instanceof Double)  return (Double) obj;
-        if (obj instanceof Integer) return ((Integer) obj).doubleValue();
-        if (obj instanceof Long)    return ((Long) obj).doubleValue();
-        return Double.parseDouble(obj.toString());
-    }
 }
+

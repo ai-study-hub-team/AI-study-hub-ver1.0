@@ -17,7 +17,6 @@ import lombok.extern.slf4j.Slf4j;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -230,6 +229,17 @@ public class DocumentService {
 
     // ─── Reprocess Document ────────────────────────────────────────────────────
 
+    /**
+     * Synchronously reprocesses an existing document through the full AI pipeline:
+     * text extraction → chunking → embedding → pgvector upsert → chunk save.
+     *
+     * <p>Unlike upload (which is async), reprocess is synchronous so the caller
+     * receives the final {@code PROCESSED} or {@code FAILED} status immediately.</p>
+     *
+     * <p>Pre-flight validation errors (document deleted, missing file, etc.) mark
+     * the document as {@code FAILED} before re-throwing, so the status is never
+     * left stuck on {@code PROCESSING}.</p>
+     */
     public DocumentResponse reprocessDocument(Long id) {
         Document document = documentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Document not found with id: " + id));
@@ -240,18 +250,31 @@ public class DocumentService {
 
         CloudFile cloudFile = document.getCloudFile();
         if (cloudFile == null || cloudFile.getFileUrl() == null) {
+            markFailed(document, "Document file metadata not found");
             throw new RuntimeException("Document file metadata not found");
         }
 
         java.nio.file.Path path = java.nio.file.Paths.get(cloudFile.getFileUrl()).toAbsolutePath();
         if (!java.nio.file.Files.exists(path)) {
+            markFailed(document, "Physical file does not exist at path: " + path);
             throw new RuntimeException("Physical file does not exist at path: " + path);
         }
 
-        long oldChunkCount = documentChunkRepository.countByDocumentId(id);
-        log.info("Reprocessing document ID: {}. Old chunk count: {}. File path sent: {}", 
-                 id, oldChunkCount, path);
+        // Set status to PROCESSING immediately so the UI reflects the in-progress state
+        document.setProcessStatus(DocumentProcessStatus.PROCESSING);
+        document.setProcessErrorMessage(null);
+        document.setUpdatedAt(LocalDateTime.now());
+        documentRepository.save(document);
 
+        long oldChunkCount = documentChunkRepository.countByDocumentId(id);
+        log.info("Reprocessing document ID: {}. Old chunk count: {}. File path sent: {}",
+                id, oldChunkCount, path);
+
+        // Delegate to AiIntegrationService which handles:
+        //  - calling the Python /process-document endpoint
+        //  - deleting old document_chunks + pgvector embeddings
+        //  - inserting new chunks
+        //  - setting final status (PROCESSED or FAILED)
         DocumentProcessStatus processStatus = aiIntegrationService.processDocument(
                 document.getId(),
                 cloudFile.getFileName(),
@@ -262,10 +285,24 @@ public class DocumentService {
 
         document = documentRepository.findById(id).orElseThrow();
         long newChunkCount = documentChunkRepository.countByDocumentId(id);
-        log.info("Finished reprocessing document ID: {}. Final status: {}. New chunk count: {}", 
-                 id, processStatus, newChunkCount);
+        log.info("Finished reprocessing document ID: {}. Final status: {}. New chunk count: {}",
+                id, processStatus, newChunkCount);
 
         return toResponse(document);
+    }
+
+    /** Marks a document as FAILED with an error message (pre-flight validation helper). */
+    private void markFailed(Document document, String errorMessage) {
+        try {
+            document.setProcessStatus(DocumentProcessStatus.FAILED);
+            document.setProcessErrorMessage(errorMessage);
+            document.setProcessedAt(LocalDateTime.now());
+            document.setUpdatedAt(LocalDateTime.now());
+            documentRepository.save(document);
+        } catch (Exception ex) {
+            log.error("Could not persist FAILED status for document ID {}: {}",
+                    document.getId(), ex.getMessage());
+        }
     }
 
     // ─── Search ────────────────────────────────────────────────────────────────

@@ -9,6 +9,10 @@ import com.aistudyhub.backend.repository.*;
 import lombok.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
@@ -17,39 +21,55 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Handles Chat AI sessions, message persistence, and answer generation.
+ *
+ * <p><b>Two-mode flow:</b>
+ * <ol>
+ *   <li><b>GENERAL_CHAT</b>: no documentIds → call /generate-answer directly (no pgvector).</li>
+ *   <li><b>DOCUMENT_CHAT</b>: documentIds resolved → call /analyze-chat-query (planner),
+ *       route retrieval, call /generate-answer with context chunks.</li>
+ * </ol>
+ * DocumentIds are resolved in priority order:
+ * request.documentIds → session attached docs → empty (GENERAL_CHAT).
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class ChatSessionService {
 
-    private final ChatSessionRepository chatSessionRepository;
-    private final UserRepository userRepository;
-    private final DocumentRepository documentRepository;
-    private final ChatSessionDocumentRepository chatSessionDocumentRepository;
-    private final ChatMessageRepository chatMessageRepository;
-    private final AiCitationRepository aiCitationRepository;
-    private final DocumentChunkRepository documentChunkRepository;
+    private final ChatSessionRepository           chatSessionRepository;
+    private final UserRepository                  userRepository;
+    private final DocumentRepository              documentRepository;
+    private final ChatSessionDocumentRepository   chatSessionDocumentRepository;
+    private final ChatMessageRepository           chatMessageRepository;
+    private final AiCitationRepository            aiCitationRepository;
+    private final DocumentChunkRepository         documentChunkRepository;
+    private final SemanticSearchService           semanticSearchService;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
     private String aiServiceBaseUrl;
 
+    private static final int CHAT_TOP_K    = 5;
+    /** For OVERVIEW: max chars of chunk text to include per chunk. */
+    private static final int OVERVIEW_CHUNK_CHAR_LIMIT = 1000;
+    /** For OVERVIEW: how many ordered chunks to build context from. */
+    private static final int OVERVIEW_MAX_CHUNKS = 20;
+
     // ─── Create Chat Session ────────────────────────────────────────────────────
 
     @Transactional
     public CreateChatSessionResponse createChatSession(CreateChatSessionRequest request) {
-        // 1. Find User — throw if not found
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new RuntimeException(
                         "User not found with id: " + request.getUserId()));
 
-        // 2. Determine title — use provided title or fall back to "New Chat"
         String title = (request.getTitle() == null || request.getTitle().isBlank())
                 ? "New Chat"
                 : request.getTitle();
 
-        // 3. Create and save an empty ChatSession
         LocalDateTime now = LocalDateTime.now();
         ChatSession chatSession = ChatSession.builder()
                 .sessionId(UUID.randomUUID().toString())
@@ -61,7 +81,6 @@ public class ChatSessionService {
 
         ChatSession savedSession = chatSessionRepository.save(chatSession);
 
-        // 4. Return response
         return CreateChatSessionResponse.builder()
                 .sessionId(savedSession.getSessionId())
                 .userId(user.getId())
@@ -74,66 +93,62 @@ public class ChatSessionService {
 
     @Transactional
     public ChatAskResponse askChatbot(ChatAskRequest request) {
-        log.info("Processing askChatbot request for session: {}", request.getSessionId());
+        log.info("Processing askChatbot for session: {}", request.getSessionId());
 
         // 1. Validate User
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new RuntimeException(
                         "User not found with id: " + request.getUserId()));
 
-        // 2. Validate Session
+        // 2. Validate Session & ownership
         ChatSession chatSession = chatSessionRepository.findById(request.getSessionId())
                 .orElseThrow(() -> new RuntimeException(
                         "Chat session not found with id: " + request.getSessionId()));
 
-        // Check if session belongs to the requesting user
         if (!chatSession.getUser().getId().equals(user.getId())) {
             throw new RuntimeException("This chat session does not belong to the user.");
         }
 
-        // 3. Validate document IDs list
-        List<Long> documentIds = request.getDocumentIds();
-        if (documentIds == null || documentIds.isEmpty()) {
-            throw new RuntimeException("Document IDs list must not be empty.");
-        }
-        if (documentIds.size() > 5) {
-            throw new RuntimeException("Cannot select more than 5 documents per question.");
-        }
+        // 3. Resolve active documentIds (request → session → empty)
+        List<Long> activeDocumentIds = resolveDocumentIds(request, chatSession);
+        boolean hasDocuments = !activeDocumentIds.isEmpty();
+        log.info("[Chat] resolved documentIds={} (hasDocuments={})", activeDocumentIds, hasDocuments);
 
-        // 4. Find, validate existence, and check processStatus for each document
+        // 4. Validate documents if present
         List<Document> documents = new ArrayList<>();
-        for (Long docId : documentIds) {
-            Document doc = documentRepository.findById(docId)
-                    .orElseThrow(() -> new RuntimeException("Document not found with id: " + docId));
-
-            // Check if document has finished AI processing
-            if (doc.getProcessStatus() != DocumentProcessStatus.PROCESSED) {
-                throw new RuntimeException("Document is not processed yet.");
+        if (hasDocuments) {
+            if (activeDocumentIds.size() > 5) {
+                throw new RuntimeException("Cannot select more than 5 documents per question.");
+            }
+            for (Long docId : activeDocumentIds) {
+                Document doc = documentRepository.findById(docId)
+                        .orElseThrow(() -> new RuntimeException("Document not found with id: " + docId));
+                if (doc.getProcessStatus() != DocumentProcessStatus.PROCESSED) {
+                    throw new RuntimeException("Document " + docId + " is not processed yet.");
+                }
+                documents.add(doc);
             }
 
-            documents.add(doc);
-        }
-
-        // 5. Link new documents to session if they aren't already linked
-        List<ChatSessionDocument> existingDocs = chatSessionDocumentRepository
-                .findByChatSessionSessionId(chatSession.getSessionId());
-        Set<Long> existingDocIds = existingDocs.stream()
-                .map(d -> d.getDocument().getId())
-                .collect(Collectors.toSet());
-
-        for (Document doc : documents) {
-            if (!existingDocIds.contains(doc.getId())) {
-                ChatSessionDocument sessionDoc = ChatSessionDocument.builder()
-                        .id(UUID.randomUUID().toString())
-                        .chatSession(chatSession)
-                        .document(doc)
-                        .createdAt(LocalDateTime.now())
-                        .build();
-                chatSessionDocumentRepository.save(sessionDoc);
+            // 5. Link new documents to session if not already linked
+            List<ChatSessionDocument> existingDocs = chatSessionDocumentRepository
+                    .findByChatSessionSessionId(chatSession.getSessionId());
+            Set<Long> existingDocIds = existingDocs.stream()
+                    .map(d -> d.getDocument().getId())
+                    .collect(Collectors.toSet());
+            for (Document doc : documents) {
+                if (!existingDocIds.contains(doc.getId())) {
+                    chatSessionDocumentRepository.save(
+                            ChatSessionDocument.builder()
+                                    .id(UUID.randomUUID().toString())
+                                    .chatSession(chatSession)
+                                    .document(doc)
+                                    .createdAt(LocalDateTime.now())
+                                    .build());
+                }
             }
         }
 
-        // 6. Retrieve message history BEFORE saving the new question (so the question itself is not in history context)
+        // 6. Build chat history (before saving current message)
         List<ChatMessage> historyMessages = chatMessageRepository
                 .findByChatSessionSessionIdOrderByCreatedAtAsc(chatSession.getSessionId());
         List<PythonMessage> pythonHistory = historyMessages.stream()
@@ -143,7 +158,7 @@ public class ChatSessionService {
                         .build())
                 .collect(Collectors.toList());
 
-        // 7. Save user message in DB
+        // 7. Save USER message
         ChatMessage userMessage = ChatMessage.builder()
                 .messageId(UUID.randomUUID().toString())
                 .chatSession(chatSession)
@@ -153,49 +168,76 @@ public class ChatSessionService {
                 .build();
         ChatMessage savedUserMessage = chatMessageRepository.save(userMessage);
 
-        // 8. Call Python AI Service
-        PythonChatRequest pythonRequest = PythonChatRequest.builder()
-                .sessionId(chatSession.getSessionId())
-                .question(request.getQuestion())
-                .documentIds(documentIds)
-                .history(pythonHistory)
-                .build();
-
-        String url = aiServiceBaseUrl + "/chat";
+        // ── 8. Route: GENERAL_CHAT vs DOCUMENT_CHAT ──────────────────────────
         String answer;
-        List<PythonCitation> pythonCitations = new ArrayList<>();
+        List<PythonContextChunk> contextChunks = List.of();
 
-        try {
-            log.info("Sending chat request to Python service: {}", url);
-            PythonChatResponse pythonResponse = restTemplate.postForObject(url, pythonRequest,
-                    PythonChatResponse.class);
-            if (pythonResponse != null && pythonResponse.getAnswer() != null) {
-                answer = pythonResponse.getAnswer();
-                if (pythonResponse.getCitations() != null) {
-                    pythonCitations = pythonResponse.getCitations();
-                }
-            } else {
-                throw new RuntimeException("Empty response body from Python AI service");
-            }
-        } catch (Exception e) {
-            log.error("Error communicating with Python AI service at {}: {}", url, e.getMessage());
-            // Fallback mock response so system remains testable without Python running
-            answer = "This is a fallback mock answer because the Python AI service at " + url
-                    + " is unreachable or returned an error. Question asked: \""
-                    + request.getQuestion() + "\".";
+        if (!hasDocuments) {
+            // ── GENERAL CHAT MODE ──────────────────────────────────────────────
+            log.info("[Chat] mode=GENERAL_CHAT — skipping semantic search and pgvector.");
+            answer = callGenerateAnswer(
+                    request.getQuestion(), null, ChatIntent.GENERAL_CHAT.name(),
+                    pythonHistory, List.of(), false);
 
-            // Generate a mock citation if documentIds exist
-            if (!documentIds.isEmpty()) {
-                pythonCitations.add(PythonCitation.builder()
-                        .documentId(documentIds.get(0))
-                        .chunkIndex(0)
-                        .score(0.95)
-                        .previewText("This is a mock preview text generated as a fallback citation.")
-                        .build());
+        } else {
+            // ── DOCUMENT CHAT MODE ─────────────────────────────────────────────
+            // Step 8a: call planner
+            PythonAnalyzeChatQueryResponse plan = callAnalyzeChatQuery(
+                    request.getQuestion(), pythonHistory, true, activeDocumentIds.size());
+            log.info("[Chat] planner — intent={}, strategy={}, rewritten='{}', confidence={}",
+                    plan.getIntent(), plan.getRetrievalStrategy(),
+                    plan.getRewrittenQuestion(), plan.getConfidence());
+
+            ChatIntent intent = safeChatIntent(plan.getIntent());
+            RetrievalStrategy strategy = safeRetrievalStrategy(plan.getRetrievalStrategy());
+            String effectiveQuestion = (plan.getRewrittenQuestion() != null
+                    && !plan.getRewrittenQuestion().isBlank())
+                    ? plan.getRewrittenQuestion()
+                    : request.getQuestion();
+
+            // Step 8b: Route retrieval
+            switch (intent) {
+                case GENERAL_CHAT:
+                case META_CHAT:
+                    log.info("[Chat] intent={} → no retrieval.", intent);
+                    contextChunks = List.of();
+                    break;
+
+                case DOCUMENT_OVERVIEW:
+                    log.info("[Chat] intent=DOCUMENT_OVERVIEW → building overview context.");
+                    contextChunks = buildOverviewContext(activeDocumentIds);
+                    break;
+
+                case COMPARISON:
+                    log.info("[Chat] intent=COMPARISON → multi-hop semantic search.");
+                    contextChunks = buildComparisonContext(plan.getSearchQueries(),
+                            activeDocumentIds, CHAT_TOP_K);
+                    break;
+
+                case TOOL_SUMMARY:
+                case TOOL_QUIZ:
+                    // TODO: route to existing Summary/Quiz services in a future task.
+                    log.info("[Chat] intent={} — tool routing not yet implemented; " +
+                            "falling back to semantic search.", intent);
+                    contextChunks = retrieveSemanticChunks(effectiveQuestion, activeDocumentIds, CHAT_TOP_K);
+                    break;
+
+                default: // DOCUMENT_QA, FOLLOW_UP_QA, OUT_OF_SCOPE
+                    log.info("[Chat] intent={} → semantic search with rewrittenQuestion='{}'.",
+                            intent, effectiveQuestion);
+                    contextChunks = retrieveSemanticChunks(effectiveQuestion, activeDocumentIds, CHAT_TOP_K);
+                    break;
             }
+
+            log.info("[Chat] contextChunks={} chunks resolved.", contextChunks.size());
+
+            // Step 8c: Call /generate-answer
+            answer = callGenerateAnswer(
+                    request.getQuestion(), effectiveQuestion, intent.name(),
+                    pythonHistory, contextChunks, true);
         }
 
-        // 9. Save assistant response message in DB
+        // 9. Save ASSISTANT message
         ChatMessage assistantMessage = ChatMessage.builder()
                 .messageId(UUID.randomUUID().toString())
                 .chatSession(chatSession)
@@ -205,63 +247,17 @@ public class ChatSessionService {
                 .build();
         ChatMessage savedAssistantMessage = chatMessageRepository.save(assistantMessage);
 
-        // 10. Process and save citations
+        // 10. Save citations if we have context chunks
         List<ChatCitationResponse> citationResponses = new ArrayList<>();
-        for (PythonCitation pc : pythonCitations) {
-            Optional<Document> docOpt = documentRepository.findById(pc.getDocumentId());
-            if (docOpt.isEmpty()) {
-                log.warn("Citation doc ID {} does not exist in DB, skipping.", pc.getDocumentId());
-                continue;
-            }
-            Document doc = docOpt.get();
-
-            Optional<DocumentChunk> chunkOpt = documentChunkRepository
-                    .findByDocument_IdAndChunkIndex(pc.getDocumentId(), pc.getChunkIndex());
-            if (chunkOpt.isEmpty()) {
-                log.warn("Citation chunk index {} for doc ID {} does not exist in DB, skipping.",
-                        pc.getChunkIndex(), pc.getDocumentId());
-                continue;
-            }
-            DocumentChunk chunk = chunkOpt.get();
-
-            // Preview text resolving
-            String previewText = pc.getPreviewText();
-            if (previewText == null || previewText.isBlank()) {
-                String chunkText = chunk.getChunkText();
-                previewText = (chunkText != null && chunkText.length() > 500)
-                        ? chunkText.substring(0, 500)
-                        : chunkText;
-            }
-
-            AiCitation citation = AiCitation.builder()
-                    .citationId(UUID.randomUUID().toString())
-                    .chatSession(chatSession)
-                    .aiMessage(savedAssistantMessage)
-                    .documentChunk(chunk)
-                    .document(doc)
-                    .score(pc.getScore())
-                    .chunkIndex(pc.getChunkIndex())
-                    .previewText(previewText)
-                    .createdAt(LocalDateTime.now())
-                    .build();
-
-            AiCitation savedCitation = aiCitationRepository.save(citation);
-
-            citationResponses.add(ChatCitationResponse.builder()
-                    .citationId(savedCitation.getCitationId())
-                    .documentId(doc.getId())
-                    .documentTitle(doc.getTitle())
-                    .chunkId(chunk.getId())
-                    .chunkIndex(savedCitation.getChunkIndex())
-                    .score(savedCitation.getScore())
-                    .previewText(savedCitation.getPreviewText())
-                    .documentName(pc.getDocumentName())
-                    .type(pc.getType())
-                    .label(pc.getLabel())
-                    .build());
+        if (hasDocuments) {
+            citationResponses = saveCitations(contextChunks, chatSession,
+                    savedAssistantMessage, aiCitationRepository);
+            log.info("[Chat] saved {} citations.", citationResponses.size());
+        } else {
+            log.info("[Chat] GENERAL_CHAT — citations skipped.");
         }
 
-        // 11. Update session's updatedAt timestamp
+        // 11. Update session timestamp
         chatSession.setUpdatedAt(LocalDateTime.now());
         chatSessionRepository.save(chatSession);
 
@@ -275,6 +271,267 @@ public class ChatSessionService {
                 .build();
     }
 
+    // ─── Private helpers ────────────────────────────────────────────────────────
+
+    /**
+     * Resolve active document IDs in priority order:
+     * 1. request.documentIds (if non-empty)
+     * 2. session-attached documents
+     * 3. empty list → GENERAL_CHAT
+     */
+    private List<Long> resolveDocumentIds(ChatAskRequest request, ChatSession chatSession) {
+        if (request.getDocumentIds() != null && !request.getDocumentIds().isEmpty()) {
+            log.info("[Chat] documentIds source=REQUEST ({})", request.getDocumentIds());
+            return request.getDocumentIds();
+        }
+        List<ChatSessionDocument> sessionDocs = chatSessionDocumentRepository
+                .findByChatSessionSessionId(chatSession.getSessionId());
+        if (!sessionDocs.isEmpty()) {
+            List<Long> ids = sessionDocs.stream()
+                    .map(d -> d.getDocument().getId())
+                    .collect(Collectors.toList());
+            log.info("[Chat] documentIds source=SESSION ({})", ids);
+            return ids;
+        }
+        log.info("[Chat] documentIds source=NONE → GENERAL_CHAT mode.");
+        return List.of();
+    }
+
+    /** Call Python /analyze-chat-query (Chat Planner). Returns a safe fallback on error. */
+    private PythonAnalyzeChatQueryResponse callAnalyzeChatQuery(
+            String question, List<PythonMessage> history,
+            boolean hasDocuments, int documentCount) {
+        String url = aiServiceBaseUrl + "/analyze-chat-query";
+        PythonAnalyzeChatQueryRequest req = PythonAnalyzeChatQueryRequest.builder()
+                .question(question)
+                .history(history)
+                .hasDocuments(hasDocuments)
+                .documentCount(documentCount)
+                .build();
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<PythonAnalyzeChatQueryRequest> entity = new HttpEntity<>(req, headers);
+            ResponseEntity<PythonAnalyzeChatQueryResponse> resp =
+                    restTemplate.postForEntity(url, entity, PythonAnalyzeChatQueryResponse.class);
+            if (resp.getBody() != null) {
+                return resp.getBody();
+            }
+        } catch (Exception e) {
+            log.warn("[Chat] /analyze-chat-query failed: {}. Using safe fallback.", e.getMessage());
+        }
+        // Safe fallback
+        return PythonAnalyzeChatQueryResponse.builder()
+                .intent(ChatIntent.DOCUMENT_QA.name())
+                .rewrittenQuestion(question)
+                .retrievalStrategy(RetrievalStrategy.SEMANTIC_SEARCH.name())
+                .searchQueries(List.of(question))
+                .needsRetrieval(true)
+                .confidence(0.5)
+                .build();
+    }
+
+    /** Call Python /generate-answer. Returns a fallback error string on failure. */
+    private String callGenerateAnswer(String question, String rewrittenQuestion,
+                                      String intent, List<PythonMessage> history,
+                                      List<PythonContextChunk> contextChunks,
+                                      boolean hasDocuments) {
+        String url = aiServiceBaseUrl + "/generate-answer";
+        PythonGenerateAnswerRequest payload = PythonGenerateAnswerRequest.builder()
+                .question(question)
+                .rewrittenQuestion(rewrittenQuestion)
+                .intent(intent)
+                .history(history)
+                .contextChunks(contextChunks)
+                .hasDocuments(hasDocuments)
+                .build();
+        try {
+            log.info("[Chat] Calling Python /generate-answer — intent={}, chunks={}",
+                    intent, contextChunks.size());
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<PythonGenerateAnswerRequest> entity = new HttpEntity<>(payload, headers);
+            ResponseEntity<PythonGenerateAnswerResponse> resp =
+                    restTemplate.postForEntity(url, entity, PythonGenerateAnswerResponse.class);
+            if (resp.getBody() != null && resp.getBody().getAnswer() != null) {
+                return resp.getBody().getAnswer();
+            }
+        } catch (Exception e) {
+            log.error("[Chat] /generate-answer failed: {}", e.getMessage());
+        }
+        return "Lỗi kết nối đến Python AI service. Câu hỏi: \"" + question + "\"";
+    }
+
+    /** Standard semantic search for DOCUMENT_QA / FOLLOW_UP_QA. */
+    private List<PythonContextChunk> retrieveSemanticChunks(
+            String query, List<Long> documentIds, int topK) {
+        try {
+            return semanticSearchService.retrieveForChat(query, documentIds, topK);
+        } catch (Exception e) {
+            log.warn("[Chat] retrieveForChat failed: {}. Proceeding with empty context.", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * Build DOCUMENT_OVERVIEW context: ordered first-N chunks from each document.
+     * Each chunk is trimmed to OVERVIEW_CHUNK_CHAR_LIMIT chars.
+     */
+    private List<PythonContextChunk> buildOverviewContext(List<Long> documentIds) {
+        List<PythonContextChunk> result = new ArrayList<>();
+        for (Long docId : documentIds) {
+            try {
+                List<com.aistudyhub.backend.entity.DocumentChunk> chunks =
+                        documentChunkRepository.findTop30ByDocumentIdOrderByChunkIndexAsc(docId);
+
+                // Spread selection: take first 5 + spread remaining to reach OVERVIEW_MAX_CHUNKS
+                List<com.aistudyhub.backend.entity.DocumentChunk> selected =
+                        spreadSelect(chunks, OVERVIEW_MAX_CHUNKS);
+
+                for (com.aistudyhub.backend.entity.DocumentChunk c : selected) {
+                    String text = c.getChunkText();
+                    if (text == null || text.isBlank()) continue;
+                    if (text.length() > OVERVIEW_CHUNK_CHAR_LIMIT) {
+                        text = text.substring(0, OVERVIEW_CHUNK_CHAR_LIMIT) + "...";
+                    }
+                    String docTitle = c.getDocument() != null ? c.getDocument().getTitle() : null;
+                    result.add(PythonContextChunk.builder()
+                            .documentId(docId)
+                            .documentTitle(docTitle)
+                            .chunkIndex(c.getChunkIndex())
+                            .chunkText(text)
+                            .score(0.0)
+                            .sourceLabel("Overview Chunk " + c.getChunkIndex())
+                            .build());
+                }
+            } catch (Exception e) {
+                log.warn("[Chat] buildOverviewContext failed for docId={}: {}", docId, e.getMessage());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Build COMPARISON context: run each search query separately, merge, deduplicate.
+     */
+    private List<PythonContextChunk> buildComparisonContext(
+            List<String> searchQueries, List<Long> documentIds, int topK) {
+        Map<String, PythonContextChunk> seen = new LinkedHashMap<>();
+        List<String> queries = (searchQueries != null && !searchQueries.isEmpty())
+                ? searchQueries : List.of();
+
+        for (String q : queries) {
+            try {
+                List<PythonContextChunk> hits =
+                        semanticSearchService.retrieveForChat(q, documentIds, topK);
+                for (PythonContextChunk c : hits) {
+                    String key = c.getDocumentId() + "_" + c.getChunkIndex();
+                    seen.putIfAbsent(key, c);
+                }
+            } catch (Exception e) {
+                log.warn("[Chat] COMPARISON search query '{}' failed: {}", q, e.getMessage());
+            }
+        }
+
+        if (seen.isEmpty()) {
+            // Fallback to single semantic search
+            return retrieveSemanticChunks(
+                    queries.isEmpty() ? "" : queries.get(0), documentIds, topK * 2);
+        }
+        return new ArrayList<>(seen.values());
+    }
+
+    /** Select up to maxCount items evenly spread from a list. */
+    private <T> List<T> spreadSelect(List<T> source, int maxCount) {
+        if (source.size() <= maxCount) return source;
+        List<T> result = new ArrayList<>();
+        double step = (double) source.size() / maxCount;
+        for (int i = 0; i < maxCount; i++) {
+            result.add(source.get((int) (i * step)));
+        }
+        return result;
+    }
+
+    /** Parse intent string safely, fallback to DOCUMENT_QA. */
+    private ChatIntent safeChatIntent(String raw) {
+        if (raw == null) return ChatIntent.DOCUMENT_QA;
+        try {
+            return ChatIntent.valueOf(raw.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("[Chat] Unknown intent '{}', defaulting to DOCUMENT_QA.", raw);
+            return ChatIntent.DOCUMENT_QA;
+        }
+    }
+
+    /** Parse retrieval strategy string safely, fallback to SEMANTIC_SEARCH. */
+    private RetrievalStrategy safeRetrievalStrategy(String raw) {
+        if (raw == null) return RetrievalStrategy.SEMANTIC_SEARCH;
+        try {
+            return RetrievalStrategy.valueOf(raw.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return RetrievalStrategy.SEMANTIC_SEARCH;
+        }
+    }
+
+    /** Persist citations and build response list. */
+    private List<ChatCitationResponse> saveCitations(
+            List<PythonContextChunk> contextChunks,
+            ChatSession chatSession,
+            ChatMessage savedAssistantMessage,
+            AiCitationRepository aiCitationRepository) {
+
+        List<ChatCitationResponse> citationResponses = new ArrayList<>();
+        for (PythonContextChunk chunk : contextChunks) {
+            if (chunk.getChunkText() == null || chunk.getChunkText().isBlank()) continue;
+
+            Optional<Document> docOpt = documentRepository.findById(chunk.getDocumentId());
+            if (docOpt.isEmpty()) {
+                log.warn("[Chat] Citation: document {} not found, skipping.", chunk.getDocumentId());
+                continue;
+            }
+            Document doc = docOpt.get();
+
+            Optional<DocumentChunk> chunkEntityOpt = documentChunkRepository
+                    .findByDocument_IdAndChunkIndex(chunk.getDocumentId(), chunk.getChunkIndex());
+            if (chunkEntityOpt.isEmpty()) {
+                log.warn("[Chat] Citation: chunk (docId={}, index={}) not found, skipping.",
+                        chunk.getDocumentId(), chunk.getChunkIndex());
+                continue;
+            }
+            DocumentChunk chunkEntity = chunkEntityOpt.get();
+
+            String previewText = chunk.getChunkText().length() > 500
+                    ? chunk.getChunkText().substring(0, 500)
+                    : chunk.getChunkText();
+
+            AiCitation citation = AiCitation.builder()
+                    .citationId(UUID.randomUUID().toString())
+                    .chatSession(chatSession)
+                    .aiMessage(savedAssistantMessage)
+                    .documentChunk(chunkEntity)
+                    .document(doc)
+                    .score(chunk.getScore())
+                    .chunkIndex(chunk.getChunkIndex())
+                    .previewText(previewText)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            AiCitation savedCitation = aiCitationRepository.save(citation);
+
+            citationResponses.add(ChatCitationResponse.builder()
+                    .citationId(savedCitation.getCitationId())
+                    .documentId(doc.getId())
+                    .documentTitle(doc.getTitle())
+                    .chunkId(chunkEntity.getId())
+                    .chunkIndex(savedCitation.getChunkIndex())
+                    .score(savedCitation.getScore())
+                    .previewText(savedCitation.getPreviewText())
+                    .documentName(doc.getTitle())
+                    .label(chunk.getSourceLabel())
+                    .build());
+        }
+        return citationResponses;
+    }
+
     // ─── Get Sessions for User ──────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
@@ -282,9 +539,7 @@ public class ChatSessionService {
         if (!userRepository.existsById(userId)) {
             throw new RuntimeException("User not found with id: " + userId);
         }
-
-        List<ChatSession> sessions = chatSessionRepository.findByUserIdOrderByCreatedAtDesc(userId);
-        return sessions.stream()
+        return chatSessionRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(s -> ChatSessionResponse.builder()
                         .sessionId(s.getSessionId())
                         .userId(s.getUser().getId())
@@ -302,7 +557,6 @@ public class ChatSessionService {
         if (!chatSessionRepository.existsById(sessionId)) {
             throw new RuntimeException("Chat session not found with id: " + sessionId);
         }
-
         List<ChatMessage> messages = chatMessageRepository
                 .findByChatSessionSessionIdOrderByCreatedAtAsc(sessionId);
         List<ChatMessageResponse> responses = new ArrayList<>();
@@ -310,9 +564,9 @@ public class ChatSessionService {
         for (ChatMessage msg : messages) {
             List<ChatCitationResponse> citations = new ArrayList<>();
             if (msg.getRole() == ChatMessageRole.ASSISTANT) {
-                List<AiCitation> dbCitations = aiCitationRepository
-                        .findByAiMessageMessageIdOrderByScoreDesc(msg.getMessageId());
-                citations = dbCitations.stream()
+                citations = aiCitationRepository
+                        .findByAiMessageMessageIdOrderByScoreDesc(msg.getMessageId())
+                        .stream()
                         .map(c -> ChatCitationResponse.builder()
                                 .citationId(c.getCitationId())
                                 .documentId(c.getDocument().getId())
@@ -324,7 +578,6 @@ public class ChatSessionService {
                                 .build())
                         .collect(Collectors.toList());
             }
-
             responses.add(ChatMessageResponse.builder()
                     .messageId(msg.getMessageId())
                     .role(msg.getRole().name())
@@ -333,7 +586,6 @@ public class ChatSessionService {
                     .citations(citations)
                     .build());
         }
-
         return responses;
     }
 }
