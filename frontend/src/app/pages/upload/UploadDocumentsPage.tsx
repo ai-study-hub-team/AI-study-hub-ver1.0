@@ -113,7 +113,7 @@ export function UploadDocumentsPage() {
           (document): RecentUpload => ({
             id: document.id,
             name: document.name,
-            type: document.type || "Document",
+            type: "",
             documentStatus: document.documentStatus,
             aiStatus: document.aiStatus,
             uploadedAt: formatUploadedAt(document.uploadedAt),

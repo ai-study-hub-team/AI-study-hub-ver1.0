@@ -65,7 +65,17 @@ export const getAuthHeader = () => {
 apiClient.interceptors.request.use((config) => {
   const token = getAuthToken();
 
-  if (token) {
+  const url = config.url || "";
+
+  const publicAuthApis = [
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/refresh",
+  ];
+
+  const isPublicAuthApi = publicAuthApis.some((api) => url.includes(api));
+
+  if (token && !isPublicAuthApi) {
     config.headers = AxiosHeaders.from(config.headers);
     config.headers.set("Authorization", `Bearer ${token}`);
   }

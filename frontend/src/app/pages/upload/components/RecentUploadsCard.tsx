@@ -52,9 +52,6 @@ function RecentUploadItem({ upload }: RecentUploadItemProps) {
 
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{upload.name}</p>
-          <p className="mt-1 min-w-0 truncate whitespace-nowrap text-xs font-semibold text-slate-500 dark:text-slate-400">
-            {upload.type}
-          </p>
         </div>
 
         <time className="shrink-0 whitespace-nowrap pt-0.5 text-right text-xs font-bold text-slate-400 dark:text-slate-500">
