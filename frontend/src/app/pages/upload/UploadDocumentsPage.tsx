@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 
 import { documentApi } from "../../services/documentApi";
+import { documentNoteApi } from "../../services/documentNoteApi";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { getCurrentUserId } from "../../services/apiClient";
 import { CollaborationCard } from "./components/CollaborationCard";
@@ -53,14 +54,17 @@ const formatUploadedAt = (date: string | undefined) => {
 
 export function UploadDocumentsPage() {
   const navigate = useNavigate();
+
   const [step, setStep] = useState<UploadStep>(1);
   const [files, setFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [recentUploads, setRecentUploads] = useState<RecentUpload[]>([]);
   const [activeFilter, setActiveFilter] = useState<UploadFilter>("All");
   const [categories, setCategories] = useState<CategoryResponse[]>([]);
+
   const [details, setDetails] = useState({
     categoryId: "",
+    noteTitle: "",
     notes: "",
   });
 
@@ -106,6 +110,7 @@ export function UploadDocumentsPage() {
         .sort((left, right) => {
           const leftDate = new Date(left.uploadedAt || "").getTime();
           const rightDate = new Date(right.uploadedAt || "").getTime();
+
           return rightDate - leftDate;
         })
         .slice(0, 5)
@@ -134,6 +139,7 @@ export function UploadDocumentsPage() {
 
   const filteredUploads = useMemo(() => {
     if (activeFilter === "All") return recentUploads;
+
     return recentUploads.filter((upload) => upload.aiStatus === activeFilter);
   }, [activeFilter, recentUploads]);
 
@@ -186,16 +192,30 @@ export function UploadDocumentsPage() {
       try {
         setIsUploading(true);
 
+        const noteTitle = details.noteTitle.trim();
+        const noteContent = details.notes.trim();
+
         for (const file of files) {
-          await documentApi.uploadDocument({
+          const uploadResponse = await documentApi.uploadDocument({
             file,
             title: file.name,
             userId,
-            description: details.notes,
+            description: noteContent,
             documentType: file.type,
             visibility: "PRIVATE",
             categoryId: Number(details.categoryId),
           });
+
+          const uploadedDocument = uploadResponse.data;
+
+          if (noteTitle || noteContent) {
+            await documentNoteApi.createNote({
+              userId,
+              documentId: uploadedDocument.id,
+              title: noteTitle || "Upload note",
+              content: noteContent || "",
+            });
+          }
         }
 
         await loadRecentUploads();
@@ -219,6 +239,7 @@ export function UploadDocumentsPage() {
     setFiles([]);
     setDetails({
       categoryId: "",
+      noteTitle: "",
       notes: "",
     });
   };
@@ -230,9 +251,11 @@ export function UploadDocumentsPage() {
           <p className="text-sm font-bold uppercase tracking-widest text-blue-600">
             Upload
           </p>
+
           <h1 className="text-3xl font-extrabold text-slate-950 dark:text-white">
             Add study materials
           </h1>
+
           <p className="mt-1 text-slate-500 dark:text-slate-400">
             Upload files, add a little context, and generate study materials in
             one flow.
@@ -270,8 +293,9 @@ export function UploadDocumentsPage() {
                   <h2 className="text-2xl font-extrabold text-slate-950 dark:text-white">
                     Set Details
                   </h2>
+
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Select a category and add notes for this upload.
+                    Select a category and add a note for this upload.
                   </p>
                 </div>
 
@@ -280,9 +304,11 @@ export function UploadDocumentsPage() {
                     <h3 className="font-bold text-amber-900 dark:text-amber-200">
                       No categories yet
                     </h3>
+
                     <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
                       Please create a category before uploading documents.
                     </p>
+
                     <button
                       onClick={() => navigate("/app/categories")}
                       className="mt-3 rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700"
@@ -321,23 +347,41 @@ export function UploadDocumentsPage() {
                   </label>
                 </div>
 
-                <label className="block space-y-1.5">
-                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                    Notes
-                  </span>
-                  <textarea
-                    value={details.notes}
-                    onChange={(event) =>
-                      setDetails((current) => ({
-                        ...current,
-                        notes: event.target.value,
-                      }))
-                    }
-                    rows={4}
-                    placeholder="Exam focus, chapters, teacher instructions..."
-                    className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </label>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                  <div className="mb-4 flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-blue-600" />
+                    <h3 className="text-base font-extrabold text-slate-950 dark:text-white">
+                      Document Notes
+                    </h3>
+                  </div>
+
+                  <div className="space-y-3">
+                    <input
+                      value={details.noteTitle}
+                      onChange={(event) =>
+                        setDetails((current) => ({
+                          ...current,
+                          noteTitle: event.target.value,
+                        }))
+                      }
+                      placeholder="Note title"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500"
+                    />
+
+                    <textarea
+                      value={details.notes}
+                      onChange={(event) =>
+                        setDetails((current) => ({
+                          ...current,
+                          notes: event.target.value,
+                        }))
+                      }
+                      rows={5}
+                      placeholder="Write your note..."
+                      className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500"
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
@@ -346,13 +390,16 @@ export function UploadDocumentsPage() {
                 <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40">
                   <CheckCircle2 className="h-9 w-9" />
                 </div>
+
                 <h2 className="text-2xl font-extrabold text-slate-950 dark:text-white">
                   Upload Complete
                 </h2>
+
                 <p className="mt-2 max-w-lg text-sm text-slate-500 dark:text-slate-400">
                   Your files are queued for AI processing. We will turn them
                   into summaries, study plans, and progress tracking.
                 </p>
+
                 <div className="mt-5 w-full max-w-xl">
                   <UploadFileList files={files} onRemove={removeFile} />
                 </div>
@@ -399,6 +446,7 @@ export function UploadDocumentsPage() {
 
         <aside className="space-y-5">
           <StudyMaterialsCard />
+
           <RecentUploadsCard
             uploads={filteredUploads}
             activeFilter={activeFilter}

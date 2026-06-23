@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
+import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 
@@ -29,14 +30,28 @@ type AdminDocument = DocumentListItemResponse & {
   createdAt?: string;
 };
 
+type AdminUser = UserResponse & {
+  name?: string;
+  username?: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+};
+
 interface EditForm {
+  title: string;
   description: string;
-  tags: string;
 }
 
 interface ActionMenuPosition {
   top: number;
   left: number;
+}
+
+interface UserPageResponse {
+  content?: AdminUser[];
+  data?: AdminUser[];
 }
 
 const getDocumentName = (document: AdminDocument) =>
@@ -70,6 +85,7 @@ const getAvatar = (name: string) => {
 
   return name
     .split(" ")
+    .filter(Boolean)
     .map((word) => word[0])
     .join("")
     .slice(0, 2)
@@ -79,17 +95,10 @@ const getAvatar = (name: string) => {
 const formatFileSize = (size?: number) => {
   if (!size) return "0 KB";
 
-  if (size < 1024) {
-    return `${size} B`;
-  }
-
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-
-  if (size < 1024 * 1024 * 1024) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  if (size < 1024 * 1024 * 1024)
     return `${(size / 1024 / 1024).toFixed(1)} MB`;
-  }
 
   return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`;
 };
@@ -138,9 +147,11 @@ const StatusBadge = ({ status }: { status: string }) => {
 };
 
 export function DocumentAdmin() {
+  const navigate = useNavigate();
+
   const [search, setSearch] = useState("");
   const [docs, setDocs] = useState<AdminDocument[]>([]);
-  const [usersById, setUsersById] = useState<Record<number, UserResponse>>({});
+  const [usersById, setUsersById] = useState<Record<number, AdminUser>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   const [openMenu, setOpenMenu] = useState<number | null>(null);
@@ -151,8 +162,8 @@ export function DocumentAdmin() {
 
   const [editDoc, setEditDoc] = useState<AdminDocument | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({
+    title: "",
     description: "",
-    tags: "",
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -183,9 +194,22 @@ export function DocumentAdmin() {
     try {
       const response = await userApi.getUsers();
 
-      const mappedUsers = response.data.reduce<Record<number, UserResponse>>(
+      const data = response.data as AdminUser[] | UserPageResponse;
+
+      const users = Array.isArray(data)
+        ? data
+        : Array.isArray(data.content)
+          ? data.content
+          : Array.isArray(data.data)
+            ? data.data
+            : [];
+
+      const mappedUsers = users.reduce<Record<number, AdminUser>>(
         (result, user) => {
-          result[user.id] = user;
+          if (user.id) {
+            result[user.id] = user;
+          }
+
           return result;
         },
         {},
@@ -211,11 +235,19 @@ export function DocumentAdmin() {
   const getOwnerName = (document: AdminDocument) => {
     const user = getOwnerUser(document);
 
+    const firstLastName =
+      user?.firstName || user?.lastName
+        ? `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim()
+        : "";
+
     return (
       document.userName ||
       document.ownerName ||
       document.fullName ||
       user?.fullName ||
+      user?.name ||
+      firstLastName ||
+      user?.username ||
       user?.email ||
       `User #${document.userId ?? "Unknown"}`
     );
@@ -223,7 +255,6 @@ export function DocumentAdmin() {
 
   const getOwnerEmail = (document: AdminDocument) => {
     const user = getOwnerUser(document);
-
     return document.email || user?.email || "";
   };
 
@@ -276,38 +307,16 @@ export function DocumentAdmin() {
       left = window.innerWidth - menuWidth - 12;
     }
 
-    if (left < 12) {
-      left = 12;
-    }
-
-    if (top < 12) {
-      top = 12;
-    }
+    if (left < 12) left = 12;
+    if (top < 12) top = 12;
 
     setOpenMenu(documentId);
     setActionMenuPosition({ top, left });
   };
 
-  const handlePreview = async (document: AdminDocument) => {
-    try {
-      const response = await documentApi.getDocumentFile(document.id);
-
-      const blob = new Blob([response.data], {
-        type: getFileType(document),
-      });
-
-      const url = window.URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
-
-      closeActionMenu();
-
-      setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-      }, 1000 * 60);
-    } catch (error) {
-      console.error(error);
-      toast.error("Cannot open document preview.");
-    }
+  const handlePreview = (document: AdminDocument) => {
+    closeActionMenu();
+    navigate(`/app/library/${document.id}/preview`);
   };
 
   const handleDownload = async (document: AdminDocument) => {
@@ -344,8 +353,8 @@ export function DocumentAdmin() {
 
       setEditDoc(document);
       setEditForm({
+        title: getDocumentName(document),
         description: document.description || "",
-        tags: document.tags || "",
       });
 
       closeActionMenu();
@@ -358,13 +367,20 @@ export function DocumentAdmin() {
   const updateDoc = async () => {
     if (!editDoc) return;
 
+    const newTitle = editForm.title.trim();
+    const newDescription = editForm.description.trim();
+
+    if (!newTitle) {
+      toast.error("Document name cannot be empty.");
+      return;
+    }
+
     try {
       setIsSaving(true);
 
       const response = await documentApi.updateDocument(editDoc.id, {
-        title: editDoc.title,
-        description: editForm.description.trim(),
-        tags: editForm.tags.trim(),
+        title: newTitle,
+        description: newDescription,
         userId: editDoc.userId,
         categoryId: editDoc.categoryId,
         originalName: editDoc.originalName,
@@ -695,7 +711,7 @@ export function DocumentAdmin() {
                   Edit Document
                 </h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Update document metadata
+                  Update document name and description
                 </p>
               </div>
 
@@ -708,13 +724,21 @@ export function DocumentAdmin() {
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                  Document
-                </p>
-                <p className="mt-1 truncate text-sm font-extrabold text-slate-900 dark:text-white">
-                  {getDocumentName(editDoc)}
-                </p>
+              <div>
+                <label className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Document Name
+                </label>
+                <input
+                  value={editForm.title}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      title: event.target.value,
+                    }))
+                  }
+                  placeholder="Enter document name..."
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
               </div>
 
               <div>
@@ -732,23 +756,6 @@ export function DocumentAdmin() {
                   rows={3}
                   className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   placeholder="Enter document description..."
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200">
-                  Tags
-                </label>
-                <input
-                  value={editForm.tags}
-                  onChange={(event) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      tags: event.target.value,
-                    }))
-                  }
-                  placeholder="study, ai, pdf..."
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
               </div>
             </div>

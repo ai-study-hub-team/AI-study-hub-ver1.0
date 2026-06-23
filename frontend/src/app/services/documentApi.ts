@@ -50,7 +50,7 @@ export interface UpdateDocumentPayload {
   description?: string;
   tags?: string;
   userId?: number;
-  categoryId?: number;
+  categoryId?: number | null;
   originalName?: string;
   fileUrl?: string;
   fileType?: string;
@@ -162,9 +162,32 @@ export const documentApi = {
   },
 
   // PUT /api/documents/{id}
-  updateDocument(id: number, payload: UpdateDocumentPayload) {
+  async updateDocument(id: number, payload: UpdateDocumentPayload) {
+    /**
+     * Backend hiện tại bắt buộc userId khi update.
+     * Nhưng nhiều màn hình FE chỉ gửi title/description/categoryId.
+     * Vì vậy mình lấy document hiện tại trước, rồi merge lại payload.
+     */
+    const currentResponse = await api.get<DocumentResponse>(`/api/documents/${id}`);
+    const currentDocument = currentResponse.data;
+
+    const updatePayload: UpdateDocumentPayload = {
+      title: payload.title ?? currentDocument.title,
+      description: payload.description ?? currentDocument.description ?? "",
+      tags: payload.tags ?? currentDocument.tags ?? "",
+      userId: payload.userId ?? currentDocument.userId,
+      categoryId:
+        payload.categoryId !== undefined
+          ? payload.categoryId
+          : currentDocument.categoryId,
+      originalName: payload.originalName ?? currentDocument.originalName,
+      fileUrl: payload.fileUrl ?? currentDocument.fileUrl,
+      fileType: payload.fileType ?? currentDocument.fileType,
+      fileSize: payload.fileSize ?? currentDocument.fileSize,
+    };
+
     return api
-      .put<DocumentResponse>(`/api/documents/${id}`, payload)
+      .put<DocumentResponse>(`/api/documents/${id}`, updatePayload)
       .then((response) => ({
         ...response,
         data: mapDocumentResponse(response.data),
