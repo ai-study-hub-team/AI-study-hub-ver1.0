@@ -18,6 +18,7 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 
 import { documentApi } from "../../services/documentApi";
+import { getCurrentUserId } from "../../services/apiClient";
 import type { AiStatus } from "../../constants/documentStatus";
 
 interface TrashDocument {
@@ -94,14 +95,24 @@ export function TrashPage() {
   useEffect(() => {
     const loadTrashDocuments = async () => {
       try {
+        const userId = getCurrentUserId();
+
+        if (!userId) {
+          toast.error("Please log in again to view trash.");
+          return;
+        }
+
         const response = await documentApi.getDocuments({
+          userId,
           page: 0,
           size: 100,
           processStatus: undefined,
         });
 
         const deletedDocuments = response.data.content.filter(
-          (document) => document.documentStatus === "DELETED",
+          (document) =>
+            document.userId === userId &&
+            document.documentStatus === "DELETED",
         );
 
         setDocuments(

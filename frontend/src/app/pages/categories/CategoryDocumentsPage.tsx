@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 
 import { documentApi } from "../../services/documentApi";
+import { getCurrentUserId } from "../../services/apiClient";
 import { categoryApi } from "../../services/categoryApi";
 import type { AiStatus } from "../../constants/documentStatus";
 import type { DocumentListItemResponse } from "../../types/documents/types";
@@ -71,21 +72,40 @@ export function CategoryDocumentsPage() {
 
   const loadDocuments = async () => {
     try {
+      const userId = getCurrentUserId();
+
+      if (!userId) {
+        toast.error("Please log in again to view category documents.");
+        return;
+      }
+
       const categoryResponse = await categoryApi.getCategories();
 
       const currentCategory = categoryResponse.data.find(
-        (category) => category.id === Number(categoryId),
+        (category) =>
+          category.id === Number(categoryId) &&
+          Number(category.userId) === userId,
       );
 
-      setCategoryName(currentCategory?.name ?? "Unknown Category");
+      if (!currentCategory) {
+        toast.error("Category not found or you do not have permission.");
+        navigate("/app/categories");
+        return;
+      }
 
-      const response = await documentApi.getDocuments({
+      setCategoryName(currentCategory.name ?? "Unknown Category");
+
+      const response = await documentApi.getDocumentsByUserId(userId, {
         page: 0,
         size: 100,
         categoryId: Number(categoryId),
       });
 
-      setDocuments(response.data.content ?? []);
+      setDocuments(
+        (response.data.content ?? []).filter(
+          (document) => Number(document.userId) === userId,
+        ),
+      );
     } catch (error) {
       console.error(error);
       toast.error("Cannot load category documents.");

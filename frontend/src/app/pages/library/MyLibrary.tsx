@@ -30,6 +30,7 @@ import { useNavigate } from "react-router";
 
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { documentApi } from "../../services/documentApi";
+import { getCurrentUserId } from "../../services/apiClient";
 import type { AiStatus } from "../../constants/documentStatus";
 
 interface LibraryDocument {
@@ -330,8 +331,19 @@ export function MyLibrary() {
 
   const loadCategories = async () => {
     try {
+      const userId = getCurrentUserId();
+
+      if (!userId) {
+        toast.error("Please log in again to view your categories.");
+        return;
+      }
+
       const response = await categoryApi.getCategories();
-      setAllCategories(response.data ?? []);
+      setAllCategories(
+        (response.data ?? []).filter(
+          (category) => Number(category.userId) === userId,
+        ),
+      );
     } catch (error) {
       console.error("Cannot load categories:", error);
       toast.error("Cannot load categories.");
@@ -345,20 +357,32 @@ export function MyLibrary() {
   useEffect(() => {
     const loadDocuments = async () => {
       try {
+        const userId = getCurrentUserId();
+
+        if (!userId) {
+          toast.error("Please log in again to view your library.");
+          return;
+        }
+
         const keyword = searchQuery.trim();
 
         const response = keyword
           ? await documentApi.searchDocuments({
               keyword,
+              userId,
               page: 0,
               size: 100,
             })
-          : await documentApi.getDocuments({
+          : await documentApi.getDocumentsByUserId(userId, {
               page: 0,
               size: 100,
             });
 
-        setDocuments(response.data.content.map(mapLibraryDocument));
+        setDocuments(
+          (response.data.content ?? [])
+            .filter((document) => Number(document.userId) === userId)
+            .map(mapLibraryDocument),
+        );
       } catch (error) {
         console.error("Cannot load library documents:", error);
         toast.error("Cannot load library documents.");
