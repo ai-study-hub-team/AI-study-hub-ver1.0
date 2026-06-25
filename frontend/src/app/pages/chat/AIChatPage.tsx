@@ -809,7 +809,7 @@ export function AIChatPage() {
                   <span className="text-sm font-bold text-blue-600">
                     {showAllMaterials
                       ? "Thu gọn"
-                      : `Xem thêm ${hiddenMaterialCount} file`}
+                      : `Xem thêm`}
                   </span>
                 </button>
               )}

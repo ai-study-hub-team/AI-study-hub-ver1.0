@@ -463,7 +463,7 @@ export function QuizGeneratorPage() {
                         >
                           {showAllDocuments
                             ? "Thu gọn"
-                            : `Xem thêm ${hiddenDocumentCount} file`}
+                            : `Xem thêm`}
                         </button>
                       )}
                     </>

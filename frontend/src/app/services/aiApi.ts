@@ -1,10 +1,16 @@
 import { apiClient } from "./apiClient";
 
-export const generateSummaryApi = (userId: number, documentId: number) => {
+export type SummaryType = "SHORT" | "DETAILED" | "BULLET_POINTS";
+
+export const generateSummaryApi = (
+  userId: number,
+  documentId: number,
+  summaryType: SummaryType = "SHORT"
+) => {
   return apiClient.post("/api/summaries/generate", {
     userId,
     documentId,
-    summaryType: "SHORT",
+    summaryType,
   });
 };
 
