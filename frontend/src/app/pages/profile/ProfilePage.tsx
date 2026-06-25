@@ -68,13 +68,28 @@ export function ProfilePage() {
                   </button>
                 </div>
                 <div className="text-center sm:text-left">
-                  <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-1">Alex Johnson</h2>
-                  <p className="text-slate-500 dark:text-slate-400 font-medium mb-4">Medical Student • Member since May 2024</p>
-                  <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
-                    <span className="px-3 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 text-[10px] font-bold uppercase tracking-widest rounded-lg">Pro Account</span>
-                    <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 text-[10px] font-bold uppercase tracking-widest rounded-lg">Verified Student</span>
-                  </div>
-                </div>
+  <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-1">
+    {localStorage.getItem("fullName") || "User"}
+  </h2>
+
+  <p className="text-slate-500 dark:text-slate-400 font-medium mb-4">
+    {localStorage.getItem("role") === "ADMIN" ||
+    localStorage.getItem("role") === "ROLE_ADMIN"
+      ? "Administrator"
+      : "Student"}{" "}
+    • Member since 2024
+  </p>
+
+  <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+    <span className="px-3 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 text-[10px] font-bold uppercase tracking-widest rounded-lg">
+      Pro Account
+    </span>
+
+    <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 text-[10px] font-bold uppercase tracking-widest rounded-lg">
+      Verified Student
+    </span>
+  </div>
+</div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">

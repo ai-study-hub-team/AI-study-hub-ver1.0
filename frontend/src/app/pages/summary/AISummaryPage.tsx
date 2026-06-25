@@ -5,93 +5,197 @@ import {
   ChevronRight,
   CheckCircle2,
   Brain,
-  BookOpen,
   Tag,
-  Layers,
   Copy,
   RefreshCw,
-  Star,
+  History,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
+
 import { documentApi } from "../../services/documentApi";
+import {
+  generateSummaryApi,
+  getSummaryByDocumentApi,
+  getSummariesApi,
+} from "../../services/aiApi";
+import { getCurrentUserId } from "../../services/apiClient";
 
-const templates = [
-  { id: "executive", label: "Executive Summary", desc: "High-level overview with key points", icon: Star },
-  { id: "detailed", label: "Detailed Analysis", desc: "Comprehensive chapter-by-chapter", icon: Layers },
-  { id: "bullets", label: "Bullet Points", desc: "Quick scannable key concepts", icon: CheckCircle2 },
-  { id: "concepts", label: "Key Concepts", desc: "Core terminology and definitions", icon: Brain },
-  { id: "study", label: "Study Guide", desc: "Formatted for exam preparation", icon: BookOpen },
-];
+const DISPLAY_LIMIT = 6;
 
-const summaryContent = {
-  title: "Executive Summary",
-  summary:
-    "This is a sample AI summary. Later, this content should be replaced by the real AI summary API response.",
-  keyTakeaways: [
-    "The selected document was loaded from your uploaded files.",
-    "AI Summary page now uses documents from backend API.",
-    "You can select any uploaded document from the left panel.",
-  ],
-  keyConcepts: [
-    { term: "Document", definition: "A file uploaded by user to the system." },
-    { term: "AI Summary", definition: "A generated summary based on selected document content." },
-  ],
-  insights: [
-    "Next step: connect this page to real summary API.",
-    "Make sure uploaded documents are processed before generating summary.",
-  ],
+const defaultSummary = {
+  title: "AI Summary",
+  documentTitle: "",
+  summaryText: "Click Generate Summary to create an AI summary for this document.",
+  keyTakeaways: [] as string[],
+  keyConcepts: [] as { term: string; definition: string }[],
+  insights: [] as string[],
 };
 
 export function AISummaryPage() {
+  const [view, setView] = useState<"summary" | "history">("summary");
   const [documents, setDocuments] = useState<any[]>([]);
+  const [showAllDocuments, setShowAllDocuments] = useState(false);
+
   const [selectedDoc, setSelectedDoc] = useState<any>(null);
-  const [selectedTemplate, setSelectedTemplate] = useState("executive");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [showSummary, setShowSummary] = useState(true);
+  const [showSummary, setShowSummary] = useState(false);
+  const [summaryData, setSummaryData] = useState<any>(defaultSummary);
+  const [summaryHistory, setSummaryHistory] = useState<any[]>([]);
+
+  const visibleDocuments = showAllDocuments
+    ? documents
+    : documents.slice(0, DISPLAY_LIMIT);
+
+  const hiddenDocumentCount = Math.max(documents.length - DISPLAY_LIMIT, 0);
 
   useEffect(() => {
     const fetchDocuments = async () => {
       try {
-        const data = await documentApi.getAllDocumentsForSelect();
+        const userId = getCurrentUserId();
+
+        if (!userId) {
+          toast.error("Please login again.");
+          return;
+        }
+
+        const data = await documentApi.getAllDocumentsForSelect(userId);
         setDocuments(data);
 
         if (data.length > 0) {
           setSelectedDoc(data[0]);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Load documents failed:", error);
-        toast.error("Cannot load uploaded documents");
+        toast.error(
+          error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            "Cannot load uploaded documents",
+        );
       }
     };
 
     fetchDocuments();
   }, []);
 
-  const handleGenerate = () => {
+  const handleSelectDocument = async (doc: any) => {
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
+    setSelectedDoc(doc);
+    setShowSummary(false);
+    setSummaryData(defaultSummary);
+    setView("summary");
+
+    try {
+      const res = await getSummaryByDocumentApi(doc.id, userId);
+
+      if (res.data) {
+        setSummaryData(res.data);
+        setShowSummary(true);
+      }
+    } catch {
+      console.log("No summary found for this document");
+    }
+  };
+
+  const fetchSummaryHistory = async () => {
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
+    try {
+      const res = await getSummariesApi(userId);
+
+      setSummaryHistory(res.data || []);
+      setView("history");
+    } catch (error: any) {
+      console.error("Load summary history failed:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot load summary history",
+      );
+    }
+  };
+
+  const handleGenerate = async () => {
+    const userId = getCurrentUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
     if (!selectedDoc) {
       toast.error("Please select a document first");
       return;
     }
 
+    const processStatus = selectedDoc.processStatus || selectedDoc.aiStatus;
+
+    if (processStatus && processStatus !== "PROCESSED") {
+      toast.error("This document is not processed yet. Please wait until AI Status is PROCESSED.");
+      return;
+    }
+
     setIsGenerating(true);
     setShowSummary(false);
+    setView("summary");
 
-    setTimeout(() => {
-      setIsGenerating(false);
+    try {
+      const res = await generateSummaryApi(userId, selectedDoc.id);
+
+      setSummaryData(res.data);
       setShowSummary(true);
+
       toast.success("Summary generated successfully!");
-    }, 2000);
+    } catch (error: any) {
+      console.error("Generate summary failed:", error);
+
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Generate summary failed",
+      );
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleDownload = () => {
-    toast.success("Downloading summary...");
+    const text = summaryData?.summaryText || "";
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${
+      summaryData?.documentTitle || selectedDoc?.name || "summary"
+    }.txt`;
+    a.click();
+
+    URL.revokeObjectURL(url);
+    toast.success("Summary downloaded!");
   };
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText(summaryContent.summary);
+    navigator.clipboard?.writeText(summaryData?.summaryText || "");
     toast.success("Copied to clipboard!");
+  };
+
+  const openHistoryItem = (summary: any) => {
+    setSummaryData(summary);
+    setShowSummary(true);
+    setView("summary");
   };
 
   return (
@@ -106,25 +210,35 @@ export function AISummaryPage() {
           </p>
         </div>
 
-        {showSummary && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleDownload}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              Download
-            </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchSummaryHistory}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold rounded-xl"
+          >
+            <History className="w-4 h-4" />
+            History
+          </button>
 
-            <button
-              onClick={handleCopy}
-              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all"
-            >
-              <Copy className="w-4 h-4" />
-              Copy
-            </button>
-          </div>
-        )}
+          {showSummary && (
+            <>
+              <button
+                onClick={handleDownload}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold rounded-xl"
+              >
+                <Download className="w-4 h-4" />
+                Download
+              </button>
+
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-bold rounded-xl"
+              >
+                <Copy className="w-4 h-4" />
+                Copy
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -136,37 +250,66 @@ export function AISummaryPage() {
 
             <div className="space-y-2">
               {documents.length === 0 ? (
-                <p className="text-sm text-slate-500 dark:text-slate-400">
+                <p className="text-sm text-slate-500">
                   No uploaded documents found.
                 </p>
               ) : (
-                documents.map((doc) => (
-                  <button
-                    key={doc.id}
-                    onClick={() => setSelectedDoc(doc)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all ${
-                      selectedDoc?.id === doc.id
-                        ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
-                        : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    }`}
-                  >
-                    <div className="w-9 h-9 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center shrink-0">
-                      <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                    </div>
+                <>
+                  {visibleDocuments.map((doc) => {
+                    const docName =
+                      doc.name || doc.title || doc.fileName || "Untitled";
 
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                        {doc.name}
-                      </p>
-                    </div>
+                    const processStatus = doc.processStatus || doc.aiStatus;
+                    const isProcessed =
+                      !processStatus || processStatus === "PROCESSED";
 
-                    {selectedDoc?.id === doc.id && (
-                      <div className="ml-auto w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center shrink-0">
-                        <div className="w-2 h-2 bg-white rounded-full" />
-                      </div>
-                    )}
-                  </button>
-                ))
+                    return (
+                      <button
+                        key={doc.id}
+                        onClick={() => handleSelectDocument(doc)}
+                        className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all ${
+                          selectedDoc?.id === doc.id
+                            ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
+                            : "border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                        }`}
+                      >
+                        <div className="w-9 h-9 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center">
+                          <FileText className="w-4 h-4 text-slate-500" />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                            {docName}
+                          </p>
+
+                          {processStatus && (
+                            <p
+                              className={`text-[11px] font-semibold ${
+                                isProcessed
+                                  ? "text-emerald-600"
+                                  : "text-amber-600"
+                              }`}
+                            >
+                              AI Status: {processStatus}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {documents.length > DISPLAY_LIMIT && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllDocuments(!showAllDocuments)}
+                      className="w-full mt-3 py-3 rounded-2xl border border-dashed border-blue-300 text-blue-600 font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/30 transition"
+                    >
+                      {showAllDocuments
+                        ? "Thu gọn"
+                        : `Xem thêm ${hiddenDocumentCount} file`}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -174,7 +317,7 @@ export function AISummaryPage() {
           <button
             onClick={handleGenerate}
             disabled={isGenerating || !selectedDoc}
-            className="w-full py-4 bg-blue-600 text-white font-extrabold rounded-2xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+            className="w-full py-4 bg-blue-600 text-white font-extrabold rounded-2xl hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-70"
           >
             {isGenerating ? (
               <>
@@ -191,122 +334,171 @@ export function AISummaryPage() {
         </div>
 
         <div className="lg:col-span-2">
-          <AnimatePresence mode="wait">
-            {isGenerating ? (
-              <motion.div
-                key="loading"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-8 flex flex-col items-center justify-center min-h-[400px]"
-              >
-                <Sparkles className="w-8 h-8 text-blue-600 animate-pulse mb-5" />
-                <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mb-2">
-                  Analyzing Document...
-                </h3>
-                <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
-                  AI is reading and summarizing {selectedDoc?.name}
-                </p>
-              </motion.div>
-            ) : showSummary && selectedDoc ? (
-              <motion.div
-                key="summary"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-5"
-              >
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Sparkles className="w-4 h-4 text-blue-600" />
-                        <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">
-                          {summaryContent.title}
-                        </span>
+          {view === "history" ? (
+            <div className="space-y-4">
+              {summaryHistory.length === 0 ? (
+                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 p-8 text-center">
+                  <p className="text-slate-500">No summary history found.</p>
+                </div>
+              ) : (
+                summaryHistory.map((s) => (
+                  <button
+                    key={s.summaryId || s.id}
+                    onClick={() => openHistoryItem(s)}
+                    className="w-full text-left bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-blue-500 transition-all"
+                  >
+                    <p className="font-bold text-slate-900 dark:text-white">
+                      {s.documentTitle || "Untitled Document"}
+                    </p>
+                    <p className="text-sm text-slate-500">
+                      {s.summaryType} · {s.createdAt}
+                    </p>
+                  </button>
+                ))
+              )}
+            </div>
+          ) : (
+            <AnimatePresence mode="wait">
+              {isGenerating ? (
+                <motion.div
+                  key="loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-8 flex flex-col items-center justify-center min-h-[400px]"
+                >
+                  <Sparkles className="w-8 h-8 text-blue-600 animate-pulse mb-5" />
+                  <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mb-2">
+                    Analyzing Document...
+                  </h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm">
+                    AI is reading and summarizing{" "}
+                    {selectedDoc?.name || selectedDoc?.title}
+                  </p>
+                </motion.div>
+              ) : showSummary && selectedDoc ? (
+                <motion.div
+                  key="summary"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-5"
+                >
+                  <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Sparkles className="w-4 h-4 text-blue-600" />
+                          <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">
+                            {summaryData.summaryType || "AI Summary"}
+                          </span>
+                        </div>
+
+                        <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                          {summaryData.documentTitle ||
+                            selectedDoc.name ||
+                            selectedDoc.title}
+                        </h2>
                       </div>
 
-                      <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
-                        {selectedDoc.name}
-                      </h2>                    
+                      <div className="px-3 py-1.5 bg-emerald-50 text-emerald-600 text-xs font-bold rounded-xl">
+                        AI Generated
+                      </div>
                     </div>
 
-                    <div className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 text-xs font-bold rounded-xl border border-emerald-100 dark:border-emerald-500/30">
-                      AI Generated
-                    </div>
+                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+                      {summaryData.summaryText}
+                    </p>
                   </div>
 
-                  <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
-                    {summaryContent.summary}
+                  {summaryData.keyTakeaways?.length > 0 && (
+                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+                      <h3 className="text-lg font-extrabold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                        Key Takeaways
+                      </h3>
+
+                      {summaryData.keyTakeaways.map(
+                        (point: string, i: number) => (
+                          <div
+                            key={i}
+                            className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl mb-3"
+                          >
+                            <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 font-extrabold text-xs">
+                              {i + 1}
+                            </div>
+                            <p className="text-sm text-slate-700 dark:text-slate-300">
+                              {point}
+                            </p>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  )}
+
+                  {summaryData.keyConcepts?.length > 0 && (
+                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+                      <h3 className="text-lg font-extrabold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                        <Brain className="w-5 h-5 text-purple-500" />
+                        Key Concepts & Definitions
+                      </h3>
+
+                      {summaryData.keyConcepts.map(
+                        (concept: any, i: number) => (
+                          <div
+                            key={i}
+                            className="flex gap-3 p-3 border border-slate-200 dark:border-slate-700 rounded-2xl mb-3"
+                          >
+                            <Tag className="w-4 h-4 text-purple-500 mt-0.5" />
+                            <div>
+                              <p className="font-extrabold text-slate-900 dark:text-white text-sm">
+                                {concept.term}
+                              </p>
+                              <p className="text-sm text-slate-500">
+                                {concept.definition}
+                              </p>
+                            </div>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  )}
+
+                  {summaryData.insights?.length > 0 && (
+                    <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] p-6 text-white">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Sparkles className="w-5 h-5" />
+                        <h3 className="text-lg font-extrabold">
+                          AI Study Insights
+                        </h3>
+                      </div>
+
+                      {summaryData.insights.map(
+                        (insight: string, i: number) => (
+                          <div
+                            key={i}
+                            className="flex items-start gap-3 p-3 bg-white/10 rounded-2xl mb-3"
+                          >
+                            <ChevronRight className="w-4 h-4 mt-0.5" />
+                            <p className="text-sm">{insight}</p>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  )}
+                </motion.div>
+              ) : (
+                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-8 flex flex-col items-center justify-center min-h-[400px] text-center">
+                  <Sparkles className="w-10 h-10 text-blue-600 mb-4" />
+                  <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mb-2">
+                    Ready to generate summary
+                  </h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm">
+                    Select a document and click Generate Summary.
                   </p>
                 </div>
-
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-                  <h3 className="text-lg font-extrabold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                    Key Takeaways
-                  </h3>
-
-                  <div className="space-y-3">
-                    {summaryContent.keyTakeaways.map((point, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl"
-                      >
-                        <div className="w-6 h-6 bg-emerald-100 dark:bg-emerald-500/20 rounded-full flex items-center justify-center shrink-0 text-emerald-600 dark:text-emerald-300 font-extrabold text-xs mt-0.5">
-                          {i + 1}
-                        </div>
-                        <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-                          {point}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-                  <h3 className="text-lg font-extrabold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                    <Brain className="w-5 h-5 text-purple-500" />
-                    Key Concepts & Definitions
-                  </h3>
-
-                  <div className="space-y-3">
-                    {summaryContent.keyConcepts.map((concept, i) => (
-                      <div
-                        key={i}
-                        className="flex gap-3 p-3 border border-slate-200 dark:border-slate-700 rounded-2xl"
-                      >
-                        <Tag className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" />
-                        <div>
-                          <p className="font-extrabold text-slate-900 dark:text-white text-sm">
-                            {concept.term}
-                          </p>
-                          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                            {concept.definition}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] p-6 text-white">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Sparkles className="w-5 h-5" />
-                    <h3 className="text-lg font-extrabold">AI Study Insights</h3>
-                  </div>
-
-                  <div className="space-y-3">
-                    {summaryContent.insights.map((insight, i) => (
-                      <div key={i} className="flex items-start gap-3 p-3 bg-white/10 rounded-2xl">
-                        <ChevronRight className="w-4 h-4 mt-0.5 shrink-0 opacity-70" />
-                        <p className="text-sm opacity-90">{insight}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
+              )}
+            </AnimatePresence>
+          )}
         </div>
       </div>
     </div>

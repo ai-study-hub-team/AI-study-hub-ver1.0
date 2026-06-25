@@ -15,6 +15,7 @@ import {
 import { motion } from "motion/react";
 import { useNavigate } from "react-router";
 import axios from "axios";
+import { getAuthHeader, getCurrentUserId } from "../../services/apiClient";
 import {
   XAxis,
   YAxis,
@@ -39,6 +40,7 @@ const data = [
 
 type DocumentItem = {
   id?: number;
+  userId?: number;
   title?: string;
   originalName?: string;
   fileName?: string;
@@ -51,11 +53,49 @@ type ChatSession = {
   id?: number;
 };
 
+type StoredUser = {
+  id?: number;
+  userId?: number;
+  fullName?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+};
+
 const statStyles = {
   blue: "bg-blue-50 text-blue-600",
   purple: "bg-purple-50 text-purple-600",
   amber: "bg-amber-50 text-amber-600",
   emerald: "bg-emerald-50 text-emerald-600",
+};
+
+const getStoredUser = (): StoredUser | null => {
+  try {
+    const rawUser = localStorage.getItem("user");
+
+    if (!rawUser) return null;
+
+    return JSON.parse(rawUser);
+  } catch {
+    return null;
+  }
+};
+
+const getCurrentFullName = () => {
+  const storedUser = getStoredUser();
+
+  return (
+    localStorage.getItem("fullName") ||
+    storedUser?.fullName ||
+    storedUser?.name ||
+    "User"
+  );
+};
+
+const getFirstName = (fullName: string) => {
+  const firstName = fullName.trim().split(/\s+/)[0];
+
+  return firstName || "User";
 };
 
 const getDocumentTypeLabel = (fileType?: string) => {
@@ -64,24 +104,28 @@ const getDocumentTypeLabel = (fileType?: string) => {
   const normalizedFileType = fileType.toLowerCase();
 
   if (normalizedFileType.includes("pdf")) return "PDF";
+
   if (
     normalizedFileType.includes("wordprocessingml") ||
     normalizedFileType.includes("msword")
   ) {
     return "DOCX";
   }
+
   if (
     normalizedFileType.includes("presentationml") ||
     normalizedFileType.includes("powerpoint")
   ) {
     return "PPTX";
   }
+
   if (
     normalizedFileType.includes("spreadsheetml") ||
     normalizedFileType.includes("excel")
   ) {
     return "XLSX";
   }
+
   if (normalizedFileType.includes("image")) return "IMAGE";
   if (normalizedFileType.includes("video")) return "VIDEO";
   if (normalizedFileType.includes("audio")) return "AUDIO";
@@ -92,6 +136,7 @@ const getDocumentTypeLabel = (fileType?: string) => {
 export function StudentDashboard() {
   const navigate = useNavigate();
 
+  const [displayName, setDisplayName] = useState(getCurrentFullName());
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [totalDocuments, setTotalDocuments] = useState(0);
@@ -102,28 +147,86 @@ export function StudentDashboard() {
       try {
         setLoading(true);
 
-        const userId = 1;
+        const userId = getCurrentUserId();
+
+        if (!userId) {
+          navigate("/login");
+          return;
+        }
+
+        try {
+          const accountResponse = await axios.get(
+            `${API_BASE_URL}/account/me`,
+            getAuthHeader()
+          );
+
+          const accountData = accountResponse.data;
+
+          const accountFullName =
+            accountData?.fullName || accountData?.name || getCurrentFullName();
+
+          setDisplayName(accountFullName);
+          localStorage.setItem("fullName", accountFullName);
+        } catch (error) {
+          console.warn("Cannot load account info, using localStorage", error);
+          setDisplayName(getCurrentFullName());
+        }
 
         const documentsResponse = await axios.get(`${API_BASE_URL}/documents`, {
           params: { userId },
+          ...getAuthHeader(),
         });
 
         const documentsData = documentsResponse.data;
 
         if (Array.isArray(documentsData)) {
-          setDocuments(documentsData);
-          setTotalDocuments(documentsData.length);
+          const userDocuments = documentsData.filter(
+            (document: DocumentItem) => Number(document.userId) === userId,
+          );
+          setDocuments(userDocuments);
+          setTotalDocuments(userDocuments.length);
         } else if (Array.isArray(documentsData?.data)) {
-          setDocuments(documentsData.data);
-          setTotalDocuments(documentsData.data.length);
+          const userDocuments = documentsData.data.filter(
+            (document: DocumentItem) => Number(document.userId) === userId,
+          );
+          setDocuments(userDocuments);
+          setTotalDocuments(userDocuments.length);
         } else if (Array.isArray(documentsData?.content)) {
-          setDocuments(documentsData.content);
+          const userDocuments = documentsData.content.filter(
+            (document: DocumentItem) => Number(document.userId) === userId,
+          );
+          setDocuments(userDocuments);
           setTotalDocuments(
-            documentsData.totalElements ?? documentsData.content.length,
+            userDocuments.length,
           );
         } else {
           setDocuments([]);
           setTotalDocuments(0);
+        }
+
+        try {
+          const chatResponse = await axios.get(
+            `${API_BASE_URL}/chat/sessions`,
+            {
+              params: { userId },
+              ...getAuthHeader(),
+            }
+          );
+
+          const chatData = chatResponse.data;
+
+          if (Array.isArray(chatData)) {
+            setChatSessions(chatData);
+          } else if (Array.isArray(chatData?.data)) {
+            setChatSessions(chatData.data);
+          } else if (Array.isArray(chatData?.content)) {
+            setChatSessions(chatData.content);
+          } else {
+            setChatSessions([]);
+          }
+        } catch (error) {
+          console.warn("Cannot load chat sessions", error);
+          setChatSessions([]);
         }
       } catch (error) {
         console.error("Failed to load dashboard data", error);
@@ -168,8 +271,7 @@ export function StudentDashboard() {
   const recentDocs = useMemo(() => {
     return documents.slice(0, 4).map((doc) => ({
       id: doc.id,
-      name:
-        doc.title || doc.originalName || doc.fileName || "Untitled Document",
+      name: doc.title || doc.originalName || doc.fileName || "Untitled Document",
       date: doc.createdAt
         ? new Date(doc.createdAt).toLocaleDateString()
         : "Unknown date",
@@ -185,7 +287,7 @@ export function StudentDashboard() {
       <section className="relative overflow-hidden bg-blue-600 rounded-[2rem] p-8 md:p-12 text-white">
         <div className="relative z-10 max-w-2xl">
           <h1 className="text-3xl md:text-4xl font-extrabold mb-4">
-            Good morning, Alex! 👋
+            Good morning, {getFirstName(displayName)}! 👋
           </h1>
 
           <p className="text-blue-100 text-lg mb-8 leading-relaxed">
@@ -241,6 +343,7 @@ export function StudentDashboard() {
               <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">
                 Study Activity
               </h3>
+
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Hours spent studying this week
               </p>
@@ -262,9 +365,11 @@ export function StudentDashboard() {
                   vertical={false}
                   stroke="#f1f5f9"
                 />
+
                 <XAxis dataKey="name" axisLine={false} tickLine={false} />
                 <YAxis axisLine={false} tickLine={false} />
                 <Tooltip />
+
                 <Area
                   type="monotone"
                   dataKey="hours"
@@ -289,14 +394,17 @@ export function StudentDashboard() {
               className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 transition-all group"
             >
               <BrainCircuit className="w-5 h-5 text-blue-600" />
+
               <div className="text-left">
                 <p className="font-bold text-slate-900 dark:text-slate-100">
                   Summarize PDF
                 </p>
+
                 <p className="text-xs text-slate-500">
                   Get key points instantly
                 </p>
               </div>
+
               <ChevronRight className="w-4 h-4 ml-auto text-slate-400" />
             </button>
 
@@ -305,12 +413,15 @@ export function StudentDashboard() {
               className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 transition-all group"
             >
               <Puzzle className="w-5 h-5 text-purple-600" />
+
               <div className="text-left">
                 <p className="font-bold text-slate-900 dark:text-slate-100">
                   Create Quiz
                 </p>
+
                 <p className="text-xs text-slate-500">Test your knowledge</p>
               </div>
+
               <ChevronRight className="w-4 h-4 ml-auto text-slate-400" />
             </button>
 
@@ -319,12 +430,15 @@ export function StudentDashboard() {
               className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 transition-all group"
             >
               <MessageSquare className="w-5 h-5 text-amber-600" />
+
               <div className="text-left">
                 <p className="font-bold text-slate-900 dark:text-slate-100">
                   Ask AI Hub
                 </p>
+
                 <p className="text-xs text-slate-500">Get help with subjects</p>
               </div>
+
               <ChevronRight className="w-4 h-4 ml-auto text-slate-400" />
             </button>
           </div>
