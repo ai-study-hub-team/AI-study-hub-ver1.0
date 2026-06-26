@@ -703,5 +703,41 @@ async def embed_query_endpoint(request: EmbedQueryRequest):
         raise HTTPException(status_code=500, detail=f"Embedding failed: {str(e)}")
 
 
+# ─── Debug Query Embedding Endpoint ──────────────────────────────────────────
+# This endpoint is only for development/demo purposes to inspect query vectors.
+# Do not expose in production unless necessary.
+
+class QueryEmbeddingRequest(BaseModel):
+    query: str
+
+@app.post("/debug/query-embedding")
+def debug_query_embedding(request: QueryEmbeddingRequest):
+    from fastapi import HTTPException
+    try:
+        query = request.query.strip()
+
+        if not query:
+            raise HTTPException(status_code=400, detail="Query must not be empty")
+
+        from pgvector_store import _get_embedding_model
+        model = _get_embedding_model()
+        vector = model.encode([query])[0].tolist()
+
+        return {
+            "query": query,
+            "dimension": len(vector),
+            "first_10_values": vector[:10],
+            "vector": vector
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate query embedding: {str(e)}"
+        )
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

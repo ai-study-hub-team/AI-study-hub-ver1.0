@@ -20,7 +20,7 @@ PGVECTOR_PASSWORD = os.getenv("PGVECTOR_PASSWORD", "123456")
 
 # ─── Gemini ───────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash") #gemini-2.5-flash gemini-3.1-flash-lite
 
 # ─── Spring Boot ──────────────────────────────────────────────────────────────
 SPRING_BOOT_BASE_URL = os.getenv("SPRING_BOOT_BASE_URL", "http://localhost:8080")

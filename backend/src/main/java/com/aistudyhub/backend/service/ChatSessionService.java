@@ -24,11 +24,14 @@ import java.util.stream.Collectors;
 /**
  * Handles Chat AI sessions, message persistence, and answer generation.
  *
- * <p><b>Two-mode flow:</b>
+ * <p>
+ * <b>Two-mode flow:</b>
  * <ol>
- *   <li><b>GENERAL_CHAT</b>: no documentIds → call /generate-answer directly (no pgvector).</li>
- *   <li><b>DOCUMENT_CHAT</b>: documentIds resolved → call /analyze-chat-query (planner),
- *       route retrieval, call /generate-answer with context chunks.</li>
+ * <li><b>GENERAL_CHAT</b>: no documentIds → call /generate-answer directly (no
+ * pgvector).</li>
+ * <li><b>DOCUMENT_CHAT</b>: documentIds resolved → call /analyze-chat-query
+ * (planner),
+ * route retrieval, call /generate-answer with context chunks.</li>
  * </ol>
  * DocumentIds are resolved in priority order:
  * request.documentIds → session attached docs → empty (GENERAL_CHAT).
@@ -38,21 +41,21 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ChatSessionService {
 
-    private final ChatSessionRepository           chatSessionRepository;
-    private final UserRepository                  userRepository;
-    private final DocumentRepository              documentRepository;
-    private final ChatSessionDocumentRepository   chatSessionDocumentRepository;
-    private final ChatMessageRepository           chatMessageRepository;
-    private final AiCitationRepository            aiCitationRepository;
-    private final DocumentChunkRepository         documentChunkRepository;
-    private final SemanticSearchService           semanticSearchService;
+    private final ChatSessionRepository chatSessionRepository;
+    private final UserRepository userRepository;
+    private final DocumentRepository documentRepository;
+    private final ChatSessionDocumentRepository chatSessionDocumentRepository;
+    private final ChatMessageRepository chatMessageRepository;
+    private final AiCitationRepository aiCitationRepository;
+    private final DocumentChunkRepository documentChunkRepository;
+    private final SemanticSearchService semanticSearchService;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
     private String aiServiceBaseUrl;
 
-    private static final int CHAT_TOP_K    = 5;
+    private static final int CHAT_TOP_K = 5;
     /** For OVERVIEW: max chars of chunk text to include per chunk. */
     private static final int OVERVIEW_CHUNK_CHAR_LIMIT = 1000;
     /** For OVERVIEW: how many ordered chunks to build context from. */
@@ -192,8 +195,12 @@ public class ChatSessionService {
             RetrievalStrategy strategy = safeRetrievalStrategy(plan.getRetrievalStrategy());
             String effectiveQuestion = (plan.getRewrittenQuestion() != null
                     && !plan.getRewrittenQuestion().isBlank())
-                    ? plan.getRewrittenQuestion()
-                    : request.getQuestion();
+                            ? plan.getRewrittenQuestion()
+                            : request.getQuestion();
+
+            String retrievalQuery = (request.getQuestion() != null && !request.getQuestion().isBlank())
+                    ? request.getQuestion()
+                    : effectiveQuestion;
 
             // Step 8b: Route retrieval
             switch (intent) {
@@ -219,13 +226,13 @@ public class ChatSessionService {
                     // TODO: route to existing Summary/Quiz services in a future task.
                     log.info("[Chat] intent={} — tool routing not yet implemented; " +
                             "falling back to semantic search.", intent);
-                    contextChunks = retrieveSemanticChunks(effectiveQuestion, activeDocumentIds, CHAT_TOP_K);
+                    contextChunks = retrieveSemanticChunks(retrievalQuery, activeDocumentIds, CHAT_TOP_K);
                     break;
 
                 default: // DOCUMENT_QA, FOLLOW_UP_QA, OUT_OF_SCOPE
-                    log.info("[Chat] intent={} → semantic search with rewrittenQuestion='{}'.",
-                            intent, effectiveQuestion);
-                    contextChunks = retrieveSemanticChunks(effectiveQuestion, activeDocumentIds, CHAT_TOP_K);
+                    log.info("[Chat] intent={} → semantic search. originalQuestion='{}', rewrittenQuestion='{}', retrievalQuery='{}'",
+                            intent, request.getQuestion(), plan.getRewrittenQuestion(), retrievalQuery);
+                    contextChunks = retrieveSemanticChunks(retrievalQuery, activeDocumentIds, CHAT_TOP_K);
                     break;
             }
 
@@ -297,7 +304,10 @@ public class ChatSessionService {
         return List.of();
     }
 
-    /** Call Python /analyze-chat-query (Chat Planner). Returns a safe fallback on error. */
+    /**
+     * Call Python /analyze-chat-query (Chat Planner). Returns a safe fallback on
+     * error.
+     */
     private PythonAnalyzeChatQueryResponse callAnalyzeChatQuery(
             String question, List<PythonMessage> history,
             boolean hasDocuments, int documentCount) {
@@ -312,8 +322,8 @@ public class ChatSessionService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<PythonAnalyzeChatQueryRequest> entity = new HttpEntity<>(req, headers);
-            ResponseEntity<PythonAnalyzeChatQueryResponse> resp =
-                    restTemplate.postForEntity(url, entity, PythonAnalyzeChatQueryResponse.class);
+            ResponseEntity<PythonAnalyzeChatQueryResponse> resp = restTemplate.postForEntity(url, entity,
+                    PythonAnalyzeChatQueryResponse.class);
             if (resp.getBody() != null) {
                 return resp.getBody();
             }
@@ -333,9 +343,9 @@ public class ChatSessionService {
 
     /** Call Python /generate-answer. Returns a fallback error string on failure. */
     private String callGenerateAnswer(String question, String rewrittenQuestion,
-                                      String intent, List<PythonMessage> history,
-                                      List<PythonContextChunk> contextChunks,
-                                      boolean hasDocuments) {
+            String intent, List<PythonMessage> history,
+            List<PythonContextChunk> contextChunks,
+            boolean hasDocuments) {
         String url = aiServiceBaseUrl + "/generate-answer";
         PythonGenerateAnswerRequest payload = PythonGenerateAnswerRequest.builder()
                 .question(question)
@@ -351,8 +361,8 @@ public class ChatSessionService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<PythonGenerateAnswerRequest> entity = new HttpEntity<>(payload, headers);
-            ResponseEntity<PythonGenerateAnswerResponse> resp =
-                    restTemplate.postForEntity(url, entity, PythonGenerateAnswerResponse.class);
+            ResponseEntity<PythonGenerateAnswerResponse> resp = restTemplate.postForEntity(url, entity,
+                    PythonGenerateAnswerResponse.class);
             if (resp.getBody() != null && resp.getBody().getAnswer() != null) {
                 return resp.getBody().getAnswer();
             }
@@ -381,16 +391,17 @@ public class ChatSessionService {
         List<PythonContextChunk> result = new ArrayList<>();
         for (Long docId : documentIds) {
             try {
-                List<com.aistudyhub.backend.entity.DocumentChunk> chunks =
-                        documentChunkRepository.findTop30ByDocumentIdOrderByChunkIndexAsc(docId);
+                List<com.aistudyhub.backend.entity.DocumentChunk> chunks = documentChunkRepository
+                        .findTop30ByDocumentIdOrderByChunkIndexAsc(docId);
 
-                // Spread selection: take first 5 + spread remaining to reach OVERVIEW_MAX_CHUNKS
-                List<com.aistudyhub.backend.entity.DocumentChunk> selected =
-                        spreadSelect(chunks, OVERVIEW_MAX_CHUNKS);
+                // Spread selection: take first 5 + spread remaining to reach
+                // OVERVIEW_MAX_CHUNKS
+                List<com.aistudyhub.backend.entity.DocumentChunk> selected = spreadSelect(chunks, OVERVIEW_MAX_CHUNKS);
 
                 for (com.aistudyhub.backend.entity.DocumentChunk c : selected) {
                     String text = c.getChunkText();
-                    if (text == null || text.isBlank()) continue;
+                    if (text == null || text.isBlank())
+                        continue;
                     if (text.length() > OVERVIEW_CHUNK_CHAR_LIMIT) {
                         text = text.substring(0, OVERVIEW_CHUNK_CHAR_LIMIT) + "...";
                     }
@@ -412,18 +423,19 @@ public class ChatSessionService {
     }
 
     /**
-     * Build COMPARISON context: run each search query separately, merge, deduplicate.
+     * Build COMPARISON context: run each search query separately, merge,
+     * deduplicate.
      */
     private List<PythonContextChunk> buildComparisonContext(
             List<String> searchQueries, List<Long> documentIds, int topK) {
         Map<String, PythonContextChunk> seen = new LinkedHashMap<>();
         List<String> queries = (searchQueries != null && !searchQueries.isEmpty())
-                ? searchQueries : List.of();
+                ? searchQueries
+                : List.of();
 
         for (String q : queries) {
             try {
-                List<PythonContextChunk> hits =
-                        semanticSearchService.retrieveForChat(q, documentIds, topK);
+                List<PythonContextChunk> hits = semanticSearchService.retrieveForChat(q, documentIds, topK);
                 for (PythonContextChunk c : hits) {
                     String key = c.getDocumentId() + "_" + c.getChunkIndex();
                     seen.putIfAbsent(key, c);
@@ -443,7 +455,8 @@ public class ChatSessionService {
 
     /** Select up to maxCount items evenly spread from a list. */
     private <T> List<T> spreadSelect(List<T> source, int maxCount) {
-        if (source.size() <= maxCount) return source;
+        if (source.size() <= maxCount)
+            return source;
         List<T> result = new ArrayList<>();
         double step = (double) source.size() / maxCount;
         for (int i = 0; i < maxCount; i++) {
@@ -454,7 +467,8 @@ public class ChatSessionService {
 
     /** Parse intent string safely, fallback to DOCUMENT_QA. */
     private ChatIntent safeChatIntent(String raw) {
-        if (raw == null) return ChatIntent.DOCUMENT_QA;
+        if (raw == null)
+            return ChatIntent.DOCUMENT_QA;
         try {
             return ChatIntent.valueOf(raw.toUpperCase());
         } catch (IllegalArgumentException e) {
@@ -465,7 +479,8 @@ public class ChatSessionService {
 
     /** Parse retrieval strategy string safely, fallback to SEMANTIC_SEARCH. */
     private RetrievalStrategy safeRetrievalStrategy(String raw) {
-        if (raw == null) return RetrievalStrategy.SEMANTIC_SEARCH;
+        if (raw == null)
+            return RetrievalStrategy.SEMANTIC_SEARCH;
         try {
             return RetrievalStrategy.valueOf(raw.toUpperCase());
         } catch (IllegalArgumentException e) {
@@ -482,7 +497,8 @@ public class ChatSessionService {
 
         List<ChatCitationResponse> citationResponses = new ArrayList<>();
         for (PythonContextChunk chunk : contextChunks) {
-            if (chunk.getChunkText() == null || chunk.getChunkText().isBlank()) continue;
+            if (chunk.getChunkText() == null || chunk.getChunkText().isBlank())
+                continue;
 
             Optional<Document> docOpt = documentRepository.findById(chunk.getDocumentId());
             if (docOpt.isEmpty()) {

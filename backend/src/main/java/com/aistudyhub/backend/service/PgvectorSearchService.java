@@ -34,10 +34,10 @@ import java.util.Map;
 @Slf4j
 public class PgvectorSearchService {
 
-    private final JdbcTemplate pgvectorJdbcTemplate;
+    private final JdbcTemplate jdbcTemplate;
 
-    public PgvectorSearchService(@Qualifier("pgvectorJdbcTemplate") JdbcTemplate pgvectorJdbcTemplate) {
-        this.pgvectorJdbcTemplate = pgvectorJdbcTemplate;
+    public PgvectorSearchService(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /**
@@ -45,7 +45,7 @@ public class PgvectorSearchService {
      */
     public boolean isAvailable() {
         try {
-            pgvectorJdbcTemplate.queryForObject("SELECT 1", Integer.class);
+            jdbcTemplate.queryForObject("SELECT 1", Integer.class);
             return true;
         } catch (Exception e) {
             log.warn("pgvector database is not reachable: {}", e.getMessage());
@@ -58,7 +58,7 @@ public class PgvectorSearchService {
      */
     public long countEmbeddingsByDocumentId(Long documentId) {
         try {
-            Long count = pgvectorJdbcTemplate.queryForObject(
+            Long count = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM document_chunk_embeddings WHERE document_id = ?",
                     Long.class,
                     documentId
@@ -83,7 +83,7 @@ public class PgvectorSearchService {
      */
     public int deleteEmbeddingsByDocumentId(Long documentId) {
         try {
-            int deleted = pgvectorJdbcTemplate.update(
+            int deleted = jdbcTemplate.update(
                     "DELETE FROM document_chunk_embeddings WHERE document_id = ?",
                     documentId
             );
@@ -175,7 +175,7 @@ public class PgvectorSearchService {
                 queryEmbedding.length, documentId, documentIds, topK);
 
         try {
-            List<Map<String, Object>> rows = pgvectorJdbcTemplate.queryForList(sql, params);
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params);
             log.info("[pgvector] Returned {} rows.", rows.size());
             return rows;
         } catch (Exception e) {

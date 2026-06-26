@@ -13,7 +13,7 @@ spring:
     name: backend
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/aistudyhub_pg_test
+    url: jdbc:postgresql://localhost:5433/aistudyhub_pgvector_test
     username: postgres
     password: 123456
 
@@ -47,10 +47,3 @@ ai:
 # When "pinecone", semantic search goes through Python AI service (legacy).
 vector:
   store: pgvector
-
-# ── pgvector datasource (separate from main datasource) ───────────────────────
-pgvector:
-  datasource:
-    url: jdbc:postgresql://localhost:5433/aistudyhub_pgvector_test
-    username: postgres
-    password: 123456
