@@ -52,12 +52,19 @@ public class AiIntegrationService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
+            Long userId = null;
+            var docOpt = documentRepository.findById(documentId);
+            if (docOpt.isPresent() && docOpt.get().getUser() != null) {
+                userId = docOpt.get().getUser().getId();
+            }
+
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("documentId", documentId);
             requestBody.put("fileName", fileName);
             requestBody.put("originalFileName", originalFileName);
             requestBody.put("filePath", absoluteFilePath);
             requestBody.put("fileType", fileType);
+            requestBody.put("userId", userId);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
             ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);

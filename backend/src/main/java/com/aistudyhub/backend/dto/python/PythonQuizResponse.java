@@ -12,4 +12,5 @@ import java.util.List;
 public class PythonQuizResponse {
     private String title;
     private List<PythonQuizQuestion> questions;
+    private PythonTokenUsage usage;
 }

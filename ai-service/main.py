@@ -30,6 +30,7 @@ class DocumentRequest(BaseModel):
     originalFileName: str
     filePath: str
     fileType: str
+    userId: Optional[int] = None
 
 
 # ─── POST /process-document ───────────────────────────────────────────────────
@@ -116,6 +117,7 @@ async def process_document(request: DocumentRequest):
                 document_id=request.documentId,
                 original_file_name=request.originalFileName,
                 chunks=chunks,
+                user_id=request.userId,
             )
             vector_stored = result["success"]
             vector_count = result["vectorCount"]
