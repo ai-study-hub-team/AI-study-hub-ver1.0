@@ -168,7 +168,7 @@ export function AIChatPage() {
 
   const loadDocuments = async () => {
     try {
-      const res = await apiClient.get("/api/documents", {
+      const res = await apiClient.get("/api/documents/search-filter", {
         params: { page: 0, size: 100 },
       });
 

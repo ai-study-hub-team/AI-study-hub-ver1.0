@@ -131,17 +131,12 @@ export function LibraryCategoryDocumentsPage() {
         }
 
         const response = await documentApi.getDocuments({
-          userId,
           page: 0,
           size: 100,
           categoryId: Number(categoryId),
         });
 
-        setDocuments(
-          (response.data.content ?? []).filter(
-            (document) => document.userId === userId,
-          ),
-        );
+        setDocuments(response.data.content ?? []);
       } catch (error) {
         console.error(error);
         toast.error("Cannot load category documents.");

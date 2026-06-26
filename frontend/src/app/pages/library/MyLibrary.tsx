@@ -28,6 +28,8 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
 
+import { favoriteApi, type FavoriteDocument } from "../../services/favoriteApi";
+
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { documentApi } from "../../services/documentApi";
 import { getCurrentUserId } from "../../services/apiClient";
@@ -188,7 +190,7 @@ function DocumentRow({
   onEdit,
 }: {
   document: LibraryDocument;
-  onToggleFavorite: (documentId: number) => void;
+  onToggleFavorite: (documentId: number) => void | Promise<void>;
   onDelete: (documentId: number) => void;
   onReprocess: (documentId: number) => void;
   onDownload: (documentId: number, fileName: string) => void;
@@ -312,10 +314,11 @@ export function MyLibrary() {
     useState<CategoryResponse | null>(null);
   const [editCategoryName, setEditCategoryName] = useState("");
   const [editCategoryDescription, setEditCategoryDescription] = useState("");
-  const [deleteCategoryId, setDeleteCategoryId] = useState<number | null>(
-    null,
-  );
-  const mapLibraryDocument = (document: any): LibraryDocument => ({
+  const [deleteCategoryId, setDeleteCategoryId] = useState<number | null>(null);
+  const mapLibraryDocument = (
+    document: any,
+    favoriteMap: Record<number, boolean> = {},
+  ): LibraryDocument => ({
     id: document.id,
     categoryId: document.categoryId,
     name: document.title || document.originalName || document.fileName,
@@ -326,7 +329,7 @@ export function MyLibrary() {
     aiStatus: document.aiStatus,
     documentStatus: document.documentStatus,
     fileSize: document.fileSize ?? 0,
-    fav: false,
+    fav: Boolean(favoriteMap[document.id]),
   });
 
   const loadCategories = async () => {
@@ -351,37 +354,38 @@ export function MyLibrary() {
   };
 
   useEffect(() => {
-    loadCategories();
-  }, []);
-
-  useEffect(() => {
     const loadDocuments = async () => {
       try {
-        const userId = getCurrentUserId();
-
-        if (!userId) {
-          toast.error("Please log in again to view your library.");
-          return;
-        }
-
         const keyword = searchQuery.trim();
 
-        const response = keyword
-          ? await documentApi.searchDocuments({
-              keyword,
-              userId,
-              page: 0,
-              size: 100,
-            })
-          : await documentApi.getDocumentsByUserId(userId, {
-              page: 0,
-              size: 100,
-            });
+        const [documentResponse, favoriteResponse] = await Promise.all([
+          keyword
+            ? documentApi.searchDocuments({
+                keyword,
+                page: 0,
+                size: 100,
+              })
+            : documentApi.getDocuments({
+                page: 0,
+                size: 100,
+              }),
+          favoriteApi.getFavorites(0, 100),
+        ]);
+
+        const favoriteDocuments = favoriteResponse.data.content ?? [];
+
+        const favoriteMap = favoriteDocuments.reduce<Record<number, boolean>>(
+          (current, favorite: FavoriteDocument) => {
+            current[favorite.documentId] = true;
+            return current;
+          },
+          {},
+        );
 
         setDocuments(
-          (response.data.content ?? [])
-            .filter((document) => Number(document.userId) === userId)
-            .map(mapLibraryDocument),
+          (documentResponse.data.content ?? []).map((document) =>
+            mapLibraryDocument(document, favoriteMap),
+          ),
         );
       } catch (error) {
         console.error("Cannot load library documents:", error);
@@ -396,14 +400,39 @@ export function MyLibrary() {
     return () => window.clearTimeout(timeoutId);
   }, [searchQuery]);
 
-  const toggleFavorite = (documentId: number) => {
-    setDocuments((current) =>
-      current.map((document) =>
-        document.id === documentId
-          ? { ...document, fav: !document.fav }
-          : document,
-      ),
+  const toggleFavorite = async (documentId: number) => {
+    const currentDocument = documents.find(
+      (document) => document.id === documentId,
     );
+
+    if (!currentDocument) return;
+
+    try {
+      if (currentDocument.fav) {
+        await favoriteApi.removeFavorite(documentId);
+
+        setDocuments((current) =>
+          current.map((document) =>
+            document.id === documentId ? { ...document, fav: false } : document,
+          ),
+        );
+
+        toast.success("Removed from favorites");
+      } else {
+        await favoriteApi.addFavorite(documentId);
+
+        setDocuments((current) =>
+          current.map((document) =>
+            document.id === documentId ? { ...document, fav: true } : document,
+          ),
+        );
+
+        toast.success("Added to favorites");
+      }
+    } catch (error) {
+      console.error("Cannot update favorite:", error);
+      toast.error("Cannot update favorite.");
+    }
   };
 
   const handleDelete = async (documentId: number): Promise<boolean> => {
@@ -628,7 +657,7 @@ export function MyLibrary() {
           </button>
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid w-full max-w-5xl grid-cols-1 gap-4 md:grid-cols-3">
         {/* Categories */}
         <motion.button
           whileHover={{ y: -3 }}
@@ -648,6 +677,7 @@ export function MyLibrary() {
             Categories
           </p>
         </motion.button>
+
         {/* Total Documents */}
         <motion.button
           whileHover={{ y: -3 }}
@@ -667,8 +697,27 @@ export function MyLibrary() {
             Total Documents
           </p>
         </motion.button>
-      </div>
 
+        {/* Favorites */}
+        <motion.button
+          whileHover={{ y: -3 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => navigate("/app/library/favorites")}
+          className="rounded-2xl border border-slate-100 bg-white p-5 text-left shadow-sm transition-all hover:border-amber-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
+        >
+          <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-500 dark:bg-amber-950/30 dark:text-amber-300">
+            <Star className="h-4.5 w-4.5 fill-amber-400" />
+          </div>
+
+          <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+            {documents.filter((document) => document.fav).length}
+          </p>
+
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+            Favorites
+          </p>
+        </motion.button>
+      </div>
       {/* Categories Section */}
       <section>
         <div className="flex items-center justify-between mb-6">

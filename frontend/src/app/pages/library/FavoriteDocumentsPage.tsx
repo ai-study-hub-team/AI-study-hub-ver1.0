@@ -1,37 +1,41 @@
 import { useEffect, useState } from "react";
 import {
-  Download,
-  FileText,
-  RotateCcw,
-  Star,
-  Trash2,
   ArrowLeft,
-  Upload,
+  Download,
+  Eye,
+  FileText,
   Grid3X3,
   List,
-  Eye,
   Pencil,
+  RotateCcw,
   Save,
+  Star,
+  Trash2,
   X,
 } from "lucide-react";
-import { toast } from "sonner";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
 
 import { documentApi } from "../../services/documentApi";
-import { getCurrentUserId } from "../../services/apiClient";
+import {
+  favoriteApi,
+  type FavoriteDocument,
+  type FavoriteDocumentPageResponse,
+} from "../../services/favoriteApi";
 import type { AiStatus } from "../../constants/documentStatus";
 
-interface LibraryDocument {
+interface FavoriteLibraryDocument {
+  favoriteId: number;
   id: number;
-  categoryId: number;
   name: string;
+  description: string;
   folder: string;
   date: string;
-  createdAt: string;
   type: string;
   aiStatus: AiStatus;
   documentStatus: string;
-  fileSize: number;
+  visibility: string;
+  ownerName: string;
   fav: boolean;
 }
 
@@ -44,6 +48,13 @@ const statusBadgeClass: Record<AiStatus, string> = {
     "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800",
   FAILED:
     "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/30 dark:text-red-300 dark:ring-red-800",
+};
+
+const mapAiStatus = (status: string | undefined): AiStatus => {
+  if (status === "PROCESSING") return "PROCESSING";
+  if (status === "PROCESSED") return "PROCESSED";
+  if (status === "FAILED") return "FAILED";
+  return "UPLOADED";
 };
 
 const formatDocumentDate = (date: string | undefined) => {
@@ -59,16 +70,33 @@ const formatDocumentDate = (date: string | undefined) => {
   });
 };
 
-const getFileExtension = (document: LibraryDocument) => {
+const getFileExtension = (document: FavoriteLibraryDocument) => {
   const extensionFromName = document.name.split(".").pop()?.toUpperCase();
-  const extensionFromType = document.type.split("/").pop()?.toUpperCase();
+  const extensionFromType = document.type?.split("/").pop()?.toUpperCase();
 
   return extensionFromName && extensionFromName !== document.name.toUpperCase()
     ? extensionFromName
     : extensionFromType || "FILE";
 };
 
-function DocumentRow({
+const mapFavoriteDocument = (
+  document: FavoriteDocument,
+): FavoriteLibraryDocument => ({
+  favoriteId: document.favoriteId,
+  id: document.documentId,
+  name: document.title || "Untitled document",
+  description: document.description || "",
+  folder: "Favorite",
+  date: formatDocumentDate(document.favoritedAt),
+  type: document.fileType || "",
+  aiStatus: mapAiStatus(document.processStatus),
+  documentStatus: "ACTIVE",
+  visibility: document.visibility || "PRIVATE",
+  ownerName: document.ownerName || "Unknown",
+  fav: true,
+});
+
+function FavoriteDocumentRow({
   document,
   onToggleFavorite,
   onDelete,
@@ -77,16 +105,16 @@ function DocumentRow({
   onViewFile,
   onEdit,
 }: {
-  document: LibraryDocument;
-  onToggleFavorite: (documentId: number) => void;
+  document: FavoriteLibraryDocument;
+  onToggleFavorite: (documentId: number) => void | Promise<void>;
   onDelete: (documentId: number) => void;
   onReprocess: (documentId: number) => void;
   onDownload: (documentId: number, fileName: string) => void;
   onViewFile: (documentId: number) => void;
-  onEdit: (document: LibraryDocument) => void;
+  onEdit: (document: FavoriteLibraryDocument) => void;
 }) {
   return (
-    <div className="grid gap-3 border-t border-slate-100 bg-white p-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70 md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)] md:items-center">
+    <div className="grid grid-cols-[320px_150px_150px_120px_150px_220px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
           <FileText className="h-5 w-5" />
@@ -102,38 +130,31 @@ function DocumentRow({
         </div>
       </div>
 
-      <span className="inline-flex max-w-full rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-        <span className="truncate">{document.folder}</span>
-      </span>
+      <p className="truncate text-sm font-semibold text-slate-500 dark:text-slate-400">
+        {document.ownerName}
+      </p>
 
       <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
         {document.date}
       </p>
 
-      <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-        {(document.fileSize / 1024).toFixed(1)} KB
-      </p>
-
-      <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800">
-        {document.documentStatus}
+      <span className="inline-flex w-fit rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-extrabold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
+        {document.visibility}
       </span>
 
       <span
-        className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-extrabold ring-1 ${statusBadgeClass[document.aiStatus]}`}
+        className={`inline-flex w-fit rounded-full px-2.5 py-1 text-[11px] font-extrabold ring-1 ${statusBadgeClass[document.aiStatus]}`}
       >
         {document.aiStatus}
       </span>
 
-      <div className="flex min-w-[120px] items-center justify-end gap-1">
+      <div className="flex min-w-[220px] items-center justify-end gap-1">
         <button
           onClick={() => onToggleFavorite(document.id)}
-          className={`rounded-lg p-2 transition-colors ${
-            document.fav
-              ? "text-amber-400"
-              : "text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-          }`}
+          className="rounded-lg p-2 text-amber-400 transition-colors hover:bg-amber-50 dark:hover:bg-amber-950/30"
+          title="Remove from favorites"
         >
-          <Star className={`h-4 w-4 ${document.fav ? "fill-amber-400" : ""}`} />
+          <Star className="h-4 w-4 fill-amber-400" />
         </button>
 
         <button
@@ -155,6 +176,7 @@ function DocumentRow({
         <button
           onClick={() => onDownload(document.id, document.name)}
           className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          title="Download"
         >
           <Download className="h-4 w-4" />
         </button>
@@ -162,6 +184,7 @@ function DocumentRow({
         <button
           onClick={() => onReprocess(document.id)}
           className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          title="Reprocess"
         >
           <RotateCcw className="h-4 w-4" />
         </button>
@@ -169,6 +192,7 @@ function DocumentRow({
         <button
           onClick={() => onDelete(document.id)}
           className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+          title="Delete"
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -177,7 +201,7 @@ function DocumentRow({
   );
 }
 
-function DocumentCard({
+function FavoriteDocumentCard({
   document,
   onToggleFavorite,
   onDelete,
@@ -186,13 +210,13 @@ function DocumentCard({
   onViewFile,
   onEdit,
 }: {
-  document: LibraryDocument;
-  onToggleFavorite: (documentId: number) => void;
+  document: FavoriteLibraryDocument;
+  onToggleFavorite: (documentId: number) => void | Promise<void>;
   onDelete: (documentId: number) => void;
   onReprocess: (documentId: number) => void;
   onDownload: (documentId: number, fileName: string) => void;
   onViewFile: (documentId: number) => void;
-  onEdit: (document: LibraryDocument) => void;
+  onEdit: (document: FavoriteLibraryDocument) => void;
 }) {
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
@@ -203,11 +227,10 @@ function DocumentCard({
 
         <button
           onClick={() => onToggleFavorite(document.id)}
-          className={`rounded-lg p-2 transition-colors ${
-            document.fav ? "text-amber-400" : "text-slate-400"
-          }`}
+          className="rounded-lg p-2 text-amber-400 transition-colors hover:bg-amber-50 dark:hover:bg-amber-950/30"
+          title="Remove from favorites"
         >
-          <Star className={`h-4 w-4 ${document.fav ? "fill-amber-400" : ""}`} />
+          <Star className="h-4 w-4 fill-amber-400" />
         </button>
       </div>
 
@@ -223,44 +246,37 @@ function DocumentCard({
 
       <div className="mt-4 space-y-2 text-sm">
         <div className="flex justify-between gap-3">
-          <span className="text-slate-400">Category</span>
+          <span className="text-slate-400">Owner</span>
           <span className="truncate font-bold text-slate-600 dark:text-slate-300">
-            {document.folder}
+            {document.ownerName}
           </span>
         </div>
 
         <div className="flex justify-between gap-3">
-          <span className="text-slate-400">Date</span>
+          <span className="text-slate-400">Favorited</span>
           <span className="font-semibold text-slate-600 dark:text-slate-300">
             {document.date}
           </span>
         </div>
 
         <div className="flex justify-between gap-3">
-          <span className="text-slate-400">Size</span>
+          <span className="text-slate-400">Visibility</span>
           <span className="font-semibold text-slate-600 dark:text-slate-300">
-            {(document.fileSize / 1024).toFixed(1)} KB
+            {document.visibility}
           </span>
         </div>
       </div>
 
-<div className="mt-4 space-y-2">
-  <div className="flex items-center justify-between gap-3">
-    <span className="text-sm text-slate-400">Upload Status</span>
-    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800">
-      {document.documentStatus}
-    </span>
-  </div>
-
-  <div className="flex items-center justify-between gap-3">
-    <span className="text-sm text-slate-400">AI Status</span>
-    <span
-      className={`rounded-full px-2.5 py-1 text-[11px] font-extrabold ring-1 ${statusBadgeClass[document.aiStatus]}`}
-    >
-      {document.aiStatus}
-    </span>
-  </div>
-</div>
+      <div className="mt-4 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-slate-400">AI Status</span>
+          <span
+            className={`rounded-full px-2.5 py-1 text-[11px] font-extrabold ring-1 ${statusBadgeClass[document.aiStatus]}`}
+          >
+            {document.aiStatus}
+          </span>
+        </div>
+      </div>
 
       <div className="mt-5 flex items-center justify-end gap-1 border-t border-slate-100 pt-4 dark:border-slate-800">
         <button
@@ -282,6 +298,7 @@ function DocumentCard({
         <button
           onClick={() => onDownload(document.id, document.name)}
           className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+          title="Download"
         >
           <Download className="h-4 w-4" />
         </button>
@@ -289,6 +306,7 @@ function DocumentCard({
         <button
           onClick={() => onReprocess(document.id)}
           className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+          title="Reprocess"
         >
           <RotateCcw className="h-4 w-4" />
         </button>
@@ -296,6 +314,7 @@ function DocumentCard({
         <button
           onClick={() => onDelete(document.id)}
           className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+          title="Delete"
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -304,82 +323,64 @@ function DocumentCard({
   );
 }
 
-function EmptyDocuments() {
+function EmptyFavorites() {
   return (
     <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
+      <Star className="mx-auto mb-3 h-10 w-10 text-slate-300" />
       <h3 className="font-bold text-slate-900 dark:text-slate-100">
-        No documents found
+        No favorite documents yet
       </h3>
       <p className="text-sm text-slate-500 dark:text-slate-400">
-        Upload a document to see it here.
+        Click the star icon on a document to add it here.
       </p>
     </div>
   );
 }
 
-export function AllDocumentsPage() {
+export function FavoriteDocumentsPage() {
   const navigate = useNavigate();
-  const [documents, setDocuments] = useState<LibraryDocument[]>([]);
+
+  const [documents, setDocuments] = useState<FavoriteLibraryDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [editingDocument, setEditingDocument] =
-    useState<LibraryDocument | null>(null);
+    useState<FavoriteLibraryDocument | null>(null);
   const [editTitle, setEditTitle] = useState("");
 
-  const loadDocuments = async () => {
+  const loadFavorites = async () => {
     try {
       setIsLoading(true);
 
-      const userId = getCurrentUserId();
+      const response = await favoriteApi.getFavorites(0, 100);
+      const data = response.data as FavoriteDocumentPageResponse;
 
-      if (!userId) {
-        toast.error("Please log in again to view your documents.");
-        setDocuments([]);
-        return;
-      }
-
-      const response = await documentApi.getDocuments({
-        page: 0,
-        size: 100,
-      });
-
-      setDocuments(
-        response.data.content
-          .map((document) => ({
-          id: document.id,
-          categoryId: document.categoryId,
-          name: document.title || document.originalName || document.fileName,
-          folder: document.categoryName || "Uncategorized",
-          date: formatDocumentDate(document.createdAt),
-          createdAt: document.createdAt,
-          type: document.type,
-          aiStatus: document.aiStatus,
-          documentStatus: document.documentStatus,
-          fileSize: document.fileSize ?? 0,
-          fav: false,
-          })),
-      );
+      setDocuments((data.content ?? []).map(mapFavoriteDocument));
     } catch (error) {
-      console.error("Cannot load documents:", error);
-      toast.error("Cannot load documents.");
+      console.error(error);
+      toast.error("Failed to load favorite documents");
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadDocuments();
+    loadFavorites();
   }, []);
 
-  const toggleFavorite = (documentId: number) => {
-    setDocuments((current) =>
-      current.map((document) =>
-        document.id === documentId
-          ? { ...document, fav: !document.fav }
-          : document,
-      ),
-    );
+  const handleRemoveFavorite = async (documentId: number) => {
+    try {
+      await favoriteApi.removeFavorite(documentId);
+
+      setDocuments((current) =>
+        current.filter((document) => document.id !== documentId),
+      );
+
+      toast.success("Removed from favorites");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to remove favorite");
+    }
   };
 
   const handleDelete = async (documentId: number): Promise<boolean> => {
@@ -403,7 +404,7 @@ export function AllDocumentsPage() {
     try {
       await documentApi.reprocessDocument(documentId);
       toast.success("Document reprocess started.");
-      await loadDocuments();
+      await loadFavorites();
     } catch (error) {
       console.error("Cannot reprocess document:", error);
       toast.error("Cannot reprocess document.");
@@ -432,7 +433,7 @@ export function AllDocumentsPage() {
     navigate(`/app/library/${documentId}/preview`);
   };
 
-  const handleOpenEdit = (document: LibraryDocument) => {
+  const handleOpenEdit = (document: FavoriteLibraryDocument) => {
     setEditingDocument(document);
     setEditTitle(document.name);
   };
@@ -449,7 +450,7 @@ export function AllDocumentsPage() {
 
     try {
       await documentApi.updateDocument(editingDocument.id, { title });
-      await loadDocuments();
+      await loadFavorites();
       toast.success("Document name updated successfully.");
       setEditingDocument(null);
       setEditTitle("");
@@ -472,98 +473,92 @@ export function AllDocumentsPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-4xl font-extrabold text-slate-900 dark:text-slate-100">
-            All Documents
+            Favorite Documents
           </h1>
 
           <p className="mt-2 text-lg text-slate-500 dark:text-slate-400">
-            View all uploaded documents.
+            Documents you marked as favorite.
           </p>
         </div>
+
         <div className="inline-flex w-full flex-wrap items-center gap-2 sm:w-auto md:justify-end">
-  <div className="inline-flex h-10 shrink-0 items-center rounded-xl bg-slate-100 p-0.5 dark:bg-slate-800">
-    <button
-      onClick={() => setViewMode("grid")}
-      className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
-        viewMode === "grid"
-          ? "bg-white text-blue-600 shadow-sm"
-          : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-      }`}
-    >
-      <Grid3X3 className="h-4.5 w-4.5" />
-    </button>
+          <div className="inline-flex h-10 shrink-0 items-center rounded-xl bg-slate-100 p-0.5 dark:bg-slate-800">
+            <button
+              onClick={() => setViewMode("grid")}
+              className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
+                viewMode === "grid"
+                  ? "bg-white text-blue-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              }`}
+            >
+              <Grid3X3 className="h-4.5 w-4.5" />
+            </button>
 
-    <button
-      onClick={() => setViewMode("list")}
-      className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
-        viewMode === "list"
-          ? "bg-white text-blue-600 shadow-sm"
-          : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-      }`}
-    >
-      <List className="h-4.5 w-4.5" />
-    </button>
-  </div>
-
-  <button
-    onClick={() => navigate("/app/upload")}
-    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-700"
-  >
-    <Upload className="h-4.5 w-4.5" />
-    Upload Document
-  </button>
-</div>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
+                viewMode === "list"
+                  ? "bg-white text-blue-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              }`}
+            >
+              <List className="h-4.5 w-4.5" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {viewMode === "list" ? (
-        <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="hidden bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:bg-slate-950 md:grid md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)]">
-            <span>Document Name</span>
-            <span>Category</span>
-            <span>Date Added</span>
-            <span>Size</span>
-            <span>Upload Status</span>
-            <span>AI Status</span>
-            <span className="text-right">Actions</span>
-          </div>
-
-          {isLoading ? (
-            <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
-              <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                Loading documents...
-              </p>
+        <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="min-w-[1260px]">
+            <div className="grid grid-cols-[320px_150px_150px_120px_150px_220px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:border-slate-800 dark:bg-slate-950">
+              <span>Document Name</span>
+              <span>Owner</span>
+              <span>Favorited At</span>
+              <span>Visibility</span>
+              <span>AI Status</span>
+              <span className="text-right">Actions</span>
             </div>
-          ) : documents.length > 0 ? (
-            documents.map((document) => (
-              <DocumentRow
-                key={document.id}
-                document={document}
-                onToggleFavorite={toggleFavorite}
-                onDelete={setDeleteId}
-                onReprocess={handleReprocess}
-                onDownload={handleDownload}
-                onViewFile={handleViewFile}
-                onEdit={handleOpenEdit}
-              />
-            ))
-          ) : (
-            <EmptyDocuments />
-          )}
+
+            {isLoading ? (
+              <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
+                <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                  Loading favorite documents...
+                </p>
+              </div>
+            ) : documents.length > 0 ? (
+              documents.map((document) => (
+                <FavoriteDocumentRow
+                  key={document.favoriteId}
+                  document={document}
+                  onToggleFavorite={handleRemoveFavorite}
+                  onDelete={setDeleteId}
+                  onReprocess={handleReprocess}
+                  onDownload={handleDownload}
+                  onViewFile={handleViewFile}
+                  onEdit={handleOpenEdit}
+                />
+              ))
+            ) : (
+              <EmptyFavorites />
+            )}
+          </div>
         </div>
       ) : (
         <div>
           {isLoading ? (
             <div className="rounded-2xl border border-slate-100 bg-white px-4 py-16 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                Loading documents...
+                Loading favorite documents...
               </p>
             </div>
           ) : documents.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {documents.map((document) => (
-                <DocumentCard
-                  key={document.id}
+                <FavoriteDocumentCard
+                  key={document.favoriteId}
                   document={document}
-                  onToggleFavorite={toggleFavorite}
+                  onToggleFavorite={handleRemoveFavorite}
                   onDelete={setDeleteId}
                   onReprocess={handleReprocess}
                   onDownload={handleDownload}
@@ -573,10 +568,13 @@ export function AllDocumentsPage() {
               ))}
             </div>
           ) : (
-            <EmptyDocuments />
+            <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <EmptyFavorites />
+            </div>
           )}
         </div>
       )}
+
       {deleteId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">

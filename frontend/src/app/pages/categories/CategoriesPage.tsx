@@ -40,7 +40,6 @@ export function CategoriesPage() {
       const [categoryResponse, documentResponse] = await Promise.all([
         categoryApi.getCategories(),
         documentApi.getDocuments({
-          userId,
           page: 0,
           size: 100,
         }),
@@ -50,9 +49,7 @@ export function CategoriesPage() {
         (category) => Number(category.userId) === userId,
       );
 
-      const documentData = (documentResponse.data?.content ?? []).filter(
-        (document) => Number(document.userId) === userId,
-      );
+      const documentData = documentResponse.data?.content ?? [];
 
       const counts = documentData.reduce(
         (result: Record<number, number>, document: any) => {

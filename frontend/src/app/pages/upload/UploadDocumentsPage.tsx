@@ -100,13 +100,11 @@ export function UploadDocumentsPage() {
       }
 
       const response = await documentApi.getDocuments({
-        userId,
         page: 0,
         size: 20,
       });
 
       const mappedUploads = (response.data.content ?? [])
-        .filter((document) => Number(document.userId) === userId)
         .sort((left, right) => {
           const leftDate = new Date(left.uploadedAt || "").getTime();
           const rightDate = new Date(right.uploadedAt || "").getTime();

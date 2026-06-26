@@ -103,16 +103,13 @@ export function TrashPage() {
         }
 
         const response = await documentApi.getDocuments({
-          userId,
           page: 0,
           size: 100,
           processStatus: undefined,
         });
 
         const deletedDocuments = response.data.content.filter(
-          (document) =>
-            document.userId === userId &&
-            document.documentStatus === "DELETED",
+          (document) => document.documentStatus === "DELETED",
         );
 
         setDocuments(

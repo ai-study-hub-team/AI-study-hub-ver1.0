@@ -107,7 +107,7 @@ const mapAiStatus = (status: string | undefined): AiStatus => {
 };
 
 const mapDocumentResponse = (
-  document: DocumentResponse
+  document: DocumentResponse,
 ): DocumentListItemResponse => ({
   ...document,
   id: document.id,
@@ -120,25 +120,35 @@ const mapDocumentResponse = (
 });
 
 const mapPageDocumentResponse = (
-  page: PageDocumentResponse
+  page: PageDocumentResponse,
 ): PageDocumentResponse => ({
   ...page,
   content: (page.content ?? []).map(mapDocumentResponse),
 });
 
 export const documentApi = {
-  // GET /api/documents
+  // GET /api/documents/search-filter
   getDocuments(params?: GetDocumentsParams) {
+    const { userId, ...safeParams } = params ?? {};
+
     return api
-      .get<PageDocumentResponse>("/api/documents", { params })
+      .get<PageDocumentResponse>("/api/documents/search-filter", {
+        params: safeParams,
+      })
       .then((response) => ({
         ...response,
         data: mapPageDocumentResponse(response.data),
       }));
   },
 
-  getDocumentsByUserId(userId: number, params?: GetDocumentsParams) {
-    return this.getDocuments({ ...params, userId });
+  /**
+   * Giữ lại hàm này để các page cũ không bị lỗi TypeScript.
+   * Nhưng không gửi userId nữa vì backend hiện tại lấy user từ JWT token.
+   */
+  getDocumentsByUserId(_userId: number, params?: GetDocumentsParams) {
+    const { userId, ...safeParams } = params ?? {};
+
+    return this.getDocuments(safeParams);
   },
 
   // GET /api/documents/{id}
@@ -168,7 +178,9 @@ export const documentApi = {
      * Nhưng nhiều màn hình FE chỉ gửi title/description/categoryId.
      * Vì vậy mình lấy document hiện tại trước, rồi merge lại payload.
      */
-    const currentResponse = await api.get<DocumentResponse>(`/api/documents/${id}`);
+    const currentResponse = await api.get<DocumentResponse>(
+      `/api/documents/${id}`,
+    );
     const currentDocument = currentResponse.data;
 
     const updatePayload: UpdateDocumentPayload = {
@@ -247,8 +259,12 @@ export const documentApi = {
 
   // GET /api/documents/search
   searchDocuments(params: SearchDocumentsParams) {
+    const { userId, ...safeParams } = params;
+
     return api
-      .get<PageDocumentResponse>("/api/documents/search", { params })
+      .get<PageDocumentResponse>("/api/documents/search", {
+        params: safeParams,
+      })
       .then((response) => ({
         ...response,
         data: mapPageDocumentResponse(response.data),
@@ -263,17 +279,16 @@ export const documentApi = {
   },
 
   // Dùng cho dropdown/select
-  getAllDocumentsForSelect(userId: number) {
+  getAllDocumentsForSelect(_userId?: number) {
     return api
-      .get<PageDocumentResponse>("/api/documents", {
+      .get<PageDocumentResponse>("/api/documents/search-filter", {
         params: {
           page: 0,
           size: 100,
-          userId,
         },
       })
       .then((response) =>
-        (response.data.content ?? []).map(mapDocumentResponse)
+        (response.data.content ?? []).map(mapDocumentResponse),
       );
   },
 };

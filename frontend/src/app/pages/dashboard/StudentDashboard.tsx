@@ -15,7 +15,11 @@ import {
 import { motion } from "motion/react";
 import { useNavigate } from "react-router";
 import axios from "axios";
-import { getAuthHeader, getCurrentUserId } from "../../services/apiClient";
+import {
+  apiClient,
+  getAuthHeader,
+  getCurrentUserId,
+} from "../../services/apiClient";
 import {
   XAxis,
   YAxis,
@@ -172,33 +176,27 @@ export function StudentDashboard() {
           setDisplayName(getCurrentFullName());
         }
 
-        const documentsResponse = await axios.get(`${API_BASE_URL}/documents`, {
-          params: { userId },
-          ...getAuthHeader(),
-        });
+        const documentsResponse = await apiClient.get(
+          "/api/documents/search-filter",
+          {
+            params: {
+              page: 0,
+              size: 100,
+            },
+          },
+        );
 
         const documentsData = documentsResponse.data;
 
         if (Array.isArray(documentsData)) {
-          const userDocuments = documentsData.filter(
-            (document: DocumentItem) => Number(document.userId) === userId,
-          );
-          setDocuments(userDocuments);
-          setTotalDocuments(userDocuments.length);
+          setDocuments(documentsData);
+          setTotalDocuments(documentsData.length);
         } else if (Array.isArray(documentsData?.data)) {
-          const userDocuments = documentsData.data.filter(
-            (document: DocumentItem) => Number(document.userId) === userId,
-          );
-          setDocuments(userDocuments);
-          setTotalDocuments(userDocuments.length);
+          setDocuments(documentsData.data);
+          setTotalDocuments(documentsData.data.length);
         } else if (Array.isArray(documentsData?.content)) {
-          const userDocuments = documentsData.content.filter(
-            (document: DocumentItem) => Number(document.userId) === userId,
-          );
-          setDocuments(userDocuments);
-          setTotalDocuments(
-            userDocuments.length,
-          );
+          setDocuments(documentsData.content);
+          setTotalDocuments(documentsData.content.length);
         } else {
           setDocuments([]);
           setTotalDocuments(0);
