@@ -1,6 +1,6 @@
 import { apiClient } from "./apiClient";
 
-api.interceptors.request.use((config) => {
+apiClient.interceptors.request.use((config) => {
   const token =
     localStorage.getItem("token") ||
     localStorage.getItem("accessToken") ||

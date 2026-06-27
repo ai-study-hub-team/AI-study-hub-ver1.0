@@ -5,11 +5,6 @@ export const apiClient = axios.create({
 });
 
 export const getAuthToken = () => {
-  return (
-    localStorage.getItem("token") ||
-    localStorage.getItem("accessToken") ||
-    localStorage.getItem("jwt")
-  );
   const token =
     localStorage.getItem("token") ||
     localStorage.getItem("accessToken") ||
@@ -33,8 +28,6 @@ export const getCurrentUserId = (): number | null => {
   }
 
   try {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    return Number(user?.id || user?.userId || 0);
     const token = getAuthToken();
     const encodedPayload = token?.split(".")[1];
 
@@ -60,8 +53,11 @@ export const clearAuthStorage = () => {
   localStorage.removeItem("token");
   localStorage.removeItem("accessToken");
   localStorage.removeItem("jwt");
+  localStorage.removeItem("refreshToken");
+  localStorage.removeItem("userId");
   localStorage.removeItem("user");
   localStorage.removeItem("role");
+  localStorage.removeItem("email");
   localStorage.removeItem("fullName");
   localStorage.removeItem("name");
 };
@@ -83,6 +79,10 @@ const isPublicAuthApi = (url?: string) => {
     url.includes("/api/auth/login") ||
     url.includes("/api/auth/register") ||
     url.includes("/api/auth/refresh") ||
+    url.includes("/api/auth/forgot-password") ||
+    url.includes("/api/auth/reset-password") ||
+    url.includes("/api/auth/verify-email") ||
+    url.includes("/api/auth/verify-reset-code") ||
     url.includes("/auth/login") ||
     url.includes("/auth/register") ||
     url.includes("/auth/refresh")
@@ -90,34 +90,16 @@ const isPublicAuthApi = (url?: string) => {
 };
 
 apiClient.interceptors.request.use((config) => {
-  if (isPublicAuthApi(config.url)) {
-    if (config.headers) {
-      const headers = AxiosHeaders.from(config.headers);
-      headers.delete("Authorization");
-      config.headers = headers;
-    }
+  config.headers = AxiosHeaders.from(config.headers);
 
+  if (isPublicAuthApi(config.url)) {
+    config.headers.delete("Authorization");
     return config;
   }
 
   const token = getAuthToken();
-  const url = config.url || "";
 
-  const publicApis = [
-    "/api/auth/login",
-    "/api/auth/register",
-    "/api/auth/refresh",
-    "/api/auth/forgot-password",
-    "/api/auth/reset-password",
-    "/api/auth/verify-email",
-    "/api/auth/verify-reset-code",
-  ];
-
-  const isPublicApi = publicApis.some((api) => url.includes(api));
-
-  config.headers = AxiosHeaders.from(config.headers);
-
-  if (token && !isPublicApi) {
+  if (token) {
     config.headers.set("Authorization", `Bearer ${token}`);
   }
 
