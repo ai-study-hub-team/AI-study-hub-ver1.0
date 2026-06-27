@@ -1,8 +1,4 @@
-import axios from "axios";
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8080",
-});
+import { apiClient } from "./apiClient";
 
 export interface UserResponse {
   id: number;
@@ -30,26 +26,26 @@ export interface UpdateUserStatusPayload {
 export const userApi = {
   // GET /api/users
   getUsers: () => {
-    return api.get<UserResponse[]>("/api/users");
+    return apiClient.get<UserResponse[]>("/api/users");
   },
 
   // GET /api/users/{id}
   getUserById: (id: number) => {
-    return api.get<UserResponse>(`/api/users/${id}`);
+    return apiClient.get<UserResponse>(`/api/users/${id}`);
   },
 
   // PUT /api/users/{id}
   updateUser: (id: number, payload: UpdateUserPayload) => {
-    return api.put<UserResponse>(`/api/users/${id}`, payload);
+    return apiClient.put<UserResponse>(`/api/users/${id}`, payload);
   },
 
   // PATCH /api/users/{id}/status
   updateUserStatus: (id: number, payload: UpdateUserStatusPayload) => {
-    return api.patch<UserResponse>(`/api/users/${id}/status`, payload);
+    return apiClient.patch<UserResponse>(`/api/users/${id}/status`, payload);
   },
 
   // DELETE /api/users/{id}
   deleteUser: (id: number) => {
-    return api.delete<void>(`/api/users/${id}`);
+    return apiClient.delete<void>(`/api/users/${id}`);
   },
 };
