@@ -8,9 +8,17 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
+
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { documentApi } from "../../services/documentApi";
 import { getCurrentUserId } from "../../services/apiClient";
+
+type ListResponse<T> = T[] | { content?: T[] };
+
+const normalizeList = <T,>(data: ListResponse<T> | null | undefined): T[] => {
+  if (Array.isArray(data)) return data;
+  return data?.content ?? [];
+};
 
 export function CategoriesPage() {
   const navigate = useNavigate();
@@ -45,17 +53,30 @@ export function CategoriesPage() {
         }),
       ]);
 
+      const categoryData = normalizeList<CategoryResponse>(
+        categoryResponse.data as ListResponse<CategoryResponse>,
+      );
+
+      const documentData = normalizeList<any>(
+        documentResponse.data as ListResponse<any>,
+      );
+
+      const counts = documentData.reduce<Record<number, number>>(
+        (result, document) => {
+          const rawCategoryId =
+            document.categoryId ??
+            document.category?.id ??
+            document.categoryResponse?.id;
       const categoryData = (categoryResponse.data ?? []).filter(
         (category) => Number(category.userId) === userId,
       );
 
       const documentData = documentResponse.data?.content ?? [];
 
-      const counts = documentData.reduce(
-        (result: Record<number, number>, document: any) => {
-          if (document.categoryId) {
-            result[document.categoryId] =
-              (result[document.categoryId] ?? 0) + 1;
+          const categoryId = Number(rawCategoryId);
+
+          if (Number.isInteger(categoryId) && categoryId > 0) {
+            result[categoryId] = (result[categoryId] ?? 0) + 1;
           }
 
           return result;
@@ -128,9 +149,13 @@ export function CategoriesPage() {
       setEditId(category.id);
       setEditName(category.name ?? "");
       setEditDescription(category.description ?? "");
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Cannot load category detail.");
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot load category detail.",
+      );
     }
   };
 
@@ -209,14 +234,14 @@ export function CategoriesPage() {
         <div className="grid gap-4 md:grid-cols-2">
           <input
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(event) => setName(event.target.value)}
             placeholder="Category name"
             className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
           />
 
           <input
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(event) => setDescription(event.target.value)}
             placeholder="Description"
             className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
           />
@@ -324,14 +349,14 @@ export function CategoriesPage() {
             <div className="mt-5 space-y-4">
               <input
                 value={editName}
-                onChange={(e) => setEditName(e.target.value)}
+                onChange={(event) => setEditName(event.target.value)}
                 placeholder="Category name"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               />
 
               <input
                 value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
+                onChange={(event) => setEditDescription(event.target.value)}
                 placeholder="Description"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               />
