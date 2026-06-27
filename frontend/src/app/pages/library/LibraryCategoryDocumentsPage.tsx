@@ -13,6 +13,7 @@ import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 
 import { documentApi } from "../../services/documentApi";
+import { getCurrentUserId } from "../../services/apiClient";
 
 interface LibraryCategoryDocument {
   id: number;
@@ -122,13 +123,25 @@ export function LibraryCategoryDocumentsPage() {
   useEffect(() => {
     const loadDocuments = async () => {
       try {
+        const userId = getCurrentUserId();
+
+        if (!userId) {
+          toast.error("Please log in again to view category documents.");
+          return;
+        }
+
         const response = await documentApi.getDocuments({
+          userId,
           page: 0,
           size: 100,
           categoryId: Number(categoryId),
         });
 
-        setDocuments(response.data.content ?? []);
+        setDocuments(
+          (response.data.content ?? []).filter(
+            (document) => document.userId === userId,
+          ),
+        );
       } catch (error) {
         console.error(error);
         toast.error("Cannot load category documents.");

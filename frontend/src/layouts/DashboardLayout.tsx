@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useLocation } from "react-router";
+import { Outlet, NavLink, useLocation, useNavigate } from "react-router";
 import {
   LayoutDashboard,
   FileText,
@@ -51,6 +51,30 @@ const getStoredUser = (): StoredUser | null => {
   }
 };
 
+const getRoleFromToken = (): string | null => {
+  try {
+    const token =
+      localStorage.getItem("token") ||
+      localStorage.getItem("accessToken") ||
+      localStorage.getItem("jwt");
+    const encodedPayload = token?.split(".")[1];
+
+    if (!encodedPayload) return null;
+
+    const payload = JSON.parse(
+      atob(encodedPayload.replace(/-/g, "+").replace(/_/g, "/")),
+    ) as {
+      role?: string;
+      roles?: string[];
+      authorities?: string[];
+    };
+
+    return payload.role || payload.roles?.[0] || payload.authorities?.[0] || null;
+  } catch {
+    return null;
+  }
+};
+
 const getCurrentFullName = () => {
   const storedUser = getStoredUser();
 
@@ -67,6 +91,13 @@ const getCurrentFullName = () => {
 const getCurrentRole = () => {
   const storedUser = getStoredUser();
   return localStorage.getItem("role") || storedUser?.role || "STUDENT";
+
+  return (
+    storedUser?.role ||
+    localStorage.getItem("role") ||
+    getRoleFromToken() ||
+    "STUDENT"
+  );
 };
 
 const getInitials = (name: string) => {
@@ -92,6 +123,7 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
   const [displayRole, setDisplayRole] = useState(getCurrentRole());
 
   const location = useLocation();
+  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -113,11 +145,22 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
       role === "ADMINISTRATOR"
     );
   }, [displayRole, isAdmin]);
+  const isCurrentUserAdmin = useMemo(() => {
+    const role = displayRole?.toUpperCase();
+
+    return role === "ADMIN" || role === "ROLE_ADMIN";
+  }, [displayRole]);
+
+  const roleText = useMemo(() => {
+    if (isAdmin || isCurrentUserAdmin) {
+      return "Administrator";
+    }
 
   const roleText = useMemo(() => {
     if (isCurrentAdmin) return "Administrator";
     return "Student · Pro";
   }, [isCurrentAdmin]);
+  }, [isAdmin, isCurrentUserAdmin]);
 
   const studentLinks = [
     { to: "/app/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -153,12 +196,15 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("accessToken");
+    localStorage.removeItem("jwt");
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("userId");
     localStorage.removeItem("role");
     localStorage.removeItem("email");
     localStorage.removeItem("fullName");
+    localStorage.removeItem("name");
     localStorage.removeItem("user");
+    navigate("/login");
   };
 
   return (
@@ -250,6 +296,11 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
             <NavLink
               to="/admin"
               className="flex items-center gap-3 px-3 py-2.5 text-blue-600 border border-blue-200 hover:bg-blue-50 dark:border-blue-900 dark:hover:bg-blue-950/30 rounded-xl transition-colors"
+        <div className="p-3 border-t border-slate-100 shrink-0 space-y-1">
+          {!isAdmin && isCurrentUserAdmin && (
+            <NavLink
+              to="/admin/users"
+              className="flex items-center gap-3 px-3 py-2.5 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transition-colors"
               title={!isSidebarOpen ? "Back to Admin Panel" : undefined}
             >
               <ShieldCheck className="w-5 h-5 shrink-0" />
@@ -258,6 +309,7 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
                 <span className="text-sm font-semibold">
                   Back to Admin Panel
                 </span>
+                <span className="text-sm font-semibold">Back to Admin Panel</span>
               )}
             </NavLink>
           )}

@@ -49,12 +49,7 @@ public class UserService {
     @Transactional
     public UserResponse update(Long id, UserUpdateRequest request) {
         User user = findUserById(id);
-        String normalizedEmail = normalizeEmail(request.getEmail());
-
-        ensureEmailAvailable(normalizedEmail, user.getId());
-
         user.setFullName(request.getFullName().trim());
-        user.setEmail(normalizedEmail);
 
         if (request.getRole() != null && !request.getRole().isBlank()) {
             user.setRole(UserRole.valueOf(
@@ -81,15 +76,11 @@ public class UserService {
             UserUpdateRequest request
     ) {
         User user = findUserByEmail(authenticatedEmail);
-        String normalizedEmail = normalizeEmail(request.getEmail());
-
-        ensureEmailAvailable(normalizedEmail, user.getId());
 
         user.setFullName(request.getFullName().trim());
-        user.setEmail(normalizedEmail);
         user.setUpdatedAt(LocalDateTime.now());
 
-        // Role and status must not be updated from a current-user endpoint.
+        // Role, status, and email must not be updated from a current-user endpoint.
         return toResponse(userRepository.save(user));
     }
 
