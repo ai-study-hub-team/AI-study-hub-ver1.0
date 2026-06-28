@@ -23,7 +23,21 @@ export interface UpdateUserStatusPayload {
   status: string;
 }
 
+export interface UpdateProfilePayload {
+  fullName: string;
+  email: string;
+}
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
 export const userApi = {
+  // ===========================
+  // Admin APIs
+  // ===========================
+
   // GET /api/users
   getUsers: () => {
     return apiClient.get<UserResponse[]>("/api/users");
@@ -41,11 +55,36 @@ export const userApi = {
 
   // PATCH /api/users/{id}/status
   updateUserStatus: (id: number, payload: UpdateUserStatusPayload) => {
-    return apiClient.patch<UserResponse>(`/api/users/${id}/status`, payload);
+    return apiClient.patch<UserResponse>(
+      `/api/users/${id}/status`,
+      payload,
+    );
   },
 
   // DELETE /api/users/{id}
   deleteUser: (id: number) => {
     return apiClient.delete<void>(`/api/users/${id}`);
+  },
+
+  // ===========================
+  // Profile APIs
+  // ===========================
+
+  // GET /api/account/me
+  getProfile: () => {
+    return apiClient.get<UserResponse>("/api/account/me");
+  },
+
+  // PUT /api/account/me
+  updateProfile: (payload: UpdateProfilePayload) => {
+    return apiClient.put<UserResponse>("/api/account/me", payload);
+  },
+
+  // PUT /api/account/change-password
+  changePassword: (payload: ChangePasswordPayload) => {
+    return apiClient.put<void>(
+      "/api/account/change-password",
+      payload,
+    );
   },
 };

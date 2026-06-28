@@ -50,6 +50,9 @@ const isPublicAuthApi = (url?: string) => {
   );
 };
 
+// =====================
+// Request Interceptor
+// =====================
 apiClient.interceptors.request.use((config) => {
   if (isPublicAuthApi(config.url)) {
     if (config.headers) {
@@ -70,3 +73,32 @@ apiClient.interceptors.request.use((config) => {
 
   return config;
 });
+
+// =====================
+// Response Interceptor
+// =====================
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      console.warn("Unauthorized - clearing local storage");
+
+      localStorage.removeItem("token");
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("jwt");
+      localStorage.removeItem("user");
+      localStorage.removeItem("userId");
+
+      if (
+        !window.location.pathname.includes("/login") &&
+        !window.location.pathname.includes("/auth")
+      ) {
+        window.location.href = "/login";
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+export default apiClient;
