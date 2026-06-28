@@ -1,6 +1,4 @@
-import axios from "axios";
-
-const API_BASE_URL = "http://localhost:8080/api";
+import { apiClient as api, getCurrentUserId } from "./apiClient";
 
 export interface DocumentNoteResponse {
   id: number;
@@ -26,34 +24,52 @@ export interface UpdateDocumentNotePayload {
   content: string;
 }
 
+const resolveUserId = (userId?: number | null) => {
+  const resolvedUserId = userId ?? getCurrentUserId();
+
+  if (!resolvedUserId) {
+    throw new Error("Missing userId. Please login again.");
+  }
+
+  return resolvedUserId;
+};
+
 export const documentNoteApi = {
-  createNote: (payload: CreateDocumentNotePayload) =>
-    axios.post<DocumentNoteResponse>(`${API_BASE_URL}/document-notes`, payload),
+  createNote: (payload: CreateDocumentNotePayload) => {
+    return api.post<DocumentNoteResponse>("/api/document-notes", payload);
+  },
 
-  getNoteById: (noteId: number, userId: number) =>
-    axios.get<DocumentNoteResponse>(
-      `${API_BASE_URL}/document-notes/${noteId}`,
-      {
-        params: { userId },
+  getNoteById: (noteId: number, userId?: number | null) => {
+    return api.get<DocumentNoteResponse>(`/api/document-notes/${noteId}`, {
+      params: {
+        userId: resolveUserId(userId),
       },
-    ),
+    });
+  },
 
-  deleteNote: (noteId: number, userId: number) =>
-    axios.delete(`${API_BASE_URL}/document-notes/${noteId}`, {
-      params: { userId },
-    }),
+  deleteNote: (noteId: number, userId?: number | null) => {
+    return api.delete(`/api/document-notes/${noteId}`, {
+      params: {
+        userId: resolveUserId(userId),
+      },
+    });
+  },
 
-  updateNote: (noteId: number, payload: UpdateDocumentNotePayload) =>
-    axios.patch<DocumentNoteResponse>(
-      `${API_BASE_URL}/document-notes/${noteId}`,
+  updateNote: (noteId: number, payload: UpdateDocumentNotePayload) => {
+    return api.patch<DocumentNoteResponse>(
+      `/api/document-notes/${noteId}`,
       payload,
-    ),
+    );
+  },
 
-  getNotesByDocumentId: (documentId: number, userId: number) =>
-    axios.get<DocumentNoteResponse[]>(
-      `${API_BASE_URL}/document-notes/document/${documentId}`,
+  getNotesByDocumentId: (documentId: number, userId?: number | null) => {
+    return api.get<DocumentNoteResponse[]>(
+      `/api/document-notes/document/${documentId}`,
       {
-        params: { userId },
+        params: {
+          userId: resolveUserId(userId),
+        },
       },
-    ),
+    );
+  },
 };

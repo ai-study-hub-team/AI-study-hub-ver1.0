@@ -1,5 +1,18 @@
 import { apiClient } from "./apiClient";
 
+api.interceptors.request.use((config) => {
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("jwt");
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  return config;
+});
+
 export interface UserResponse {
   id: number;
   fullName: string;
@@ -43,17 +56,14 @@ export const userApi = {
     return apiClient.get<UserResponse[]>("/api/users");
   },
 
-  // GET /api/users/{id}
   getUserById: (id: number) => {
     return apiClient.get<UserResponse>(`/api/users/${id}`);
   },
 
-  // PUT /api/users/{id}
   updateUser: (id: number, payload: UpdateUserPayload) => {
     return apiClient.put<UserResponse>(`/api/users/${id}`, payload);
   },
 
-  // PATCH /api/users/{id}/status
   updateUserStatus: (id: number, payload: UpdateUserStatusPayload) => {
     return apiClient.patch<UserResponse>(
       `/api/users/${id}/status`,
@@ -61,7 +71,6 @@ export const userApi = {
     );
   },
 
-  // DELETE /api/users/{id}
   deleteUser: (id: number) => {
     return apiClient.delete<void>(`/api/users/${id}`);
   },

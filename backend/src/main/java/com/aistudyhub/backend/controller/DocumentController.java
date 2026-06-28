@@ -47,7 +47,7 @@ public class DocumentController {
 
     // GET /api/documents?page=0&size=10
     // Returns paginated list of ACTIVE documents, newest first
-    @GetMapping
+    @GetMapping("/search-filter")
     public ResponseEntity<Page<DocumentResponse>> getAll(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,

@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router";
 
 import { documentApi } from "../../services/documentApi";
+import { getCurrentUserId } from "../../services/apiClient";
 import type { AiStatus } from "../../constants/documentStatus";
 
 interface LibraryDocument {
@@ -330,13 +331,24 @@ export function AllDocumentsPage() {
     try {
       setIsLoading(true);
 
+      const userId = getCurrentUserId();
+
+      if (!userId) {
+        toast.error("Please log in again to view your documents.");
+        setDocuments([]);
+        return;
+      }
+
       const response = await documentApi.getDocuments({
+        userId,
         page: 0,
         size: 100,
       });
 
       setDocuments(
-        response.data.content.map((document) => ({
+        response.data.content
+          .filter((document) => document.userId === userId)
+          .map((document) => ({
           id: document.id,
           categoryId: document.categoryId,
           name: document.title || document.originalName || document.fileName,
@@ -348,7 +360,7 @@ export function AllDocumentsPage() {
           documentStatus: document.documentStatus,
           fileSize: document.fileSize ?? 0,
           fav: false,
-        })),
+          })),
       );
     } catch (error) {
       console.error("Cannot load documents:", error);

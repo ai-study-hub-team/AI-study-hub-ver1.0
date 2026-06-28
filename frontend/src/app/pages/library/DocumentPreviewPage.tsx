@@ -14,12 +14,11 @@ import {
 import { toast } from "sonner";
 import mammoth from "mammoth";
 import { documentApi } from "../../services/documentApi";
+import { getCurrentUserId } from "../../services/apiClient";
 import {
   documentNoteApi,
   type DocumentNoteResponse,
 } from "../../services/documentNoteApi";
-
-const CURRENT_USER_ID = 1;
 
 const isPublicHttpUrl = (url: string | undefined) =>
   Boolean(url && /^https?:\/\//i.test(url));
@@ -43,15 +42,21 @@ export function DocumentPreviewPage() {
   const [deleteNoteId, setDeleteNoteId] = useState<number | null>(null);
 
   const documentId = Number(id);
+  const currentUserId = getCurrentUserId();
 
   const loadNotes = async () => {
     if (!documentId) return;
+
+    if (!currentUserId) {
+      toast.error("Cannot identify current user.");
+      return;
+    }
 
     try {
       setIsNotesLoading(true);
       const response = await documentNoteApi.getNotesByDocumentId(
         documentId,
-        CURRENT_USER_ID,
+        currentUserId,
       );
       setNotes(response.data ?? []);
     } catch (error) {
@@ -69,18 +74,28 @@ export function DocumentPreviewPage() {
       return;
     }
 
+    if (!currentUserId) {
+      toast.error("Please log in again to view this document.");
+      navigate("/login");
+      return;
+    }
+
     let currentBlobUrl = "";
 
     const loadDocument = async () => {
       try {
         setIsLoading(true);
 
-        const [detailResponse, fileResponse] = await Promise.all([
-          documentApi.getDocumentById(documentId),
-          documentApi.getDocumentFile(documentId),
-        ]);
-
+        const detailResponse = await documentApi.getDocumentById(documentId);
         const documentData = detailResponse.data;
+
+        if (documentData.userId !== currentUserId) {
+          toast.error("You do not have access to this document.");
+          navigate("/app/library");
+          return;
+        }
+
+        const fileResponse = await documentApi.getDocumentFile(documentId);
 
         const contentTypeHeader = fileResponse.headers["content-type"];
         const contentType =
@@ -146,6 +161,11 @@ export function DocumentPreviewPage() {
   };
 
   const handleSaveNote = async () => {
+    if (!currentUserId) {
+      toast.error("Cannot identify current user.");
+      return;
+    }
+
     if (!noteTitle.trim()) {
       toast.error("Please enter note title.");
       return;
@@ -159,7 +179,7 @@ export function DocumentPreviewPage() {
     try {
       if (editingNoteId) {
         await documentNoteApi.updateNote(editingNoteId, {
-          userId: CURRENT_USER_ID,
+          userId: currentUserId,
           title: noteTitle.trim(),
           content: noteContent.trim(),
         });
@@ -167,7 +187,7 @@ export function DocumentPreviewPage() {
         toast.success("Note updated.");
       } else {
         await documentNoteApi.createNote({
-          userId: CURRENT_USER_ID,
+          userId: currentUserId,
           documentId,
           title: noteTitle.trim(),
           content: noteContent.trim(),
@@ -193,8 +213,13 @@ export function DocumentPreviewPage() {
   const handleDeleteNote = async () => {
     if (deleteNoteId === null) return;
 
+    if (!currentUserId) {
+      toast.error("Cannot identify current user.");
+      return;
+    }
+
     try {
-      await documentNoteApi.deleteNote(deleteNoteId, CURRENT_USER_ID);
+      await documentNoteApi.deleteNote(deleteNoteId, currentUserId);
       toast.success("Note deleted.");
 
       if (editingNoteId === deleteNoteId) {
@@ -281,9 +306,12 @@ export function DocumentPreviewPage() {
       fileType ===
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
       fileName.toLowerCase().endsWith(".docx");
+
     const officeViewerUrl =
       isDocx && publicFileUrl
-        ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(publicFileUrl)}`
+        ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(
+            publicFileUrl,
+          )}`
         : "";
 
     if (isDocx && officeViewerUrl) {
@@ -344,6 +372,7 @@ export function DocumentPreviewPage() {
         .docx-preview th, .docx-preview td { border: 1px solid #d1d5db; padding: 6px 8px; vertical-align: top; }
         .docx-preview ul, .docx-preview ol { margin: 8px 0 8px 24px; }
       `}</style>
+
       <header className="flex h-16 items-center justify-between border-b border-slate-200 px-5 dark:border-slate-800">
         <div className="flex min-w-0 items-center gap-3">
           <button
@@ -501,6 +530,7 @@ export function DocumentPreviewPage() {
           </div>
         </aside>
       </main>
+
       {deleteNoteId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900">

@@ -38,9 +38,17 @@ export function CategoriesPage() {
 
   const loadCategories = async () => {
     try {
+      const userId = getCurrentUserId();
+
+      if (!userId) {
+        toast.error("Please login again.");
+        return;
+      }
+
       const [categoryResponse, documentResponse] = await Promise.all([
         categoryApi.getCategories(),
         documentApi.getDocuments({
+          userId,
           page: 0,
           size: 100,
         }),
@@ -60,6 +68,13 @@ export function CategoriesPage() {
             document.categoryId ??
             document.category?.id ??
             document.categoryResponse?.id;
+      const categoryData = (categoryResponse.data ?? []).filter(
+        (category) => Number(category.userId) === userId,
+      );
+
+      const documentData = (documentResponse.data?.content ?? []).filter(
+        (document) => Number(document.userId) === userId,
+      );
 
           const categoryId = Number(rawCategoryId);
 
@@ -126,6 +141,13 @@ export function CategoriesPage() {
     try {
       const response = await categoryApi.getCategoryById(id);
       const category = response.data;
+
+      const userId = getCurrentUserId();
+
+      if (!userId || Number(category.userId) !== userId) {
+        toast.error("You do not have permission to edit this category.");
+        return;
+      }
 
       setEditId(category.id);
       setEditName(category.name ?? "");
