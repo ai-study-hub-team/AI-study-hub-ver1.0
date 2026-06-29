@@ -1,18 +1,5 @@
 import { apiClient } from "./apiClient";
 
-api.interceptors.request.use((config) => {
-  const token =
-    localStorage.getItem("token") ||
-    localStorage.getItem("accessToken") ||
-    localStorage.getItem("jwt");
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
-  return config;
-});
-
 export interface UserResponse {
   id: number;
   fullName: string;
@@ -47,11 +34,7 @@ export interface ChangePasswordPayload {
 }
 
 export const userApi = {
-  // ===========================
   // Admin APIs
-  // ===========================
-
-  // GET /api/users
   getUsers: () => {
     return apiClient.get<UserResponse[]>("/api/users");
   },
@@ -75,21 +58,15 @@ export const userApi = {
     return apiClient.delete<void>(`/api/users/${id}`);
   },
 
-  // ===========================
   // Profile APIs
-  // ===========================
-
-  // GET /api/account/me
   getProfile: () => {
     return apiClient.get<UserResponse>("/api/account/me");
   },
 
-  // PUT /api/account/me
   updateProfile: (payload: UpdateProfilePayload) => {
     return apiClient.put<UserResponse>("/api/account/me", payload);
   },
 
-  // PUT /api/account/change-password
   changePassword: (payload: ChangePasswordPayload) => {
     return apiClient.put<void>(
       "/api/account/change-password",
