@@ -7,6 +7,8 @@ import {
   type DocumentChunkResponse,
 } from "../../services/documentChunkApi";
 import { documentApi } from "../../services/documentApi";
+import { getCurrentUserId } from "../../services/apiClient";
+import { filterMyDocuments } from "../../utils/documentOwnership";
 
 type DocumentNameResult = {
   id: number;
@@ -15,6 +17,11 @@ type DocumentNameResult = {
   originalName?: string;
   fileName?: string;
   fileType?: string;
+  userId?: number;
+  ownerId?: number;
+  user?: {
+    id?: number;
+  };
 };
 
 type SearchResult =
@@ -161,18 +168,43 @@ export function GlobalDocumentSearch() {
     const timeoutId = window.setTimeout(async () => {
       try {
         setIsSearching(true);
+        const currentUserId = getCurrentUserId();
 
-        const [documentResponse, chunkResponse] = await Promise.allSettled([
+        if (!currentUserId) {
+          setDocumentResults([]);
+          setContentResults([]);
+          setShowSearchBox(true);
+          return;
+        }
+
+        const [documentResponse, allDocumentsResponse, chunkResponse] = await Promise.allSettled([
           documentApi.getDocuments({
             keyword,
             page: 0,
             size: 5,
           }),
+          documentApi.getDocuments({
+            page: 0,
+            size: 100,
+          }),
           documentChunkApi.searchAllChunks(keyword, 0, 8),
         ]);
 
+        const allMyDocumentIds =
+          allDocumentsResponse.status === "fulfilled"
+            ? new Set(
+                filterMyDocuments(
+                  normalizeDocumentResponse(allDocumentsResponse.value.data),
+                  currentUserId,
+                ).map((document) => document.id),
+              )
+            : new Set<number>();
+
         if (documentResponse.status === "fulfilled") {
-          const docs = normalizeDocumentResponse(documentResponse.value.data);
+          const docs = filterMyDocuments(
+            normalizeDocumentResponse(documentResponse.value.data),
+            currentUserId,
+          );
 
           const mappedDocs: SearchResult[] = docs.map((item) => ({
             type: "document",
@@ -192,14 +224,16 @@ export function GlobalDocumentSearch() {
             ? chunkResponse.value
             : chunkResponse.value.content || [];
 
-          const mappedChunks: SearchResult[] = chunks.map((item) => ({
-            type: "content",
-            id: item.id,
-            documentId: item.documentId,
-            title: getChunkDocumentTitle(item),
-            chunkIndex: item.chunkIndex,
-            content: getChunkContent(item),
-          }));
+          const mappedChunks: SearchResult[] = chunks
+            .filter((item) => allMyDocumentIds.has(item.documentId))
+            .map((item) => ({
+              type: "content",
+              id: item.id,
+              documentId: item.documentId,
+              title: getChunkDocumentTitle(item),
+              chunkIndex: item.chunkIndex,
+              content: getChunkContent(item),
+            }));
 
           setContentResults(mappedChunks);
         } else {

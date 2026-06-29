@@ -23,6 +23,9 @@ import {
   type FavoriteDocumentPageResponse,
 } from "../../services/favoriteApi";
 import type { AiStatus } from "../../constants/documentStatus";
+import { useTheme } from "../../../layouts/ThemeProvider";
+import { getCurrentUserId } from "../../services/apiClient";
+import { filterMyDocuments } from "../../utils/documentOwnership";
 
 interface FavoriteLibraryDocument {
   favoriteId: number;
@@ -49,6 +52,15 @@ const statusBadgeClass: Record<AiStatus, string> = {
   FAILED:
     "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/30 dark:text-red-300 dark:ring-red-800",
 };
+
+const favoriteListGridClass =
+  "grid grid-cols-[320px_180px_150px_150px_150px_220px] items-center";
+
+const actionIconButtonClass =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300";
+
+const deleteIconButtonClass =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
 
 const mapAiStatus = (status: string | undefined): AiStatus => {
   if (status === "PROCESSING") return "PROCESSING";
@@ -114,7 +126,9 @@ function FavoriteDocumentRow({
   onEdit: (document: FavoriteLibraryDocument) => void;
 }) {
   return (
-    <div className="grid grid-cols-[320px_150px_150px_120px_150px_220px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70">
+    <div
+      className={`${favoriteListGridClass} border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70`}
+    >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
           <FileText className="h-5 w-5" />
@@ -151,7 +165,7 @@ function FavoriteDocumentRow({
       <div className="flex min-w-[220px] items-center justify-end gap-1">
         <button
           onClick={() => onToggleFavorite(document.id)}
-          className="rounded-lg p-2 text-amber-400 transition-colors hover:bg-amber-50 dark:hover:bg-amber-950/30"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-amber-400 transition-colors hover:bg-amber-50 dark:hover:bg-amber-950/30"
           title="Remove from favorites"
         >
           <Star className="h-4 w-4 fill-amber-400" />
@@ -159,7 +173,7 @@ function FavoriteDocumentRow({
 
         <button
           onClick={() => onViewFile(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          className={actionIconButtonClass}
           title="View file"
         >
           <Eye className="h-4 w-4" />
@@ -167,7 +181,7 @@ function FavoriteDocumentRow({
 
         <button
           onClick={() => onEdit(document)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          className={actionIconButtonClass}
           title="Rename"
         >
           <Pencil className="h-4 w-4" />
@@ -175,7 +189,7 @@ function FavoriteDocumentRow({
 
         <button
           onClick={() => onDownload(document.id, document.name)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          className={actionIconButtonClass}
           title="Download"
         >
           <Download className="h-4 w-4" />
@@ -183,7 +197,7 @@ function FavoriteDocumentRow({
 
         <button
           onClick={() => onReprocess(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          className={actionIconButtonClass}
           title="Reprocess"
         >
           <RotateCcw className="h-4 w-4" />
@@ -191,7 +205,7 @@ function FavoriteDocumentRow({
 
         <button
           onClick={() => onDelete(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+          className={deleteIconButtonClass}
           title="Delete"
         >
           <Trash2 className="h-4 w-4" />
@@ -339,6 +353,7 @@ function EmptyFavorites() {
 
 export function FavoriteDocumentsPage() {
   const navigate = useNavigate();
+  const { theme } = useTheme();
 
   const [documents, setDocuments] = useState<FavoriteLibraryDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -352,10 +367,19 @@ export function FavoriteDocumentsPage() {
     try {
       setIsLoading(true);
 
+      const userId = getCurrentUserId();
+
+      if (!userId) {
+        toast.error("Please log in again to view favorite documents.");
+        setDocuments([]);
+        return;
+      }
+
       const response = await favoriteApi.getFavorites(0, 100);
       const data = response.data as FavoriteDocumentPageResponse;
+      const myFavorites = filterMyDocuments(data.content ?? [], userId);
 
-      setDocuments((data.content ?? []).map(mapFavoriteDocument));
+      setDocuments(myFavorites.map(mapFavoriteDocument));
     } catch (error) {
       console.error(error);
       toast.error("Failed to load favorite documents");
@@ -487,7 +511,9 @@ export function FavoriteDocumentsPage() {
               onClick={() => setViewMode("grid")}
               className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
                 viewMode === "grid"
-                  ? "bg-white text-blue-600 shadow-sm"
+                  ? theme === "dark"
+                    ? "bg-slate-700 text-blue-300 shadow-none"
+                    : "bg-white text-blue-600 shadow-sm"
                   : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
               }`}
             >
@@ -498,7 +524,9 @@ export function FavoriteDocumentsPage() {
               onClick={() => setViewMode("list")}
               className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
                 viewMode === "list"
-                  ? "bg-white text-blue-600 shadow-sm"
+                  ? theme === "dark"
+                    ? "bg-slate-700 text-blue-300 shadow-none"
+                    : "bg-white text-blue-600 shadow-sm"
                   : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
               }`}
             >
@@ -510,14 +538,16 @@ export function FavoriteDocumentsPage() {
 
       {viewMode === "list" ? (
         <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="min-w-[1260px]">
-            <div className="grid grid-cols-[320px_150px_150px_120px_150px_220px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:border-slate-800 dark:bg-slate-950">
-              <span>Document Name</span>
-              <span>Owner</span>
-              <span>Favorited At</span>
-              <span>Visibility</span>
-              <span>AI Status</span>
-              <span className="text-right">Actions</span>
+          <div className="min-w-[1170px]">
+            <div
+              className={`${favoriteListGridClass} border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60`}
+            >
+              <div>Document Name</div>
+              <div>Owner</div>
+              <div>Favorited At</div>
+              <div>Visibility</div>
+              <div>AI Status</div>
+              <div className="text-right">Actions</div>
             </div>
 
             {isLoading ? (

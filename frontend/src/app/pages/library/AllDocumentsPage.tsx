@@ -20,6 +20,8 @@ import { useNavigate } from "react-router";
 import { documentApi } from "../../services/documentApi";
 import { getCurrentUserId } from "../../services/apiClient";
 import type { AiStatus } from "../../constants/documentStatus";
+import { useTheme } from "../../../layouts/ThemeProvider";
+import { filterMyDocuments } from "../../utils/documentOwnership";
 
 interface LibraryDocument {
   id: number;
@@ -45,6 +47,15 @@ const statusBadgeClass: Record<AiStatus, string> = {
   FAILED:
     "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/30 dark:text-red-300 dark:ring-red-800",
 };
+
+const documentListGridClass =
+  "grid grid-cols-[320px_150px_150px_120px_150px_150px_220px] items-center";
+
+const actionIconButtonClass =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300";
+
+const deleteIconButtonClass =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
 
 const formatDocumentDate = (date: string | undefined) => {
   if (!date) return "Unknown";
@@ -86,7 +97,9 @@ function DocumentRow({
   onEdit: (document: LibraryDocument) => void;
 }) {
   return (
-    <div className="grid gap-3 border-t border-slate-100 bg-white p-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70 md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)] md:items-center">
+    <div
+      className={`${documentListGridClass} border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70`}
+    >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
           <FileText className="h-5 w-5" />
@@ -102,8 +115,8 @@ function DocumentRow({
         </div>
       </div>
 
-      <span className="inline-flex max-w-full rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-        <span className="truncate">{document.folder}</span>
+      <span className="inline-flex w-fit max-w-[140px] rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+        <span className="truncate">{document.folder || "Uncategorized"}</span>
       </span>
 
       <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
@@ -114,20 +127,20 @@ function DocumentRow({
         {(document.fileSize / 1024).toFixed(1)} KB
       </p>
 
-      <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800">
+      <span className="inline-flex w-fit rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800">
         {document.documentStatus}
       </span>
 
       <span
-        className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-extrabold ring-1 ${statusBadgeClass[document.aiStatus]}`}
+        className={`inline-flex w-fit rounded-full px-2.5 py-1 text-[11px] font-extrabold ring-1 ${statusBadgeClass[document.aiStatus]}`}
       >
         {document.aiStatus}
       </span>
 
-      <div className="flex min-w-[120px] items-center justify-end gap-1">
+      <div className="flex min-w-[220px] items-center justify-end gap-1">
         <button
           onClick={() => onToggleFavorite(document.id)}
-          className={`rounded-lg p-2 transition-colors ${
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
             document.fav
               ? "text-amber-400"
               : "text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
@@ -138,7 +151,7 @@ function DocumentRow({
 
         <button
           onClick={() => onViewFile(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          className={actionIconButtonClass}
           title="View file"
         >
           <Eye className="h-4 w-4" />
@@ -146,7 +159,7 @@ function DocumentRow({
 
         <button
           onClick={() => onEdit(document)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          className={actionIconButtonClass}
           title="Rename"
         >
           <Pencil className="h-4 w-4" />
@@ -154,21 +167,24 @@ function DocumentRow({
 
         <button
           onClick={() => onDownload(document.id, document.name)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          className={actionIconButtonClass}
+          title="Download"
         >
           <Download className="h-4 w-4" />
         </button>
 
         <button
           onClick={() => onReprocess(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          className={actionIconButtonClass}
+          title="Reprocess"
         >
           <RotateCcw className="h-4 w-4" />
         </button>
 
         <button
           onClick={() => onDelete(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+          className={deleteIconButtonClass}
+          title="Delete"
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -319,6 +335,7 @@ function EmptyDocuments() {
 
 export function AllDocumentsPage() {
   const navigate = useNavigate();
+  const { theme } = useTheme();
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -343,9 +360,10 @@ export function AllDocumentsPage() {
         page: 0,
         size: 100,
       });
+      const myDocuments = filterMyDocuments(response.data.content ?? [], userId);
 
       setDocuments(
-        response.data.content
+        myDocuments
           .map((document) => ({
           id: document.id,
           categoryId: document.categoryId,
@@ -485,7 +503,9 @@ export function AllDocumentsPage() {
       onClick={() => setViewMode("grid")}
       className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
         viewMode === "grid"
-          ? "bg-white text-blue-600 shadow-sm"
+          ? theme === "dark"
+            ? "bg-slate-700 text-blue-300 shadow-none"
+            : "bg-white text-blue-600 shadow-sm"
           : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
       }`}
     >
@@ -496,7 +516,9 @@ export function AllDocumentsPage() {
       onClick={() => setViewMode("list")}
       className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
         viewMode === "list"
-          ? "bg-white text-blue-600 shadow-sm"
+          ? theme === "dark"
+            ? "bg-slate-700 text-blue-300 shadow-none"
+            : "bg-white text-blue-600 shadow-sm"
           : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
       }`}
     >
@@ -515,39 +537,43 @@ export function AllDocumentsPage() {
       </div>
 
       {viewMode === "list" ? (
-        <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="hidden bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:bg-slate-950 md:grid md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)]">
-            <span>Document Name</span>
-            <span>Category</span>
-            <span>Date Added</span>
-            <span>Size</span>
-            <span>Upload Status</span>
-            <span>AI Status</span>
-            <span className="text-right">Actions</span>
-          </div>
-
-          {isLoading ? (
-            <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
-              <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                Loading documents...
-              </p>
+        <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="min-w-[1260px]">
+            <div
+              className={`${documentListGridClass} border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60`}
+            >
+              <div>Document Name</div>
+              <div>Category</div>
+              <div>Date Added</div>
+              <div>Size</div>
+              <div>Upload Status</div>
+              <div>AI Status</div>
+              <div className="text-right">Actions</div>
             </div>
-          ) : documents.length > 0 ? (
-            documents.map((document) => (
-              <DocumentRow
-                key={document.id}
-                document={document}
-                onToggleFavorite={toggleFavorite}
-                onDelete={setDeleteId}
-                onReprocess={handleReprocess}
-                onDownload={handleDownload}
-                onViewFile={handleViewFile}
-                onEdit={handleOpenEdit}
-              />
-            ))
-          ) : (
-            <EmptyDocuments />
-          )}
+
+            {isLoading ? (
+              <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
+                <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                  Loading documents...
+                </p>
+              </div>
+            ) : documents.length > 0 ? (
+              documents.map((document) => (
+                <DocumentRow
+                  key={document.id}
+                  document={document}
+                  onToggleFavorite={toggleFavorite}
+                  onDelete={setDeleteId}
+                  onReprocess={handleReprocess}
+                  onDownload={handleDownload}
+                  onViewFile={handleViewFile}
+                  onEdit={handleOpenEdit}
+                />
+              ))
+            ) : (
+              <EmptyDocuments />
+            )}
+          </div>
         </div>
       ) : (
         <div>

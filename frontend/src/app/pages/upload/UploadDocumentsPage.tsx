@@ -16,6 +16,7 @@ import { documentApi } from "../../services/documentApi";
 import { documentNoteApi } from "../../services/documentNoteApi";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { getCurrentUserId } from "../../services/apiClient";
+import { filterMyDocuments } from "../../utils/documentOwnership";
 import { CollaborationCard } from "./components/CollaborationCard";
 import { RecentUploadsCard } from "./components/RecentUploadsCard";
 import { StudyMaterialsCard } from "./components/StudyMaterialsCard";
@@ -104,7 +105,10 @@ export function UploadDocumentsPage() {
         size: 20,
       });
 
-      const mappedUploads = (response.data.content ?? [])
+      const mappedUploads = filterMyDocuments(
+        response.data.content ?? [],
+        userId,
+      )
         .sort((left, right) => {
           const leftDate = new Date(left.uploadedAt || "").getTime();
           const rightDate = new Date(right.uploadedAt || "").getTime();

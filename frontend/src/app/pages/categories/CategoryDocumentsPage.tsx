@@ -22,6 +22,8 @@ import {
 } from "../../services/favoriteApi";
 import type { AiStatus } from "../../constants/documentStatus";
 import type { DocumentListItemResponse } from "../../types/documents/types";
+import { getCurrentUserId } from "../../services/apiClient";
+import { filterMyDocuments } from "../../utils/documentOwnership";
 
 const statusBadgeClass: Record<AiStatus, string> = {
   UPLOADED: "bg-blue-50 text-blue-700 ring-blue-200",
@@ -75,8 +77,18 @@ export function CategoryDocumentsPage() {
 
   const loadFavorites = async () => {
     try {
+      const userId = getCurrentUserId();
+
+      if (!userId) {
+        setFavorites({});
+        return;
+      }
+
       const response = await favoriteApi.getFavorites(0, 100);
-      const favoriteDocuments = response.data.content ?? [];
+      const favoriteDocuments = filterMyDocuments(
+        response.data.content ?? [],
+        userId,
+      );
 
       const favoriteMap = favoriteDocuments.reduce<Record<number, boolean>>(
         (current, favorite: FavoriteDocument) => {
@@ -95,6 +107,7 @@ export function CategoryDocumentsPage() {
   const loadDocuments = async () => {
     try {
       const currentCategoryId = Number(categoryId);
+      const userId = getCurrentUserId();
 
       if (!currentCategoryId) {
         toast.error("Invalid category.");
@@ -102,10 +115,18 @@ export function CategoryDocumentsPage() {
         return;
       }
 
+      if (!userId) {
+        toast.error("Please log in again to view category documents.");
+        setDocuments([]);
+        return;
+      }
+
       const categoryResponse = await categoryApi.getCategories();
 
       const currentCategory = categoryResponse.data.find(
-        (category) => category.id === currentCategoryId,
+        (category) =>
+          category.id === currentCategoryId &&
+          Number(category.userId) === Number(userId),
       );
 
       if (!currentCategory) {
@@ -122,7 +143,11 @@ export function CategoryDocumentsPage() {
         categoryId: currentCategoryId,
       });
 
-      setDocuments(response.data.content ?? []);
+      setDocuments(
+        filterMyDocuments(response.data.content ?? [], userId).filter(
+          (document) => Number(document.categoryId) === currentCategoryId,
+        ),
+      );
     } catch (error) {
       console.error(error);
       toast.error("Cannot load category documents.");

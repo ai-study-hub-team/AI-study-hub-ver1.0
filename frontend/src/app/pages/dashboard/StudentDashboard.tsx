@@ -20,6 +20,7 @@ import {
   getAuthHeader,
   getCurrentUserId,
 } from "../../services/apiClient";
+import { filterMyDocuments } from "../../utils/documentOwnership";
 import {
   XAxis,
   YAxis,
@@ -45,6 +46,10 @@ const data = [
 type DocumentItem = {
   id?: number;
   userId?: number;
+  ownerId?: number;
+  user?: {
+    id?: number;
+  };
   title?: string;
   originalName?: string;
   fileName?: string;
@@ -189,14 +194,17 @@ export function StudentDashboard() {
         const documentsData = documentsResponse.data;
 
         if (Array.isArray(documentsData)) {
-          setDocuments(documentsData);
-          setTotalDocuments(documentsData.length);
+          const myDocuments = filterMyDocuments(documentsData, userId);
+          setDocuments(myDocuments);
+          setTotalDocuments(myDocuments.length);
         } else if (Array.isArray(documentsData?.data)) {
-          setDocuments(documentsData.data);
-          setTotalDocuments(documentsData.data.length);
+          const myDocuments = filterMyDocuments(documentsData.data, userId);
+          setDocuments(myDocuments);
+          setTotalDocuments(myDocuments.length);
         } else if (Array.isArray(documentsData?.content)) {
-          setDocuments(documentsData.content);
-          setTotalDocuments(documentsData.content.length);
+          const myDocuments = filterMyDocuments(documentsData.content, userId);
+          setDocuments(myDocuments);
+          setTotalDocuments(myDocuments.length);
         } else {
           setDocuments([]);
           setTotalDocuments(0);

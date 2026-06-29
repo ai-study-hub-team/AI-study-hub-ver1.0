@@ -1,3 +1,4 @@
+import * as XLSX from "xlsx";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import {
@@ -20,6 +21,7 @@ import "react-pdf/dist/Page/TextLayer.css";
 
 import { documentApi } from "../../services/documentApi";
 import { getCurrentUserId } from "../../services/apiClient";
+import { isMyDocument } from "../../utils/documentOwnership";
 import {
   documentNoteApi,
   type DocumentNoteResponse,
@@ -35,6 +37,21 @@ const isPublicHttpUrl = (url: string | undefined) =>
 
 const escapeRegExp = (value: string) => {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+const isExcelDocument = (contentType: string, name: string) => {
+  const lowerName = name.toLowerCase();
+
+  return (
+    contentType.includes("spreadsheet") ||
+    contentType.includes("excel") ||
+    contentType === "application/vnd.ms-excel" ||
+    contentType ===
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    lowerName.endsWith(".xlsx") ||
+    lowerName.endsWith(".xls") ||
+    lowerName.endsWith(".csv")
+  );
 };
 
 const escapeHtml = (value: string) => {
@@ -98,7 +115,10 @@ const highlightHtml = (html: string, keyword: string) => {
   if (!cleanKeyword || !html) return html;
 
   const parser = new DOMParser();
-  const parsedDocument = parser.parseFromString(`<div>${html}</div>`, "text/html");
+  const parsedDocument = parser.parseFromString(
+    `<div>${html}</div>`,
+    "text/html",
+  );
   const root = parsedDocument.body.firstElementChild;
 
   if (!root) return html;
@@ -167,6 +187,7 @@ export function DocumentPreviewPage() {
   const [publicFileUrl, setPublicFileUrl] = useState("");
   const [fileType, setFileType] = useState("");
   const [fileName, setFileName] = useState("Document");
+  const [excelHtml, setExcelHtml] = useState("");
   const [docxHtml, setDocxHtml] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
@@ -232,11 +253,13 @@ export function DocumentPreviewPage() {
         const detailResponse = await documentApi.getDocumentById(documentId);
         const documentData = detailResponse.data;
 
-        if (documentData.userId !== currentUserId) {
-          toast.error("You do not have access to this document.");
+        if (!isMyDocument(documentData, currentUserId)) {
+          toast.error("You do not have permission to view this document.");
           navigate("/app/library");
           return;
         }
+
+        await loadNotes();
 
         const fileResponse = await documentApi.getDocumentFile(documentId);
 
@@ -256,6 +279,14 @@ export function DocumentPreviewPage() {
           documentData.originalName?.toLowerCase().endsWith(".docx") ||
           documentData.fileName?.toLowerCase().endsWith(".docx");
 
+        const previewFileName =
+          documentData.title ||
+          documentData.originalName ||
+          documentData.fileName ||
+          "Document";
+
+        const isExcel = isExcelDocument(contentType, previewFileName);
+
         const publicUrl = isPublicHttpUrl(documentData.fileUrl)
           ? documentData.fileUrl
           : "";
@@ -264,8 +295,19 @@ export function DocumentPreviewPage() {
           const arrayBuffer = await blob.arrayBuffer();
           const result = await mammoth.convertToHtml({ arrayBuffer });
           setDocxHtml(result.value);
+          setExcelHtml("");
+        } else if (isExcel) {
+          const arrayBuffer = await blob.arrayBuffer();
+          const workbook = XLSX.read(arrayBuffer, { type: "array" });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+
+          const html = XLSX.utils.sheet_to_html(worksheet);
+          setExcelHtml(html);
+          setDocxHtml("");
         } else {
           setDocxHtml("");
+          setExcelHtml("");
         }
 
         currentBlobUrl = window.URL.createObjectURL(blob);
@@ -274,12 +316,7 @@ export function DocumentPreviewPage() {
         setPublicFileUrl(publicUrl);
         setFileType(contentType);
         setPdfPageCount(0);
-        setFileName(
-          documentData.title ||
-            documentData.originalName ||
-            documentData.fileName ||
-            "Document",
-        );
+        setFileName(previewFileName);
       } catch (error) {
         console.error("Cannot preview document:", error);
         toast.error("Cannot preview document.");
@@ -289,7 +326,6 @@ export function DocumentPreviewPage() {
     };
 
     loadDocument();
-    loadNotes();
 
     return () => {
       if (currentBlobUrl) {
@@ -533,6 +569,30 @@ export function DocumentPreviewPage() {
       );
     }
 
+if (excelHtml) {
+  return (
+    <div className="h-full overflow-auto bg-slate-100 p-6 dark:bg-slate-950">
+      <div className="mx-auto max-w-[1280px] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-4 dark:border-slate-700">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-blue-600">
+              Spreadsheet Preview
+            </p>
+            <h2 className="mt-1 text-lg font-extrabold text-slate-950 dark:text-white">
+              {fileName}
+            </h2>
+          </div>
+        </div>
+
+        <div
+          className="excel-preview rounded-xl border border-slate-200 bg-white dark:border-slate-700"
+          dangerouslySetInnerHTML={{ __html: excelHtml }}
+        />
+      </div>
+    </div>
+  );
+}
+
     const isDocx =
       fileType ===
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
@@ -565,6 +625,30 @@ export function DocumentPreviewPage() {
         </div>
       );
     }
+
+if (excelHtml) {
+  return (
+    <div className="h-full overflow-auto bg-slate-100 p-6 dark:bg-slate-950">
+      <div className="mx-auto max-w-[1280px] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-4 dark:border-slate-700">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-blue-600">
+              Spreadsheet Preview
+            </p>
+            <h2 className="mt-1 text-lg font-extrabold text-slate-950 dark:text-white">
+              {fileName}
+            </h2>
+          </div>
+        </div>
+
+        <div
+          className="excel-preview rounded-xl border border-slate-200 bg-white dark:border-slate-700"
+          dangerouslySetInnerHTML={{ __html: excelHtml }}
+        />
+      </div>
+    </div>
+  );
+}
 
     return (
       <div className="flex h-full flex-col items-center justify-center px-6 text-center text-slate-500 dark:text-slate-400">

@@ -1,4 +1,4 @@
-import { apiClient as api } from "./apiClient";
+import { apiClient as api, getCurrentUserId } from "./apiClient";
 import type {
   AiStatus,
   DocumentStatus,
@@ -9,6 +9,7 @@ import type {
   PageDocumentResponse,
   ProcessStatus,
 } from "../types/documents/types";
+import { filterMyDocuments } from "../utils/documentOwnership";
 
 export interface GetDocumentsParams {
   userId?: number;
@@ -280,6 +281,8 @@ export const documentApi = {
 
   // Dùng cho dropdown/select
   getAllDocumentsForSelect(_userId?: number) {
+    const currentUserId = _userId ?? getCurrentUserId();
+
     return api
       .get<PageDocumentResponse>("/api/documents/search-filter", {
         params: {
@@ -288,7 +291,9 @@ export const documentApi = {
         },
       })
       .then((response) =>
-        (response.data.content ?? []).map(mapDocumentResponse),
+        filterMyDocuments(response.data.content ?? [], currentUserId).map(
+          mapDocumentResponse,
+        ),
       );
   },
 };

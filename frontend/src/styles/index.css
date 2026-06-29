@@ -1,3 +1,61 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+.excel-preview {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.excel-preview table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+  background: white;
+}
+
+.excel-preview tbody tr:first-child td {
+  border-top: 1px solid #e2e8f0;
+}
+
+.excel-preview td,
+.excel-preview th {
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 10px 12px;
+  vertical-align: middle;
+  white-space: nowrap;
+  color: #0f172a;
+}
+
+.excel-preview td:first-child,
+.excel-preview th:first-child {
+  border-left: 1px solid #e2e8f0;
+}
+
+.excel-preview tr:first-child td,
+.excel-preview tr:first-child th {
+  border-top: 1px solid #e2e8f0;
+}
+
+.excel-preview tr:nth-child(even) td {
+  background: #f8fafc;
+}
+
+.excel-preview tr:hover td {
+  background: #eef6ff;
+}
+
+.excel-preview td:empty::after,
+.excel-preview th:empty::after {
+  content: "-";
+  color: transparent;
+}
+
+.excel-preview td {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
