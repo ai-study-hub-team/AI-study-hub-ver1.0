@@ -4,12 +4,7 @@ export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:8080",
 });
 
-export const getAuthToken = () => {
-  return (
-    localStorage.getItem("token") ||
-    localStorage.getItem("accessToken") ||
-    localStorage.getItem("jwt")
-  );
+export const getAuthToken = (): string | null => {
   const token =
     localStorage.getItem("token") ||
     localStorage.getItem("accessToken") ||
@@ -21,20 +16,23 @@ export const getAuthToken = () => {
 };
 
 export const getCurrentUserId = (): number | null => {
-  try {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const userId = Number(user?.id ?? user?.userId);
+  const userIdFromStorage = localStorage.getItem("userId");
 
-    if (Number.isInteger(userId) && userId > 0) {
-      return userId;
-    }
-  } catch {
-    // Fall back to token.
+  if (userIdFromStorage) {
+    const userId = Number(userIdFromStorage);
+    if (Number.isInteger(userId) && userId > 0) return userId;
   }
 
   try {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
-    return Number(user?.id || user?.userId || 0);
+    const userId = Number(user?.id ?? user?.userId);
+
+    if (Number.isInteger(userId) && userId > 0) return userId;
+  } catch {
+    // Ignore invalid user JSON
+  }
+
+  try {
     const token = getAuthToken();
     const encodedPayload = token?.split(".")[1];
 
@@ -61,6 +59,7 @@ export const clearAuthStorage = () => {
   localStorage.removeItem("accessToken");
   localStorage.removeItem("jwt");
   localStorage.removeItem("user");
+  localStorage.removeItem("userId");
   localStorage.removeItem("role");
   localStorage.removeItem("fullName");
   localStorage.removeItem("name");
@@ -76,71 +75,54 @@ export const getAuthHeader = () => {
   };
 };
 
+const publicApis = [
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/refresh",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/auth/verify-email",
+  "/api/auth/verify-reset-code",
+  "/auth/login",
+  "/auth/register",
+  "/auth/refresh",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+  "/auth/verify-email",
+  "/auth/verify-reset-code",
+];
+
 const isPublicAuthApi = (url?: string) => {
   if (!url) return false;
-
-  return (
-    url.includes("/api/auth/login") ||
-    url.includes("/api/auth/register") ||
-    url.includes("/api/auth/refresh") ||
-    url.includes("/auth/login") ||
-    url.includes("/auth/register") ||
-    url.includes("/auth/refresh")
-  );
+  return publicApis.some((api) => url.includes(api));
 };
 
-// =====================
-// Request Interceptor
-// =====================
 apiClient.interceptors.request.use((config) => {
-  if (isPublicAuthApi(config.url)) {
-    if (config.headers) {
-      const headers = AxiosHeaders.from(config.headers);
-      headers.delete("Authorization");
-      config.headers = headers;
-    }
+  config.headers = AxiosHeaders.from(config.headers);
 
+  if (isPublicAuthApi(config.url)) {
+    config.headers.delete("Authorization");
     return config;
   }
 
   const token = getAuthToken();
-  const url = config.url || "";
 
-  const publicApis = [
-    "/api/auth/login",
-    "/api/auth/register",
-    "/api/auth/refresh",
-    "/api/auth/forgot-password",
-    "/api/auth/reset-password",
-    "/api/auth/verify-email",
-    "/api/auth/verify-reset-code",
-  ];
-
-  const isPublicApi = publicApis.some((api) => url.includes(api));
-
-  config.headers = AxiosHeaders.from(config.headers);
-
-  if (token && !isPublicApi) {
+  if (token) {
     config.headers.set("Authorization", `Bearer ${token}`);
   }
 
   return config;
 });
 
-// =====================
-// Response Interceptor
-// =====================
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+
+    if (status === 401) {
       console.warn("Unauthorized - clearing local storage");
 
-      localStorage.removeItem("token");
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("jwt");
-      localStorage.removeItem("user");
-      localStorage.removeItem("userId");
+      clearAuthStorage();
 
       if (
         !window.location.pathname.includes("/login") &&
@@ -151,13 +133,7 @@ apiClient.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 export default apiClient;
-      console.error("Unauthorized:", error.response.data);
-    }
-
-    return Promise.reject(error);
-  },
-);
