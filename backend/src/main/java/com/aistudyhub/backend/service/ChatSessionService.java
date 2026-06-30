@@ -230,9 +230,11 @@ public class ChatSessionService {
                     break;
 
                 default: // DOCUMENT_QA, FOLLOW_UP_QA, OUT_OF_SCOPE
-                    log.info("[Chat] intent={} → semantic search. originalQuestion='{}', rewrittenQuestion='{}', retrievalQuery='{}'",
-                            intent, request.getQuestion(), plan.getRewrittenQuestion(), retrievalQuery);
-                    contextChunks = retrieveSemanticChunks(retrievalQuery, activeDocumentIds, CHAT_TOP_K);
+                    log.info("[Chat] intent={} → Multi-Query RAG. originalQuestion='{}', rewrittenQuestion='{}', plannerSearchQueries={}",
+                            intent, request.getQuestion(), plan.getRewrittenQuestion(), plan.getSearchQueries());
+                    contextChunks = buildMultiQueryContext(
+                            request.getQuestion(), effectiveQuestion, plan.getSearchQueries(),
+                            activeDocumentIds, CHAT_TOP_K);
                     break;
             }
 
@@ -372,7 +374,7 @@ public class ChatSessionService {
         return "Lỗi kết nối đến Python AI service. Câu hỏi: \"" + question + "\"";
     }
 
-    /** Standard semantic search for DOCUMENT_QA / FOLLOW_UP_QA. */
+    /** Standard semantic search — single query wrapper used by all branches. */
     private List<PythonContextChunk> retrieveSemanticChunks(
             String query, List<Long> documentIds, int topK) {
         try {
@@ -381,6 +383,107 @@ public class ChatSessionService {
             log.warn("[Chat] retrieveForChat failed: {}. Proceeding with empty context.", e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * Multi-Query RAG retrieval for DOCUMENT_QA / FOLLOW_UP_QA.
+     *
+     * <p>Build a de-duplicated list of up to 3 retrieval queries:
+     * <ol>
+     *   <li>originalQuestion (always first)</li>
+     *   <li>up to 2 non-blank items from planner searchQueries</li>
+     *   <li>fallback to effectiveQuestion only when the list would otherwise be empty</li>
+     * </ol>
+     * For each query call retrieveSemanticChunks, then merge results by
+     * (documentId + chunkIndex), keeping the highest score for duplicates.
+     * Finally sort descending by score and return the top CHAT_TOP_K chunks.
+     */
+    private List<PythonContextChunk> buildMultiQueryContext(
+            String originalQuestion,
+            String effectiveQuestion,
+            List<String> plannerSearchQueries,
+            List<Long> documentIds,
+            int topK) {
+
+        // ── 1. Build retrieval query list ────────────────────────────────────
+        List<String> retrievalQueries = new ArrayList<>();
+
+        if (originalQuestion != null && !originalQuestion.isBlank()) {
+            retrievalQueries.add(originalQuestion.trim());
+        }
+
+        if (plannerSearchQueries != null) {
+            int added = 0;
+            for (String q : plannerSearchQueries) {
+                if (added >= 2) break;
+                if (q == null || q.isBlank()) continue;
+                String trimmed = q.trim();
+                if (!retrievalQueries.contains(trimmed)) {
+                    retrievalQueries.add(trimmed);
+                    added++;
+                }
+            }
+        }
+
+        // Fallback: if still empty, use effectiveQuestion / rewrittenQuestion
+        if (retrievalQueries.isEmpty()) {
+            String fallback = (effectiveQuestion != null && !effectiveQuestion.isBlank())
+                    ? effectiveQuestion.trim()
+                    : "";
+            if (!fallback.isBlank()) {
+                retrievalQueries.add(fallback);
+            }
+        }
+
+        // Cap at 3
+        if (retrievalQueries.size() > 3) {
+            retrievalQueries = retrievalQueries.subList(0, 3);
+        }
+
+        log.info("[MultiQueryRAG] finalRetrievalQueries={}", retrievalQueries);
+
+        if (retrievalQueries.isEmpty()) {
+            log.warn("[MultiQueryRAG] No retrieval queries could be built. Returning empty context.");
+            return List.of();
+        }
+
+        // ── 2. Retrieve & merge ──────────────────────────────────────────────
+        // Key: documentId_chunkIndex → best-scoring chunk
+        Map<String, PythonContextChunk> merged = new LinkedHashMap<>();
+
+        for (String query : retrievalQueries) {
+            List<PythonContextChunk> hits = retrieveSemanticChunks(query, documentIds, topK);
+            log.info("[MultiQueryRAG] query='{}' → {} chunks returned", query, hits.size());
+            for (PythonContextChunk chunk : hits) {
+                String key = chunk.getDocumentId() + "_" + chunk.getChunkIndex();
+                log.debug("[MultiQueryRAG]   chunk key={}, score={}", key,
+                        chunk.getScore() != null ? chunk.getScore() : "null");
+                merged.merge(key, chunk, (existing, incoming) -> {
+                    double existScore = existing.getScore() != null ? existing.getScore() : 0.0;
+                    double newScore  = incoming.getScore()  != null ? incoming.getScore()  : 0.0;
+                    return newScore > existScore ? incoming : existing;
+                });
+            }
+        }
+
+        log.info("[MultiQueryRAG] total chunks before merge={}, after dedupe={}",
+                retrievalQueries.size() * topK, merged.size());
+
+        // ── 3. Sort descending by score, take topK ───────────────────────────
+        List<PythonContextChunk> result = merged.values().stream()
+                .sorted(Comparator.comparingDouble(
+                        c -> -(c.getScore() != null ? c.getScore() : 0.0)))
+                .limit(topK)
+                .collect(Collectors.toList());
+
+        log.info("[MultiQueryRAG] finalChunks={}:", result.size());
+        for (PythonContextChunk c : result) {
+            log.info("[MultiQueryRAG]   docId={}, chunkIndex={}, score={}",
+                    c.getDocumentId(), c.getChunkIndex(),
+                    c.getScore() != null ? String.format("%.4f", c.getScore()) : "null");
+        }
+
+        return result;
     }
 
     /**
