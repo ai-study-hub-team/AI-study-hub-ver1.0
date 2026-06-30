@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { PptxViewer, RECOMMENDED_ZIP_LIMITS } from "@aiden0z/pptx-renderer";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import {
   ArrowLeft,
@@ -51,6 +52,30 @@ const isExcelDocument = (contentType: string, name: string) => {
     lowerName.endsWith(".xlsx") ||
     lowerName.endsWith(".xls") ||
     lowerName.endsWith(".csv")
+  );
+};
+
+const isPowerPointDocument = (contentType: string, name: string) => {
+  const lowerName = name.toLowerCase();
+
+  return (
+    contentType.includes("presentation") ||
+    contentType.includes("powerpoint") ||
+    contentType === "application/vnd.ms-powerpoint" ||
+    contentType ===
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    lowerName.endsWith(".ppt") ||
+    lowerName.endsWith(".pptx")
+  );
+};
+
+const isPptxDocument = (contentType: string, name: string) => {
+  const lowerName = name.toLowerCase();
+
+  return (
+    contentType ===
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    lowerName.endsWith(".pptx")
   );
 };
 
@@ -183,6 +208,9 @@ export function DocumentPreviewPage() {
 
   const keyword = searchParams.get("keyword") || "";
 
+  const pptxContainerRef = useRef<HTMLDivElement | null>(null);
+  const [pptxBuffer, setPptxBuffer] = useState<ArrayBuffer | null>(null);
+  const [pptxError, setPptxError] = useState("");
   const [fileUrl, setFileUrl] = useState("");
   const [publicFileUrl, setPublicFileUrl] = useState("");
   const [fileType, setFileType] = useState("");
@@ -230,6 +258,45 @@ export function DocumentPreviewPage() {
       setIsNotesLoading(false);
     }
   };
+
+useEffect(() => {
+  if (!pptxBuffer || !pptxContainerRef.current) return;
+
+  const container = pptxContainerRef.current;
+  container.innerHTML = "";
+
+  let isCancelled = false;
+
+  const renderPptx = async () => {
+    try {
+      await PptxViewer.open(pptxBuffer, container, {
+        zipLimits: RECOMMENDED_ZIP_LIMITS,
+        listOptions: {
+          windowed: true,
+          initialSlides: 4,
+          batchSize: 4,
+        },
+      });
+
+      if (!isCancelled) {
+        setPptxError("");
+      }
+    } catch (error) {
+      console.error("Cannot render PPTX:", error);
+
+      if (!isCancelled) {
+        setPptxError("Cannot preview this PowerPoint file.");
+      }
+    }
+  };
+
+  renderPptx();
+
+  return () => {
+    isCancelled = true;
+    container.innerHTML = "";
+  };
+}, [pptxBuffer]);
 
   useEffect(() => {
     if (!documentId) {
@@ -287,28 +354,42 @@ export function DocumentPreviewPage() {
 
         const isExcel = isExcelDocument(contentType, previewFileName);
 
+        const isPptx = isPptxDocument(contentType, previewFileName);
+
         const publicUrl = isPublicHttpUrl(documentData.fileUrl)
           ? documentData.fileUrl
           : "";
 
         if (isDocx && !publicUrl) {
-          const arrayBuffer = await blob.arrayBuffer();
-          const result = await mammoth.convertToHtml({ arrayBuffer });
-          setDocxHtml(result.value);
-          setExcelHtml("");
+  const arrayBuffer = await blob.arrayBuffer();
+  const result = await mammoth.convertToHtml({ arrayBuffer });
+  setDocxHtml(result.value);
+  setExcelHtml("");
+  setPptxBuffer(null);
+  setPptxError("");
         } else if (isExcel) {
-          const arrayBuffer = await blob.arrayBuffer();
-          const workbook = XLSX.read(arrayBuffer, { type: "array" });
-          const firstSheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[firstSheetName];
+  const arrayBuffer = await blob.arrayBuffer();
+  const workbook = XLSX.read(arrayBuffer, { type: "array" });
+  const firstSheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[firstSheetName];
 
-          const html = XLSX.utils.sheet_to_html(worksheet);
-          setExcelHtml(html);
-          setDocxHtml("");
+  const html = XLSX.utils.sheet_to_html(worksheet);
+  setExcelHtml(html);
+  setDocxHtml("");
+  setPptxBuffer(null);
+  setPptxError("");
+        } else if (isPptx) {
+  const arrayBuffer = await blob.arrayBuffer();
+  setPptxBuffer(arrayBuffer);
+  setDocxHtml("");
+  setExcelHtml("");
+  setPptxError("");
         } else {
           setDocxHtml("");
-          setExcelHtml("");
-        }
+  setExcelHtml("");
+  setPptxBuffer(null);
+  setPptxError("");
+}
 
         currentBlobUrl = window.URL.createObjectURL(blob);
 
@@ -527,6 +608,65 @@ export function DocumentPreviewPage() {
       );
     }
 
+    const isPowerPoint = isPowerPointDocument(fileType, fileName);
+    const isPptx = isPptxDocument(fileType, fileName);
+
+    if (isPowerPoint) {
+      if (!isPptx) {
+        return (
+          <div className="flex h-full flex-col items-center justify-center px-6 text-center text-slate-500 dark:text-slate-400">
+            <FileText className="mb-4 h-14 w-14" />
+            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
+              PPT preview is not supported
+            </h2>
+            <p className="mt-2 max-w-md text-sm">
+              Old .ppt files cannot be previewed in the browser. Please download
+              the file or upload it as .pptx.
+            </p>
+            <button
+              onClick={handleDownload}
+              className="mt-5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+            >
+              Download file
+            </button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="h-full overflow-auto bg-slate-100 p-6 dark:bg-slate-950">
+          <div className="mx-auto max-w-[1200px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="mb-4 border-b border-slate-200 pb-4 dark:border-slate-700">
+              <p className="text-xs font-bold uppercase tracking-widest text-blue-600">
+                PowerPoint Preview
+              </p>
+              <h2 className="mt-1 text-lg font-extrabold text-slate-950 dark:text-white">
+                {fileName}
+              </h2>
+            </div>
+
+            {pptxError ? (
+              <div className="flex min-h-[420px] flex-col items-center justify-center text-center text-slate-500">
+                <FileText className="mb-4 h-12 w-12" />
+                <p className="text-sm font-bold">{pptxError}</p>
+                <button
+                  onClick={handleDownload}
+                  className="mt-5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+                >
+                  Download file
+                </button>
+              </div>
+            ) : (
+              <div
+                ref={pptxContainerRef}
+                className="pptx-preview min-h-[420px] overflow-auto"
+              />
+            )}
+          </div>
+        </div>
+      );
+    }
+
     if (fileType.startsWith("image/")) {
       return (
         <div className="flex h-full items-center justify-center overflow-auto bg-slate-100 p-6 dark:bg-slate-950">
@@ -569,29 +709,29 @@ export function DocumentPreviewPage() {
       );
     }
 
-if (excelHtml) {
-  return (
-    <div className="h-full overflow-auto bg-slate-100 p-6 dark:bg-slate-950">
-      <div className="mx-auto max-w-[1280px] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-4 dark:border-slate-700">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-blue-600">
-              Spreadsheet Preview
-            </p>
-            <h2 className="mt-1 text-lg font-extrabold text-slate-950 dark:text-white">
-              {fileName}
-            </h2>
+    if (excelHtml) {
+      return (
+        <div className="h-full overflow-auto bg-slate-100 p-6 dark:bg-slate-950">
+          <div className="mx-auto max-w-[1280px] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-4 dark:border-slate-700">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-blue-600">
+                  Spreadsheet Preview
+                </p>
+                <h2 className="mt-1 text-lg font-extrabold text-slate-950 dark:text-white">
+                  {fileName}
+                </h2>
+              </div>
+            </div>
+
+            <div
+              className="excel-preview rounded-xl border border-slate-200 bg-white dark:border-slate-700"
+              dangerouslySetInnerHTML={{ __html: excelHtml }}
+            />
           </div>
         </div>
-
-        <div
-          className="excel-preview rounded-xl border border-slate-200 bg-white dark:border-slate-700"
-          dangerouslySetInnerHTML={{ __html: excelHtml }}
-        />
-      </div>
-    </div>
-  );
-}
+      );
+    }
 
     const isDocx =
       fileType ===
@@ -626,30 +766,6 @@ if (excelHtml) {
       );
     }
 
-if (excelHtml) {
-  return (
-    <div className="h-full overflow-auto bg-slate-100 p-6 dark:bg-slate-950">
-      <div className="mx-auto max-w-[1280px] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-4 dark:border-slate-700">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-blue-600">
-              Spreadsheet Preview
-            </p>
-            <h2 className="mt-1 text-lg font-extrabold text-slate-950 dark:text-white">
-              {fileName}
-            </h2>
-          </div>
-        </div>
-
-        <div
-          className="excel-preview rounded-xl border border-slate-200 bg-white dark:border-slate-700"
-          dangerouslySetInnerHTML={{ __html: excelHtml }}
-        />
-      </div>
-    </div>
-  );
-}
-
     return (
       <div className="flex h-full flex-col items-center justify-center px-6 text-center text-slate-500 dark:text-slate-400">
         <FileText className="mb-4 h-14 w-14" />
@@ -670,7 +786,7 @@ if (excelHtml) {
     );
   };
 
-  return (
+    return (
     <div className="flex h-screen flex-col bg-white dark:bg-slate-950">
       <style>{`
         .docx-preview {
@@ -710,6 +826,12 @@ if (excelHtml) {
           border-radius: 3px;
           padding: 0 2px;
           font-weight: 700;
+        }
+
+        .pptx-preview section,
+        .pptx-preview .slide {
+          margin: 0 auto 24px;
+          box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
         }
       `}</style>
 
