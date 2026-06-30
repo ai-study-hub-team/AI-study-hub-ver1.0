@@ -6,12 +6,14 @@ import com.aistudyhub.backend.specification.DocumentSpecification;
 import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.repository.CategoryRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
+import com.aistudyhub.backend.repository.FolderRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import lombok.extern.slf4j.Slf4j;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
@@ -26,6 +28,7 @@ public class DocumentService {
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
+    private final FolderRepository folderRepository;
     private final FileStorageService fileStorageService;
     private final AiIntegrationService aiIntegrationService;
     private final DocumentChunkRepository documentChunkRepository;
@@ -98,10 +101,11 @@ public class DocumentService {
             String documentType,
             String visibility,
             Long userId,
-            Long categoryId) throws IOException {
+            Long categoryId,
+            Long folderId) throws IOException {
 
-        log.info("Upload received — title='{}', originalName='{}', userId={}, categoryId={}",
-                title, file.getOriginalFilename(), userId, categoryId);
+        log.info("Upload received — title='{}', originalName='{}', userId={}, categoryId={}, folderId={}",
+                title, file.getOriginalFilename(), userId, categoryId, folderId);
 
         // 1. Validate user
         User user = userRepository.findById(userId)
@@ -112,6 +116,14 @@ public class DocumentService {
         if (categoryId != null) {
             category = categoryRepository.findById(categoryId)
                     .orElseThrow(() -> new RuntimeException("Category not found with id: " + categoryId));
+        }
+
+        // 2b. Validate folder (optional) — must belong to the uploading user
+        Folder folder = null;
+        if (folderId != null) {
+            folder = folderRepository.findByIdAndUserId(folderId, userId)
+                    .orElseThrow(() -> new RuntimeException(
+                            "Folder not found or does not belong to user: " + folderId));
         }
 
         // 3. Save the file to the local "uploads/" directory
@@ -144,6 +156,7 @@ public class DocumentService {
                 .processStatus(DocumentProcessStatus.PROCESSING)
                 .user(user)
                 .category(category)
+                .folder(folder)
                 .cloudFile(cloudFile)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
@@ -321,6 +334,27 @@ public class DocumentService {
             LocalDateTime fromDate,
             LocalDateTime toDate,
             Pageable pageable) {
+        return searchAndFilter(keyword, categoryId, processStatus,
+                fileType, tag, fromDate, toDate, null, null, pageable);
+    }
+
+    /**
+     * Extended search with optional folder filtering.
+     *
+     * @param folderId  when non-null, return only documents in this folder
+     * @param rootOnly  when {@code true}, return only root-level documents (folder = null)
+     */
+    public Page<DocumentResponse> searchAndFilter(
+            String keyword,
+            Long categoryId,
+            DocumentProcessStatus processStatus,
+            String fileType,
+            String tag,
+            LocalDateTime fromDate,
+            LocalDateTime toDate,
+            Long folderId,
+            Boolean rootOnly,
+            Pageable pageable) {
 
         return documentRepository.findAll(
                 DocumentSpecification.filterDocuments(
@@ -330,10 +364,51 @@ public class DocumentService {
                         fileType,
                         tag,
                         fromDate,
-                        toDate
+                        toDate,
+                        folderId,
+                        rootOnly
                 ),
                 pageable
         ).map(this::toResponse);
+    }
+
+    // ─── Move Document to Folder ───────────────────────────────────────────────
+
+    /**
+     * Moves a document into a folder, or back to root when {@code folderId} is null.
+     *
+     * <p>Security rules enforced:
+     * <ul>
+     *   <li>Document must belong to {@code userId}.</li>
+     *   <li>Target folder (if non-null) must belong to {@code userId}.</li>
+     * </ul>
+     */
+    @Transactional
+    public DocumentResponse moveDocumentToFolder(Long documentId, Long userId, Long folderId) {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document not found with id: " + documentId));
+
+        if (document.getStatus() == DocumentStatus.DELETED) {
+            throw new RuntimeException("Cannot move a deleted document.");
+        }
+        if (!document.getUser().getId().equals(userId)) {
+            throw new RuntimeException("Document " + documentId + " does not belong to user " + userId);
+        }
+
+        Folder folder = null;
+        if (folderId != null) {
+            folder = folderRepository.findByIdAndUserId(folderId, userId)
+                    .orElseThrow(() -> new RuntimeException(
+                            "Folder not found or does not belong to user: " + folderId));
+        }
+
+        document.setFolder(folder);
+        document.setUpdatedAt(LocalDateTime.now());
+        Document saved = documentRepository.save(document);
+
+        log.info("[Document] Moved document id={} to folder id={} for userId={}",
+                documentId, folderId, userId);
+        return toResponse(saved);
     }
 
     // ─── Mapper ────────────────────────────────────────────────────────────────
@@ -359,6 +434,12 @@ public class DocumentService {
             builder.categoryName(document.getCategory().getName());
         }
 
+        // Folder info (null = root level)
+        if (document.getFolder() != null) {
+            builder.folderId(document.getFolder().getId());
+            builder.folderName(document.getFolder().getName());
+        }
+
         // File info
         if (document.getCloudFile() != null) {
             CloudFile cf = document.getCloudFile();
@@ -370,6 +451,15 @@ public class DocumentService {
             builder.fileSize(cf.getFileSize());
             builder.storageProvider(cf.getStorageProvider());
         }
+
+        // Provenance (shared-upload fields; null for direct uploads)
+        if (document.getSourceType() != null) {
+            builder.sourceType(document.getSourceType().name());
+        }
+        builder.sourceSubmissionId(document.getSourceSubmissionId());
+        builder.contributedByUserId(document.getContributedByUserId());
+        builder.contributedByName(document.getContributedByName());
+        builder.contributedByEmail(document.getContributedByEmail());
 
         return builder.build();
     }

@@ -202,4 +202,66 @@ public class FileStorageService {
                 return "application/octet-stream";
         }
     }
-}
+
+    // ─── Shared Submission Storage ──────────────────────────────────────────────
+
+    /**
+     * Saves a file uploaded through a public share link into a dedicated
+     * {@code shared-submissions/} sub-directory, separate from normal uploads.
+     *
+     * @param file the multipart file from User B
+     * @return the stored unique file name (e.g. {@code "abc123.pdf"})
+     * @throws IOException if saving fails
+     */
+    public String saveSharedSubmissionFile(MultipartFile file) throws IOException {
+        String originalFileName = file.getOriginalFilename();
+        if (originalFileName == null || originalFileName.isBlank()) {
+            throw new IllegalArgumentException("File name must not be empty");
+        }
+        String extension = getExtension(originalFileName).toLowerCase();
+        if (!ALLOWED_EXTENSIONS.contains(extension)) {
+            throw new IllegalArgumentException("Unsupported file type: ." + extension);
+        }
+        Path submissionsDir = Paths.get(uploadDir, "shared-submissions");
+        if (!Files.exists(submissionsDir)) {
+            Files.createDirectories(submissionsDir);
+        }
+        String uniqueFileName = UUID.randomUUID().toString().replace("-", "") + "." + extension;
+        Path targetPath = submissionsDir.resolve(uniqueFileName);
+        Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+        return uniqueFileName;
+    }
+
+    /**
+     * Returns the relative stored path for a shared submission file.
+     * e.g. {@code "uploads/shared-submissions/abc123.pdf"}
+     */
+    public String getSharedSubmissionFilePath(String storedFileName) {
+        return uploadDir + "/shared-submissions/" + storedFileName;
+    }
+
+    /**
+     * Copies an approved shared-submission file into the main uploads directory
+     * so the normal AI processing pipeline can access it the same way as a direct upload.
+     *
+     * @param submissionFileName the UUID-based file name stored in shared-submissions/
+     * @return the new unique file name in the main uploads/ directory
+     * @throws IOException if copy fails
+     */
+    public String copySharedSubmissionToUploads(String submissionFileName) throws IOException {
+        Path src = Paths.get(uploadDir, "shared-submissions", submissionFileName).toAbsolutePath();
+        if (!Files.exists(src)) {
+            throw new RuntimeException("Shared submission file not found: " + src);
+        }
+        String extension = getExtension(submissionFileName);
+        String newFileName = UUID.randomUUID().toString().replace("-", "")
+                + (extension.isBlank() ? "" : "." + extension);
+        Path uploadPath = Paths.get(uploadDir);
+        if (!Files.exists(uploadPath)) {
+            Files.createDirectories(uploadPath);
+        }
+        Path dest = uploadPath.resolve(newFileName);
+        Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
+        return newFileName;
+    }
+}
