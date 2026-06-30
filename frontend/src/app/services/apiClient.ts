@@ -4,7 +4,7 @@ export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:8080",
 });
 
-export const getAuthToken = (): string | null => {
+export const getAuthToken = () => {
   const token =
     localStorage.getItem("token") ||
     localStorage.getItem("accessToken") ||
@@ -21,15 +21,6 @@ export const getCurrentUserId = (): number | null => {
   if (userIdFromStorage) {
     const userId = Number(userIdFromStorage);
     if (Number.isInteger(userId) && userId > 0) return userId;
-  }
-
-  try {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const userId = Number(user?.id ?? user?.userId);
-
-    if (Number.isInteger(userId) && userId > 0) return userId;
-  } catch {
-    // Ignore invalid user JSON
   }
 
   try {
@@ -58,9 +49,12 @@ export const clearAuthStorage = () => {
   localStorage.removeItem("token");
   localStorage.removeItem("accessToken");
   localStorage.removeItem("jwt");
+  localStorage.removeItem("refreshToken");
+  localStorage.removeItem("userId");
   localStorage.removeItem("user");
   localStorage.removeItem("userId");
   localStorage.removeItem("role");
+  localStorage.removeItem("email");
   localStorage.removeItem("fullName");
   localStorage.removeItem("name");
 };
@@ -94,7 +88,19 @@ const publicApis = [
 
 const isPublicAuthApi = (url?: string) => {
   if (!url) return false;
-  return publicApis.some((api) => url.includes(api));
+
+  return (
+    url.includes("/api/auth/login") ||
+    url.includes("/api/auth/register") ||
+    url.includes("/api/auth/refresh") ||
+    url.includes("/api/auth/forgot-password") ||
+    url.includes("/api/auth/reset-password") ||
+    url.includes("/api/auth/verify-email") ||
+    url.includes("/api/auth/verify-reset-code") ||
+    url.includes("/auth/login") ||
+    url.includes("/auth/register") ||
+    url.includes("/auth/refresh")
+  );
 };
 
 apiClient.interceptors.request.use((config) => {

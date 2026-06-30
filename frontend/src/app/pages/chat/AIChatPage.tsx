@@ -26,6 +26,7 @@ import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 
 import { apiClient, getCurrentUserId } from "../../services/apiClient";
+import { filterMyDocuments } from "../../utils/documentOwnership";
 
 const MATERIAL_LIMIT = 5;
 
@@ -36,6 +37,11 @@ type ChatMessage = {
 
 type DocumentItem = {
   id: number;
+  userId?: number;
+  ownerId?: number;
+  user?: {
+    id?: number;
+  };
   title?: string;
   name?: string;
   fileName?: string;
@@ -176,12 +182,12 @@ export function AIChatPage() {
 
   const loadDocuments = async () => {
     try {
-      const res = await apiClient.get("/api/documents", {
+      const res = await apiClient.get("/api/documents/search-filter", {
         params: { page: 0, size: 100 },
       });
 
       const data = res.data?.content ?? res.data?.data ?? res.data ?? [];
-      setDocuments(Array.isArray(data) ? data : []);
+      setDocuments(Array.isArray(data) ? filterMyDocuments(data, userId) : []);
     } catch (error: any) {
       console.error("Load documents failed:", error);
       toast.error(

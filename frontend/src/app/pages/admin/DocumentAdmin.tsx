@@ -41,7 +41,6 @@ type AdminUser = UserResponse & {
 
 interface EditForm {
   title: string;
-  description: string;
 }
 
 interface ActionMenuPosition {
@@ -163,7 +162,6 @@ export function DocumentAdmin() {
   const [editDoc, setEditDoc] = useState<AdminDocument | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({
     title: "",
-    description: "",
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -354,7 +352,6 @@ export function DocumentAdmin() {
       setEditDoc(document);
       setEditForm({
         title: getDocumentName(document),
-        description: document.description || "",
       });
 
       closeActionMenu();
@@ -368,7 +365,6 @@ export function DocumentAdmin() {
     if (!editDoc) return;
 
     const newTitle = editForm.title.trim();
-    const newDescription = editForm.description.trim();
 
     if (!newTitle) {
       toast.error("Document name cannot be empty.");
@@ -380,7 +376,6 @@ export function DocumentAdmin() {
 
       const response = await documentApi.updateDocument(editDoc.id, {
         title: newTitle,
-        description: newDescription,
         userId: editDoc.userId,
         categoryId: editDoc.categoryId,
         originalName: editDoc.originalName,
@@ -711,7 +706,7 @@ export function DocumentAdmin() {
                   Edit Document
                 </h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Update document name and description
+                  Update document name
                 </p>
               </div>
 
@@ -738,24 +733,6 @@ export function DocumentAdmin() {
                   }
                   placeholder="Enter document name..."
                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200">
-                  Description
-                </label>
-                <textarea
-                  value={editForm.description}
-                  onChange={(event) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      description: event.target.value,
-                    }))
-                  }
-                  rows={3}
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  placeholder="Enter document description..."
                 />
               </div>
             </div>

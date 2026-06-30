@@ -3,7 +3,7 @@ import { apiClient as api } from "./apiClient";
 export interface CategoryResponse {
   id: number;
   name: string;
-  description: string;
+  description?: string | null;
   userId: number;
   createdAt?: string;
   updatedAt?: string;

@@ -12,12 +12,25 @@ import { useNavigate } from "react-router";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { documentApi } from "../../services/documentApi";
 import { getCurrentUserId } from "../../services/apiClient";
+import { filterMyDocuments } from "../../utils/documentOwnership";
+import type { DocumentListItemResponse } from "../../types/documents/types";
 
 type ListResponse<T> = T[] | { content?: T[] };
 
 const normalizeList = <T,>(data: ListResponse<T> | null | undefined): T[] => {
   if (Array.isArray(data)) return data;
   return data?.content ?? [];
+};
+
+const getSafeUserId = (): number | null => {
+  const rawUserId = getCurrentUserId();
+  const userId = Number(rawUserId);
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return null;
+  }
+
+  return userId;
 };
 
 export function CategoriesPage() {
@@ -38,7 +51,7 @@ export function CategoriesPage() {
 
   const loadCategories = async () => {
     try {
-      const userId = getCurrentUserId();
+      const userId = getSafeUserId();
 
       if (!userId) {
         toast.error("Please login again.");
@@ -48,35 +61,25 @@ export function CategoriesPage() {
       const [categoryResponse, documentResponse] = await Promise.all([
         categoryApi.getCategories(),
         documentApi.getDocuments({
-          userId,
           page: 0,
-          size: 100,
+          size: 1000,
         }),
       ]);
 
       const categoryData = normalizeList<CategoryResponse>(
         categoryResponse.data as ListResponse<CategoryResponse>,
-      );
+      ).filter((category) => Number(category.userId) === userId);
 
-      const documentData = normalizeList<any>(
-        documentResponse.data as ListResponse<any>,
+      const documentData = filterMyDocuments(
+        normalizeList<DocumentListItemResponse>(
+          documentResponse.data as ListResponse<DocumentListItemResponse>,
+        ),
+        userId,
       );
 
       const counts = documentData.reduce<Record<number, number>>(
         (result, document) => {
-          const rawCategoryId =
-            document.categoryId ??
-            document.category?.id ??
-            document.categoryResponse?.id;
-      const categoryData = (categoryResponse.data ?? []).filter(
-        (category) => Number(category.userId) === userId,
-      );
-
-      const documentData = (documentResponse.data?.content ?? []).filter(
-        (document) => Number(document.userId) === userId,
-      );
-
-          const categoryId = Number(rawCategoryId);
+          const categoryId = Number(document.categoryId);
 
           if (Number.isInteger(categoryId) && categoryId > 0) {
             result[categoryId] = (result[categoryId] ?? 0) + 1;
@@ -109,7 +112,7 @@ export function CategoriesPage() {
       return;
     }
 
-    const userId = getCurrentUserId();
+    const userId = getSafeUserId();
 
     if (!userId) {
       toast.error("Please login again.");
@@ -139,12 +142,17 @@ export function CategoriesPage() {
 
   const openEditModal = async (id: number) => {
     try {
+      const userId = getSafeUserId();
+
+      if (!userId) {
+        toast.error("Please login again.");
+        return;
+      }
+
       const response = await categoryApi.getCategoryById(id);
       const category = response.data;
 
-      const userId = getCurrentUserId();
-
-      if (!userId || Number(category.userId) !== userId) {
+      if (Number(category.userId) !== userId) {
         toast.error("You do not have permission to edit this category.");
         return;
       }
@@ -170,7 +178,7 @@ export function CategoriesPage() {
       return;
     }
 
-    const userId = getCurrentUserId();
+    const userId = getSafeUserId();
 
     if (!userId) {
       toast.error("Please login again.");
@@ -200,6 +208,13 @@ export function CategoriesPage() {
   };
 
   const handleDelete = async (id: number): Promise<boolean> => {
+    const itemCount = categoryCounts[id] ?? 0;
+
+    if (itemCount > 0) {
+      toast.error("Cannot delete category that contains documents.");
+      return false;
+    }
+
     try {
       await categoryApi.deleteCategory(id);
 
@@ -296,7 +311,7 @@ export function CategoriesPage() {
                         {category.name}
                       </p>
 
-                      <p className="mt-1 line-clamp-1 text-sm text-slate-500 dark:text-slate-400">
+                      <p className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
                         {category.description?.trim() || "No description"}
                       </p>
 
@@ -308,21 +323,25 @@ export function CategoriesPage() {
 
                   <div className="flex items-center gap-2">
                     <button
+                      type="button"
                       onClick={(event) => {
                         event.stopPropagation();
                         openEditModal(category.id);
                       }}
-                      className="rounded-lg p-2 text-blue-500 opacity-0 transition hover:bg-blue-50 group-hover:opacity-100 dark:hover:bg-blue-950/30"
+                      className="rounded-lg p-2 text-blue-500 opacity-100 transition hover:bg-blue-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-blue-950/30"
+                      title="Edit category"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
 
                     <button
+                      type="button"
                       onClick={(event) => {
                         event.stopPropagation();
                         setDeleteId(category.id);
                       }}
-                      className="rounded-lg p-2 text-red-500 opacity-0 transition hover:bg-red-50 group-hover:opacity-100 dark:hover:bg-red-950/30"
+                      className="rounded-lg p-2 text-red-500 opacity-100 transition hover:bg-red-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-red-950/30"
+                      title="Delete category"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -367,6 +386,7 @@ export function CategoriesPage() {
 
             <div className="mt-6 flex justify-end gap-3">
               <button
+                type="button"
                 onClick={() => {
                   setEditId(null);
                   setEditName("");
@@ -378,6 +398,7 @@ export function CategoriesPage() {
               </button>
 
               <button
+                type="button"
                 onClick={handleUpdate}
                 className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
               >
@@ -400,8 +421,17 @@ export function CategoriesPage() {
               be undone.
             </p>
 
+            {(categoryCounts[deleteId] ?? 0) > 0 && (
+              <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-300">
+                This category contains {categoryCounts[deleteId]}{" "}
+                {categoryCounts[deleteId] === 1 ? "document" : "documents"}.
+                Please move or delete those documents first.
+              </p>
+            )}
+
             <div className="mt-6 flex justify-end gap-3">
               <button
+                type="button"
                 onClick={() => setDeleteId(null)}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
@@ -409,6 +439,7 @@ export function CategoriesPage() {
               </button>
 
               <button
+                type="button"
                 onClick={async () => {
                   if (deleteId === null) return;
 
@@ -418,7 +449,8 @@ export function CategoriesPage() {
                     setDeleteId(null);
                   }
                 }}
-                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300 dark:disabled:bg-red-900"
+                disabled={(categoryCounts[deleteId] ?? 0) > 0}
               >
                 Delete
               </button>
