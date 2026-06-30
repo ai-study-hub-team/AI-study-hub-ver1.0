@@ -7,44 +7,50 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(
-        name = "document_shares",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_document_share_document_user",
-                columnNames = {"document_id", "shared_with_user_id"}
-        )
+        name = "document_public_links",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_document_public_link_token", columnNames = "token"),
+                @UniqueConstraint(name = "uk_document_public_link_document", columnNames = "document_id")
+        }
 )
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class DocumentShare {
+public class DocumentPublicLink {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "document_id", nullable = false)
     private Document document;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "owner_id", nullable = false)
-    private User owner;
+    @JoinColumn(name = "created_by_id", nullable = false)
+    private User createdBy;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "shared_with_user_id", nullable = false)
-    private User sharedWith;
+    @Column(nullable = false, unique = true, length = 128)
+    private String token;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default
     private DocumentSharePermission permission = DocumentSharePermission.VIEW;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false)
     @Builder.Default
-    private DocumentShareStatus status = DocumentShareStatus.ACTIVE;
+    private Boolean allowDownload = false;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean isActive = true;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Long viewCount = 0L;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -61,11 +67,17 @@ public class DocumentShare {
             createdAt = now;
         }
         updatedAt = now;
+        if (allowDownload == null) {
+            allowDownload = false;
+        }
+        if (isActive == null) {
+            isActive = true;
+        }
+        if (viewCount == null) {
+            viewCount = 0L;
+        }
         if (permission == null) {
             permission = DocumentSharePermission.VIEW;
-        }
-        if (status == null) {
-            status = DocumentShareStatus.ACTIVE;
         }
     }
 

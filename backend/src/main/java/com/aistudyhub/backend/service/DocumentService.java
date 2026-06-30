@@ -31,6 +31,7 @@ public class DocumentService {
     private final AiIntegrationService aiIntegrationService;
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentProcessingAsyncService documentProcessingAsyncService;
+    private final DocumentAccessService documentAccessService;
 
     // Read upload dir from config (same value used in FileStorageService)
     @Value("${app.upload.dir:uploads}")
@@ -172,13 +173,7 @@ public class DocumentService {
     // ─── Read One ──────────────────────────────────────────────────────────────
 
     public DocumentResponse getById(Long id) {
-        Document document = documentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + id));
-
-        // Don't return soft-deleted documents
-        if (document.getStatus() == DocumentStatus.DELETED) {
-            throw new RuntimeException("Document not found with id: " + id);
-        }
+        Document document = documentAccessService.getAccessibleDocument(id);
         return toResponse(document);
     }
 
@@ -353,5 +348,11 @@ public class DocumentService {
             sb.append(visibility.toUpperCase());
         }
         return sb.isEmpty() ? null : sb.toString();
+    }
+
+    public DocumentResponse getDownloadableById(Long id) {
+        Document document = documentAccessService.getAccessibleDocument(id);
+        // TODO: check permission DOWNLOAD nếu user không phải owner/admin
+        return toResponse(document);
     }
 }

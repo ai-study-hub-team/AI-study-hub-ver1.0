@@ -204,10 +204,11 @@ public class DocumentController {
 
     // ─── GET /api/documents/{id}/download ────────────────────────────────────────
     // Forces a browser download with the original file name.
+
     @GetMapping("/{id}/download")
     public ResponseEntity<Resource> downloadFile(@PathVariable Long id) {
         // 1. Load document metadata
-        var docResponse = documentService.getById(id);
+        var docResponse = documentService.getDownloadableById(id);
         String fileName     = docResponse.getFileName();       // stored on disk
         String originalName = docResponse.getOriginalName();   // shown to user
         if (fileName == null || fileName.isBlank()) {
