@@ -1,7 +1,9 @@
 import logging
 from fastapi import HTTPException
-from typing import List
+from typing import List, Tuple
 from schemas.summary_schema import SummaryRequest, SummaryChunk, SummaryResponse
+from schemas.usage_schema import UsageResponse
+from gemini_usage import extract_usage
 from settings import GEMINI_MODEL
 
 logger = logging.getLogger("ai-service.summary")
@@ -48,7 +50,7 @@ def build_summary_prompt(text: str, summary_type: str, document_title: str = Non
     
     return prompt
 
-def call_gemini_summary(prompt: str) -> str:
+def call_gemini_summary(prompt: str) -> Tuple[str, UsageResponse]:
     try:
         client = get_gemini_client()
         from google.genai import types
@@ -66,7 +68,7 @@ def call_gemini_summary(prompt: str) -> str:
             logger.error("Gemini returned empty text response.")
             raise HTTPException(status_code=500, detail="Gemini returned empty summary text.")
             
-        return response.text
+        return response.text, extract_usage(response)
     except HTTPException:
         raise
     except Exception as e:
@@ -79,7 +81,7 @@ def split_chunks_by_loop(chunks: List[SummaryChunk], group_size: int = 35) -> Li
         groups.append(chunks[i:i + group_size])
     return groups
 
-def direct_summary(request: SummaryRequest, valid_chunks: List[SummaryChunk]) -> str:
+def direct_summary(request: SummaryRequest, valid_chunks: List[SummaryChunk]) -> SummaryResponse:
     logger.info(f"[DIRECT SUMMARY] Starting direct summary for documentId: {request.documentId}")
     
     text_to_summarize = "\n\n".join([chunk.chunkText for chunk in valid_chunks])
@@ -91,14 +93,16 @@ def direct_summary(request: SummaryRequest, valid_chunks: List[SummaryChunk]) ->
         is_final=False
     )
     
-    return call_gemini_summary(prompt)
+    text, usage = call_gemini_summary(prompt)
+    return SummaryResponse(summaryText=text, usage=usage)
 
-def map_reduce_summary(request: SummaryRequest, valid_chunks: List[SummaryChunk]) -> str:
+def map_reduce_summary(request: SummaryRequest, valid_chunks: List[SummaryChunk]) -> SummaryResponse:
     groups = split_chunks_by_loop(valid_chunks, group_size=35)
     num_groups = len(groups)
     logger.info(f"[MAP REDUCE SUMMARY] DocumentId: {request.documentId}. Total chunks: {len(valid_chunks)}. Split into {num_groups} groups.")
     
     part_summaries = []
+    total_usage = UsageResponse(promptTokens=0, completionTokens=0, totalTokens=0)
     
     # 1. Summarize each part
     for i, group in enumerate(groups):
@@ -112,8 +116,12 @@ def map_reduce_summary(request: SummaryRequest, valid_chunks: List[SummaryChunk]
             is_final=False
         )
         
-        part_summary = call_gemini_summary(prompt)
+        part_summary, part_usage = call_gemini_summary(prompt)
         part_summaries.append(part_summary)
+        
+        total_usage.promptTokens += part_usage.promptTokens
+        total_usage.completionTokens += part_usage.completionTokens
+        total_usage.totalTokens += part_usage.totalTokens
         
     # 2. Final summary from part summaries
     logger.info(f"[MAP REDUCE SUMMARY] Starting final synthesis for documentId: {request.documentId}")
@@ -127,7 +135,13 @@ def map_reduce_summary(request: SummaryRequest, valid_chunks: List[SummaryChunk]
         is_final=True
     )
     
-    return call_gemini_summary(final_prompt)
+    final_text, final_usage = call_gemini_summary(final_prompt)
+    
+    total_usage.promptTokens += final_usage.promptTokens
+    total_usage.completionTokens += final_usage.completionTokens
+    total_usage.totalTokens += final_usage.totalTokens
+    
+    return SummaryResponse(summaryText=final_text, usage=total_usage)
 
 def process_summary_request(request: SummaryRequest) -> SummaryResponse:
     # 1. Validate chunks
@@ -158,10 +172,10 @@ def process_summary_request(request: SummaryRequest) -> SummaryResponse:
     # 3. Decision Mode
     if len(valid_chunks) <= 40:
         logger.info(f"Mode: DIRECT (len <= 40)")
-        final_summary = direct_summary(request, valid_chunks)
+        final_summary_response = direct_summary(request, valid_chunks)
     else:
         logger.info(f"Mode: MAP_REDUCE (len > 40)")
-        final_summary = map_reduce_summary(request, valid_chunks)
+        final_summary_response = map_reduce_summary(request, valid_chunks)
         
     logger.info(f"Summary successfully generated for documentId: {request.documentId}")
-    return SummaryResponse(summaryText=final_summary)
+    return final_summary_response

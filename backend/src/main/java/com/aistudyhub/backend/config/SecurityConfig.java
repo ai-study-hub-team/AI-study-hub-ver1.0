@@ -56,10 +56,18 @@ public class SecurityConfig {
                                 "/api/auth/register",
                                 "/api/auth/login",
                                 "/api/auth/refresh",
+                                "/api/plans",
+                                "/api/payments/vnpay-return",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**"
-                        ).permitAll().anyRequest().permitAll()
+                        ).permitAll()
+                        .requestMatchers("/api/admin/**")
+                        .hasRole("ADMIN")
+                        .requestMatchers("/api/users/**")
+                        .hasRole("ADMIN")
+                        .anyRequest()
+                        .permitAll()
                 )
                 .addFilterBefore(
                         jwtAuthenticationFilter,

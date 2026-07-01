@@ -1,7 +1,16 @@
-import axios from "axios";
+import { apiClient } from "./apiClient";
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8080",
+apiClient.interceptors.request.use((config) => {
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("jwt");
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  return config;
 });
 
 export interface UserResponse {
@@ -27,29 +36,54 @@ export interface UpdateUserStatusPayload {
   status: string;
 }
 
+export interface UpdateProfilePayload {
+  fullName: string;
+  email: string;
+}
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
 export const userApi = {
-  // GET /api/users
+  // Admin APIs
   getUsers: () => {
-    return api.get<UserResponse[]>("/api/users");
+    return apiClient.get<UserResponse[]>("/api/users");
   },
 
-  // GET /api/users/{id}
   getUserById: (id: number) => {
-    return api.get<UserResponse>(`/api/users/${id}`);
+    return apiClient.get<UserResponse>(`/api/users/${id}`);
   },
 
-  // PUT /api/users/{id}
   updateUser: (id: number, payload: UpdateUserPayload) => {
-    return api.put<UserResponse>(`/api/users/${id}`, payload);
+    return apiClient.put<UserResponse>(`/api/users/${id}`, payload);
   },
 
-  // PATCH /api/users/{id}/status
   updateUserStatus: (id: number, payload: UpdateUserStatusPayload) => {
-    return api.patch<UserResponse>(`/api/users/${id}/status`, payload);
+    return apiClient.patch<UserResponse>(
+      `/api/users/${id}/status`,
+      payload,
+    );
   },
 
-  // DELETE /api/users/{id}
   deleteUser: (id: number) => {
-    return api.delete<void>(`/api/users/${id}`);
+    return apiClient.delete<void>(`/api/users/${id}`);
+  },
+
+  // Profile APIs
+  getProfile: () => {
+    return apiClient.get<UserResponse>("/api/account/me");
+  },
+
+  updateProfile: (payload: UpdateProfilePayload) => {
+    return apiClient.put<UserResponse>("/api/account/me", payload);
+  },
+
+  changePassword: (payload: ChangePasswordPayload) => {
+    return apiClient.put<void>(
+      "/api/account/change-password",
+      payload,
+    );
   },
 };

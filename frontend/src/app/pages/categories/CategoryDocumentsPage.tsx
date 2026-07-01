@@ -16,8 +16,14 @@ import { toast } from "sonner";
 
 import { documentApi } from "../../services/documentApi";
 import { categoryApi } from "../../services/categoryApi";
+import {
+  favoriteApi,
+  type FavoriteDocument,
+} from "../../services/favoriteApi";
 import type { AiStatus } from "../../constants/documentStatus";
 import type { DocumentListItemResponse } from "../../types/documents/types";
+import { getCurrentUserId } from "../../services/apiClient";
+import { filterMyDocuments } from "../../utils/documentOwnership";
 
 const statusBadgeClass: Record<AiStatus, string> = {
   UPLOADED: "bg-blue-50 text-blue-700 ring-blue-200",
@@ -69,23 +75,79 @@ export function CategoryDocumentsPage() {
     useState<DocumentListItemResponse | null>(null);
   const [editTitle, setEditTitle] = useState("");
 
+  const loadFavorites = async () => {
+    try {
+      const userId = getCurrentUserId();
+
+      if (!userId) {
+        setFavorites({});
+        return;
+      }
+
+      const response = await favoriteApi.getFavorites(0, 100);
+      const favoriteDocuments = filterMyDocuments(
+        response.data.content ?? [],
+        userId,
+      );
+
+      const favoriteMap = favoriteDocuments.reduce<Record<number, boolean>>(
+        (current, favorite: FavoriteDocument) => {
+          current[favorite.documentId] = true;
+          return current;
+        },
+        {},
+      );
+
+      setFavorites(favoriteMap);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   const loadDocuments = async () => {
     try {
+      const currentCategoryId = Number(categoryId);
+      const userId = getCurrentUserId();
+
+      if (!currentCategoryId) {
+        toast.error("Invalid category.");
+        navigate("/app/categories");
+        return;
+      }
+
+      if (!userId) {
+        toast.error("Please log in again to view category documents.");
+        setDocuments([]);
+        return;
+      }
+
       const categoryResponse = await categoryApi.getCategories();
 
       const currentCategory = categoryResponse.data.find(
-        (category) => category.id === Number(categoryId),
+        (category) =>
+          category.id === currentCategoryId &&
+          Number(category.userId) === Number(userId),
       );
 
-      setCategoryName(currentCategory?.name ?? "Unknown Category");
+      if (!currentCategory) {
+        toast.error("Category not found or you do not have permission.");
+        navigate("/app/categories");
+        return;
+      }
+
+      setCategoryName(currentCategory.name ?? "Unknown Category");
 
       const response = await documentApi.getDocuments({
         page: 0,
         size: 100,
-        categoryId: Number(categoryId),
+        categoryId: currentCategoryId,
       });
 
-      setDocuments(response.data.content ?? []);
+      setDocuments(
+        filterMyDocuments(response.data.content ?? [], userId).filter(
+          (document) => Number(document.categoryId) === currentCategoryId,
+        ),
+      );
     } catch (error) {
       console.error(error);
       toast.error("Cannot load category documents.");
@@ -94,13 +156,36 @@ export function CategoryDocumentsPage() {
 
   useEffect(() => {
     loadDocuments();
+    loadFavorites();
   }, [categoryId]);
 
-  const toggleFavorite = (documentId: number) => {
-    setFavorites((current) => ({
-      ...current,
-      [documentId]: !current[documentId],
-    }));
+  const toggleFavorite = async (documentId: number) => {
+    const isFavorite = favorites[documentId];
+
+    try {
+      if (isFavorite) {
+        await favoriteApi.removeFavorite(documentId);
+
+        setFavorites((current) => ({
+          ...current,
+          [documentId]: false,
+        }));
+
+        toast.success("Removed from favorites");
+      } else {
+        await favoriteApi.addFavorite(documentId);
+
+        setFavorites((current) => ({
+          ...current,
+          [documentId]: true,
+        }));
+
+        toast.success("Added to favorites");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Cannot update favorite.");
+    }
   };
 
   const handleViewFile = (documentId: number) => {
@@ -142,6 +227,12 @@ export function CategoryDocumentsPage() {
       setDocuments((current) =>
         current.filter((document) => document.id !== documentId),
       );
+
+      setFavorites((current) => {
+        const next = { ...current };
+        delete next[documentId];
+        return next;
+      });
 
       toast.success("Document deleted successfully.");
       return true;
@@ -265,7 +356,11 @@ export function CategoryDocumentsPage() {
                         ? "text-amber-400"
                         : "text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                     }`}
-                    title="Favorite"
+                    title={
+                      favorites[document.id]
+                        ? "Remove from favorites"
+                        : "Add to favorites"
+                    }
                   >
                     <Star
                       className={`h-4 w-4 ${

@@ -38,6 +38,7 @@ public class SummaryService {
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentSummaryRepository documentSummaryRepository;
+    private final TokenUsageService tokenUsageService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
@@ -89,7 +90,10 @@ public class SummaryService {
         // 7. Determine SummaryType
         SummaryType type = request.getSummaryType() != null ? request.getSummaryType() : SummaryType.DETAILED;
 
-        // 8. Call Python API
+        // 8. Validate Token Quota before calling AI
+        tokenUsageService.validateTokenQuota(user.getId());
+
+        // 9. Call Python API
         PythonSummaryRequest pythonRequest = PythonSummaryRequest.builder()
                 .documentId(document.getId())
                 .documentTitle(document.getTitle())
@@ -121,7 +125,18 @@ public class SummaryService {
             throw new RuntimeException("AI service returned empty summary text");
         }
 
-        // 9. Save to Database
+        if (pythonResponse.getUsage() != null) {
+            tokenUsageService.recordUsage(
+                    user, 
+                    "SUMMARY", 
+                    "gemini-1.5-pro", 
+                    pythonResponse.getUsage().getTotalTokens(), 
+                    document.getId(), 
+                    java.util.UUID.randomUUID().toString()
+            );
+        }
+
+        // 10. Save to Database
         DocumentSummary documentSummary = DocumentSummary.builder()
                 .document(document)
                 .user(user)

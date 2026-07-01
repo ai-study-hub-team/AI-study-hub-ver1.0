@@ -35,6 +35,7 @@ public class QuizService {
     private final QuizRepository quizRepository;
     private final QuizQuestionRepository quizQuestionRepository;
     private final QuizOptionRepository quizOptionRepository;
+    private final TokenUsageService tokenUsageService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
@@ -100,7 +101,10 @@ public class QuizService {
             totalTextLength += chunk.getTextLength() != null ? chunk.getTextLength() : 0;
         }
 
-        // 8. Build Python request
+        // 8. Validate Token Quota before calling AI
+        tokenUsageService.validateTokenQuota(user.getId());
+
+        // 9. Build Python request
         PythonQuizRequest pythonRequest = PythonQuizRequest.builder()
                 .documentId(document.getId())
                 .documentTitle(document.getTitle())
@@ -134,6 +138,17 @@ public class QuizService {
         // 10. Validate Python response
         if (pythonResponse.getQuestions() == null || pythonResponse.getQuestions().isEmpty()) {
             throw new RuntimeException("AI service returned empty questions list");
+        }
+
+        if (pythonResponse.getUsage() != null) {
+            tokenUsageService.recordUsage(
+                    user, 
+                    "QUIZ", 
+                    "gemini-1.5-pro", 
+                    pythonResponse.getUsage().getTotalTokens(), 
+                    document.getId(), 
+                    java.util.UUID.randomUUID().toString()
+            );
         }
 
         // Trim if Python returned more than requested

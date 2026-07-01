@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +34,7 @@ public class DocumentService {
     private final AiIntegrationService aiIntegrationService;
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentProcessingAsyncService documentProcessingAsyncService;
+    private final StorageQuotaService storageQuotaService;
 
     // Read upload dir from config (same value used in FileStorageService)
     @Value("${app.upload.dir:uploads}")
@@ -127,6 +129,13 @@ public class DocumentService {
         }
 
         // 3. Save the file to the local "uploads/" directory
+        // 3. Validate quotas
+        String mimeType = fileStorageService.detectMimeType(file);
+        storageQuotaService.validateFileRestrictions(userId, mimeType);
+        storageQuotaService.validateFileSize(userId, file.getSize());
+        storageQuotaService.validateStorageLimit(userId, file.getSize());
+
+        // 4. Save the file to the local "uploads/" directory
         //    fileStorageService will throw IllegalArgumentException for unsupported file types
         String savedFileName = fileStorageService.saveFile(file);
 

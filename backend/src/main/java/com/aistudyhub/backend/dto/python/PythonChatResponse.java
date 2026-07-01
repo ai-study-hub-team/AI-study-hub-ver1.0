@@ -15,4 +15,5 @@ import java.util.List;
 public class PythonChatResponse {
     private String answer;
     private List<PythonCitation> citations;
+    private PythonTokenUsage usage;
 }

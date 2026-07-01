@@ -12,6 +12,7 @@ from schemas.quiz_schema import QuizRequest, QuizResponse
 from schemas.generate_answer_schema import GenerateAnswerRequest, GenerateAnswerResponse
 from schemas.embed_schema import EmbedQueryRequest, EmbedQueryResponse
 from schemas.analyze_chat_query_schema import AnalyzeChatQueryRequest, AnalyzeChatQueryResponse
+from gemini_usage import extract_usage
 
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
@@ -350,9 +351,12 @@ Quy tắc bắt buộc:
             config=config
         )
         answer = response.text or "Không nhận được phản hồi từ mô hình AI."
+        usage = extract_usage(response)
     except Exception as e:
         logger.exception(f"Error calling Gemini: {e}")
         answer = f"Lỗi khi gọi mô hình AI: {str(e)}"
+        from schemas.usage_schema import UsageResponse
+        usage = UsageResponse()
 
     # 6. Map search results into Citations response (only if found and text resolved)
     def generate_citation_label(meta: dict) -> str:
@@ -394,7 +398,7 @@ Quy tắc bắt buộc:
                 )
             )
 
-    return ChatResponse(answer=answer, citations=citations)
+    return ChatResponse(answer=answer, citations=citations, usage=usage)
 
 
 # ─── Chat Planner / Intent Analyzer ─────────────────────────────────────────

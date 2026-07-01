@@ -2,23 +2,22 @@ import {
   Users,
   Search,
   MoreVertical,
-  UserX,
   Trash2,
   CheckCircle2,
   XCircle,
-  Clock,
   Eye,
   Mail,
   Download,
   Plus,
   Pencil,
+  LockKeyhole,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { userApi, type UserResponse } from "../../services/userApi";
 
-type Status = "all" | "active" | "suspended" | "inactive";
+type Status = "all" | "active" | "inactive" | "banned" | "locked";
 
 type UserView = {
   id: number;
@@ -45,14 +44,14 @@ const StatusBadge = ({ status }: { status: string }) => {
     inactive: {
       label: "Inactive",
       className:
-        "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-300",
+        "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
     },
-    suspended: {
-      label: "Suspended",
+    banned: {
+      label: "Banned",
       className: "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-300",
     },
-    pending: {
-      label: "Pending",
+    locked: {
+      label: "Locked",
       className:
         "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-300",
     },
@@ -98,7 +97,6 @@ export function UserManagement() {
   const [editForm, setEditForm] = useState({
     fullName: "",
     email: "",
-    role: "",
     status: "",
   });
 
@@ -143,7 +141,10 @@ export function UserManagement() {
       setLoading(true);
 
       const response = await userApi.getUsers();
-      const mappedUsers = response.data.map(mapUserResponseToView);
+
+      const mappedUsers = response.data
+        .filter((user) => user.role?.toUpperCase() === "USER")
+        .map(mapUserResponseToView);
 
       setUsers(mappedUsers);
     } catch (error) {
@@ -172,11 +173,14 @@ export function UserManagement() {
     });
   }, [users, search, statusFilter]);
 
-  const suspendUser = async (id: number) => {
+  const handleUserStatusAction = async (id: number) => {
     const user = users.find((u) => u.id === id);
     if (!user) return;
 
-    const nextStatus = user.status === "suspended" ? "ACTIVE" : "SUSPENDED";
+    const shouldReactivate =
+      user.status === "locked" || user.status === "banned";
+    const nextStatus = shouldReactivate ? "ACTIVE" : "LOCKED";
+    setOpenMenu(null);
 
     try {
       await userApi.updateUserStatus(id, {
@@ -184,12 +188,8 @@ export function UserManagement() {
       });
 
       toast.success(
-        `${user.name} ${
-          user.status === "suspended" ? "reactivated" : "suspended"
-        }`,
+        `${user.name} ${shouldReactivate ? "reactivated" : "locked"}`,
       );
-
-      setOpenMenu(null);
       await loadUsers();
     } catch (error) {
       console.error(error);
@@ -215,11 +215,12 @@ export function UserManagement() {
   };
 
   const handleViewUser = async (id: number) => {
+    setOpenMenu(null);
+
     try {
       const response = await userApi.getUserById(id);
 
       setViewUser(response.data);
-      setOpenMenu(null);
     } catch (error) {
       console.error("Cannot load user detail:", error);
       toast.error("Cannot load user detail.");
@@ -227,6 +228,8 @@ export function UserManagement() {
   };
 
   const handleOpenEditUser = async (id: number) => {
+    setOpenMenu(null);
+
     try {
       const response = await userApi.getUserById(id);
       const user = response.data;
@@ -235,11 +238,8 @@ export function UserManagement() {
       setEditForm({
         fullName: user.fullName || "",
         email: user.email || "",
-        role: user.role || "",
-        status: user.status || "",
+        status: user.status?.toUpperCase() || "",
       });
-
-      setOpenMenu(null);
     } catch (error) {
       console.error("Cannot load user for edit:", error);
       toast.error("Cannot load user for edit.");
@@ -249,12 +249,32 @@ export function UserManagement() {
   const handleUpdateUser = async (): Promise<boolean> => {
     if (!editUser) return false;
 
+    const fullName = editForm.fullName.trim();
+    const email = editForm.email.trim();
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!fullName) {
+      toast.error("Full Name is required.");
+      return false;
+    }
+
+    if (!email) {
+      toast.error("Email is required.");
+      return false;
+    }
+
+    if (!emailPattern.test(email)) {
+      toast.error("Please enter a valid email address.");
+      return false;
+    }
+
     try {
       await userApi.updateUser(editUser.id, {
-        fullName: editForm.fullName,
-        email: editForm.email,
-        role: editForm.role,
-        status: editForm.status,
+        fullName,
+        email,
+        // The current API payload requires a role; preserve the existing one.
+        role: editUser.role,
+        status: editForm.status.toUpperCase(),
       });
 
       toast.success("User updated successfully.");
@@ -271,8 +291,8 @@ export function UserManagement() {
   const statCounts = {
     total: users.length,
     active: users.filter((u) => u.status === "active").length,
-    suspended: users.filter((u) => u.status === "suspended").length,
-    inactive: users.filter((u) => u.status === "inactive").length,
+    locked: users.filter((u) => u.status === "locked").length,
+    banned: users.filter((u) => u.status === "banned").length,
   };
 
   const stats = [
@@ -291,18 +311,18 @@ export function UserManagement() {
       iconClass: "text-emerald-600",
     },
     {
-      label: "Suspended",
-      value: statCounts.suspended,
+      label: "Locked",
+      value: statCounts.locked,
+      icon: XCircle,
+      iconBoxClass: "bg-amber-50 dark:bg-slate-800",
+      iconClass: "text-amber-600",
+    },
+    {
+      label: "Banned",
+      value: statCounts.banned,
       icon: XCircle,
       iconBoxClass: "bg-red-50 dark:bg-slate-800",
       iconClass: "text-red-600",
-    },
-    {
-      label: "Inactive",
-      value: statCounts.inactive,
-      icon: Clock,
-      iconBoxClass: "bg-amber-50 dark:bg-slate-800",
-      iconClass: "text-amber-600",
     },
   ];
 
@@ -375,7 +395,7 @@ export function UserManagement() {
           </div>
 
           <div className="flex items-center gap-2 overflow-x-auto">
-            {(["all", "active", "suspended", "inactive"] as Status[]).map(
+            {(["all", "active", "inactive", "banned", "locked"] as Status[]).map(
               (s) => (
                 <button
                   key={s}
@@ -400,7 +420,7 @@ export function UserManagement() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-visible">
             <table className="w-full border-separate border-spacing-y-2">
               <thead>
                 <tr className="text-left text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-widest bg-slate-50 dark:bg-slate-800">
@@ -479,7 +499,7 @@ export function UserManagement() {
                                 initial={{ opacity: 0, scale: 0.95, y: -5 }}
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                                className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-20 w-48 py-2 overflow-hidden"
+                                className="absolute right-2 top-full mt-2 w-52 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/30 z-30"
                               >
                                 <button
                                   onClick={() => handleViewUser(user.id)}
@@ -506,17 +526,24 @@ export function UserManagement() {
                                 </button>
 
                                 <button
-                                  onClick={() => suspendUser(user.id)}
+                                  onClick={() => handleUserStatusAction(user.id)}
                                   className={`flex items-center gap-2 w-full px-4 py-2.5 text-sm transition-colors ${
-                                    user.status === "suspended"
+                                    user.status === "locked" ||
+                                    user.status === "banned"
                                       ? "text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
                                       : "text-amber-600 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-500/10"
                                   }`}
                                 >
-                                  <UserX className="w-4 h-4" />
-                                  {user.status === "suspended"
+                                  {user.status === "locked" ||
+                                  user.status === "banned" ? (
+                                    <CheckCircle2 className="w-4 h-4" />
+                                  ) : (
+                                    <LockKeyhole className="w-4 h-4" />
+                                  )}
+                                  {user.status === "locked" ||
+                                  user.status === "banned"
                                     ? "Reactivate"
-                                    : "Suspend"}
+                                    : "Lock User"}
                                 </button>
 
                                 <div className="mx-4 my-1 border-t border-slate-200 dark:border-slate-700" />
@@ -653,6 +680,7 @@ export function UserManagement() {
                   Email
                 </label>
                 <input
+                  type="email"
                   value={editForm.email}
                   onChange={(e) =>
                     setEditForm((current) => ({
@@ -668,19 +696,11 @@ export function UserManagement() {
                 <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
                   Role
                 </label>
-                <select
-                  value={editForm.role}
-                  onChange={(e) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      role: e.target.value,
-                    }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                >
-                  <option value="USER">USER</option>
-                  <option value="ADMIN">ADMIN</option>
-                </select>
+                <div className="mt-1">
+                  <span className="inline-flex rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
+                    {editUser.role}
+                  </span>
+                </div>
               </div>
 
               <div>
@@ -699,7 +719,8 @@ export function UserManagement() {
                 >
                   <option value="ACTIVE">ACTIVE</option>
                   <option value="INACTIVE">INACTIVE</option>
-                  <option value="SUSPENDED">SUSPENDED</option>
+                  <option value="BANNED">BANNED</option>
+                  <option value="LOCKED">LOCKED</option>
                 </select>
               </div>
             </div>

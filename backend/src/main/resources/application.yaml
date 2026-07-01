@@ -50,3 +50,11 @@ ai:
 # When "pinecone", semantic search goes through Python AI service (legacy).
 vector:
   store: pgvector
+
+payment:
+  vnpay:
+    tmn-code: "T4HAJOXL"
+    hash-secret: "PK3LLYU09798QYZBW0Y3GCQPEQZ7HVZD"
+    pay-url: "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"
+    return-url: "http://localhost:8080/api/payments/vnpay-return"
+    api-url: "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction"

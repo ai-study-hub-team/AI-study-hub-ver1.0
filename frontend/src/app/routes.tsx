@@ -28,7 +28,7 @@ import { ProfilePage } from "./pages/profile/ProfilePage";
 import { StorageDashboard } from "./pages/storage/StorageDashboard";
 import { CategoriesPage } from "./pages/categories/CategoriesPage";
 import { CategoryDocumentsPage } from "./pages/categories/CategoryDocumentsPage";
-
+import { FavoriteDocumentsPage } from "./pages/library/FavoriteDocumentsPage";
 import { PricingPage } from "./pages/subscription/PricingPage";
 import { SubscriptionDashboard } from "./pages/subscription/SubscriptionDashboard";
 import { UpgradePlanPage } from "./pages/subscription/UpgradePlanPage";
@@ -64,15 +64,10 @@ export const router = createBrowserRouter([
           { path: "upload", element: <UploadDocumentsPage /> },
           { path: "library", element: <MyLibrary /> },
           { path: "library/categories", element: <AllCategoriesPage /> },
-          {
-            path: "library/categories/:categoryId",
-            element: <LibraryCategoryDocumentsPage />,
-          },
+          { path: "library/categories/:categoryId", element: <LibraryCategoryDocumentsPage />, },
           { path: "library/documents", element: <AllDocumentsPage /> },
-          {
-            path: "library/:id/preview",
-            element: <DocumentPreviewPage />,
-          },
+          { path: "library/:id/preview", element: <DocumentPreviewPage />, },
+          { path: "library/favorites", element: <FavoriteDocumentsPage />, },
           { path: "trash", element: <TrashPage /> },
           { path: "chat", element: <AIChatPage /> },
           { path: "summary", element: <AISummaryPage /> },
@@ -80,10 +75,7 @@ export const router = createBrowserRouter([
           { path: "profile", element: <ProfilePage /> },
           { path: "storage", element: <StorageDashboard /> },
           { path: "categories", element: <CategoriesPage /> },
-          {
-            path: "categories/:categoryId",
-            element: <CategoryDocumentsPage />,
-          },
+          { path: "categories/:categoryId", element: <CategoryDocumentsPage />, },
           { path: "subscription", element: <SubscriptionDashboard /> },
           { path: "subscription/upgrade", element: <UpgradePlanPage /> },
         ],

@@ -16,6 +16,12 @@ import { motion } from "motion/react";
 import { useNavigate } from "react-router";
 import axios from "axios";
 import {
+  apiClient,
+  getAuthHeader,
+  getCurrentUserId,
+} from "../../services/apiClient";
+import { filterMyDocuments } from "../../utils/documentOwnership";
+import {
   XAxis,
   YAxis,
   CartesianGrid,
@@ -39,6 +45,11 @@ const data = [
 
 type DocumentItem = {
   id?: number;
+  userId?: number;
+  ownerId?: number;
+  user?: {
+    id?: number;
+  };
   title?: string;
   originalName?: string;
   fileName?: string;
@@ -79,18 +90,6 @@ const getStoredUser = (): StoredUser | null => {
   }
 };
 
-const getCurrentUserId = () => {
-  const storedUser = getStoredUser();
-
-  const userId =
-    localStorage.getItem("userId") ||
-    storedUser?.userId ||
-    storedUser?.id ||
-    1;
-
-  return Number(userId);
-};
-
 const getCurrentFullName = () => {
   const storedUser = getStoredUser();
 
@@ -106,19 +105,6 @@ const getFirstName = (fullName: string) => {
   const firstName = fullName.trim().split(/\s+/)[0];
 
   return firstName || "User";
-};
-
-const getAuthHeader = () => {
-  const token =
-    localStorage.getItem("token") || localStorage.getItem("accessToken");
-
-  if (!token) return {};
-
-  return {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  };
 };
 
 const getDocumentTypeLabel = (fileType?: string) => {
@@ -172,6 +158,11 @@ export function StudentDashboard() {
 
         const userId = getCurrentUserId();
 
+        if (!userId) {
+          navigate("/login");
+          return;
+        }
+
         try {
           const accountResponse = await axios.get(
             `${API_BASE_URL}/account/me`,
@@ -190,24 +181,30 @@ export function StudentDashboard() {
           setDisplayName(getCurrentFullName());
         }
 
-        const documentsResponse = await axios.get(`${API_BASE_URL}/documents`, {
-          params: { userId },
-          ...getAuthHeader(),
-        });
+        const documentsResponse = await apiClient.get(
+          "/api/documents/search-filter",
+          {
+            params: {
+              page: 0,
+              size: 100,
+            },
+          },
+        );
 
         const documentsData = documentsResponse.data;
 
         if (Array.isArray(documentsData)) {
-          setDocuments(documentsData);
-          setTotalDocuments(documentsData.length);
+          const myDocuments = filterMyDocuments(documentsData, userId);
+          setDocuments(myDocuments);
+          setTotalDocuments(myDocuments.length);
         } else if (Array.isArray(documentsData?.data)) {
-          setDocuments(documentsData.data);
-          setTotalDocuments(documentsData.data.length);
+          const myDocuments = filterMyDocuments(documentsData.data, userId);
+          setDocuments(myDocuments);
+          setTotalDocuments(myDocuments.length);
         } else if (Array.isArray(documentsData?.content)) {
-          setDocuments(documentsData.content);
-          setTotalDocuments(
-            documentsData.totalElements ?? documentsData.content.length
-          );
+          const myDocuments = filterMyDocuments(documentsData.content, userId);
+          setDocuments(myDocuments);
+          setTotalDocuments(myDocuments.length);
         } else {
           setDocuments([]);
           setTotalDocuments(0);

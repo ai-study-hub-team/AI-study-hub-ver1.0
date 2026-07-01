@@ -26,6 +26,7 @@ import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 
 import { apiClient, getCurrentUserId } from "../../services/apiClient";
+import { filterMyDocuments } from "../../utils/documentOwnership";
 
 const MATERIAL_LIMIT = 5;
 
@@ -36,6 +37,11 @@ type ChatMessage = {
 
 type DocumentItem = {
   id: number;
+  userId?: number;
+  ownerId?: number;
+  user?: {
+    id?: number;
+  };
   title?: string;
   name?: string;
   fileName?: string;
@@ -166,14 +172,22 @@ export function AIChatPage() {
     return session.sessionId || session.id || "";
   };
 
+  const buildChatTitle = (text: string) => {
+    const cleaned = text.replace(/\s+/g, " ").trim();
+
+    if (!cleaned) return "New Chat";
+
+    return cleaned.length > 60 ? `${cleaned.slice(0, 60)}...` : cleaned;
+  };
+
   const loadDocuments = async () => {
     try {
-      const res = await apiClient.get("/api/documents", {
+      const res = await apiClient.get("/api/documents/search-filter", {
         params: { page: 0, size: 100 },
       });
 
       const data = res.data?.content ?? res.data?.data ?? res.data ?? [];
-      setDocuments(Array.isArray(data) ? data : []);
+      setDocuments(Array.isArray(data) ? filterMyDocuments(data, userId) : []);
     } catch (error: any) {
       console.error("Load documents failed:", error);
       toast.error(
@@ -204,32 +218,18 @@ export function AIChatPage() {
     }
   };
 
-  const createNewSession = async () => {
+  const createNewSession = () => {
     if (!userId) {
       toast.error("Please login again.");
       return;
     }
 
-    try {
-      const res = await apiClient.post("/api/chat/sessions", {
-        userId,
-        title: "New Chat",
-      });
-
-      const newSessionId = res.data?.sessionId || res.data?.id || "";
-
-      setCurrentSessionId(newSessionId);
-      setMessages([]);
-      await loadChatSessions();
-      setIsOpenHistory(false);
-    } catch (error: any) {
-      console.error("Create session failed:", error);
-      toast.error(
-        error?.response?.data?.message ||
-          error?.response?.data?.error ||
-          "Cannot create chat session.",
-      );
-    }
+    setCurrentSessionId("");
+    setMessages([]);
+    setMessage("");
+    setIsOpenHistory(false);
+    setIsOpenAttach(false);
+    setIsOpenMaterials(false);
   };
 
   const formatMessages = (rawMessages: any[]): ChatMessage[] => {
@@ -385,7 +385,7 @@ export function AIChatPage() {
       if (!sessionId) {
         const sessionRes = await apiClient.post("/api/chat/sessions", {
           userId,
-          title: "New Chat",
+          title: buildChatTitle(text),
         });
 
         sessionId = sessionRes.data?.sessionId || sessionRes.data?.id || "";
@@ -809,7 +809,7 @@ export function AIChatPage() {
                   <span className="text-sm font-bold text-blue-600">
                     {showAllMaterials
                       ? "Thu gọn"
-                      : `Xem thêm ${hiddenMaterialCount} file`}
+                      : `Xem thêm`}
                   </span>
                 </button>
               )}

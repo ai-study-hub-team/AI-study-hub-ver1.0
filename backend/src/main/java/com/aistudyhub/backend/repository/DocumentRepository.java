@@ -10,12 +10,20 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import java.util.List;
 
 @Repository
 public interface DocumentRepository extends JpaRepository<Document, Long>, JpaSpecificationExecutor<Document> {
 
     // Get all ACTIVE documents (paginated)
     Page<Document> findByStatus(DocumentStatus status, Pageable pageable);
+
+    // Get all ACTIVE documents for a user
+    List<Document> findByUser_IdAndStatus(Long userId, DocumentStatus status);
+
+    // Calculate total storage used by a user for ACTIVE documents
+    @Query("SELECT COALESCE(SUM(c.fileSize), 0) FROM Document d JOIN d.cloudFile c WHERE d.user.id = :userId AND d.status = com.aistudyhub.backend.entity.DocumentStatus.ACTIVE")
+    Long calculateTotalStorageUsedByUserId(@Param("userId") Long userId);
 
     // Search by keyword in title, description, or tags (case-insensitive, ACTIVE only)
     @Query("SELECT d FROM Document d WHERE d.status = 'ACTIVE' AND " +

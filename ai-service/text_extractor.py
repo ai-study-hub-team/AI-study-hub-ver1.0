@@ -5,6 +5,8 @@ from google import genai
 from settings import GEMINI_API_KEY, GEMINI_MODEL
 import random
 from google.genai import errors
+from google.genai import types
+import concurrent.futures
 logger = logging.getLogger("ai-service.text_extractor")
 
 IMAGE_PROMPT = """Bạn hãy phân tích bức ảnh này và trả về kết quả bằng tiếng Việt theo cấu trúc sau:
@@ -190,7 +192,7 @@ def wait_for_gemini_file_active(
         f"after {timeout_seconds} seconds."
     )
 
-def extract_text_with_gemini(file_path: str, mime_type: str) -> str:
+def extract_media_with_gemini(file_path: str, mime_type: str) -> str:
     client = get_gemini_client()
     uploaded_file = None
     try:
@@ -200,9 +202,7 @@ def extract_text_with_gemini(file_path: str, mime_type: str) -> str:
         # Poll state until active
         uploaded_file = wait_for_gemini_file_active(client, uploaded_file)
         
-        if mime_type.startswith("image/"):
-            prompt = IMAGE_PROMPT
-        elif mime_type.startswith("video/"):
+        if mime_type.startswith("video/"):
             prompt = VIDEO_PROMPT
         elif mime_type.startswith("audio/"):
             prompt = AUDIO_PROMPT
@@ -228,6 +228,32 @@ def extract_text_with_gemini(file_path: str, mime_type: str) -> str:
             except Exception as delete_err:
                 logger.warning(f"Failed to delete uploaded Gemini file resource {uploaded_file.name}: {delete_err}")
 
+def extract_image_inline(file_path: str, mime_type: str, prompt: str = IMAGE_PROMPT) -> str:
+    client = get_gemini_client()
+    try:
+        logger.info(f"Sending inline image analysis request to Gemini (mime_type={mime_type})...")
+        with open(file_path, "rb") as f:
+            image_bytes = f.read()
+            
+        image_part = types.Part.from_bytes(
+            data=image_bytes,
+            mime_type=mime_type,
+        )
+        
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[image_part, prompt]
+        )
+        
+        text = response.text
+        if not text or not text.strip():
+            raise ValueError("Gemini returned empty text")
+            
+        return text
+    except Exception as e:
+        logger.error(f"Failed to process inline image with Gemini: {e}")
+        raise
+
 def extract_text(file_path: str, file_type: str) -> str:
     """Extracts text from a local file based on its type."""
     if not os.path.exists(file_path):
@@ -248,9 +274,12 @@ def extract_text(file_path: str, file_type: str) -> str:
     is_video = file_type.startswith('video/') or ext in ['mp4', 'mov', 'avi', 'mkv']
     is_audio = file_type.startswith('audio/') or ext in ['mp3', 'wav', 'm4a', 'ogg']
     
-    if is_image or is_video or is_audio:
+    if is_image:
         mime_type = guess_media_mime_type(file_path, file_type)
-        return extract_text_with_gemini(file_path, mime_type)
+        return extract_image_inline(file_path, mime_type)
+    elif is_video or is_audio:
+        mime_type = guess_media_mime_type(file_path, file_type)
+        return extract_media_with_gemini(file_path, mime_type)
         
     # Try generic mime types handling as well
     if 'pdf' in file_type or ext == 'pdf':
@@ -416,30 +445,38 @@ def extract_text_from_pptx(file_path: str) -> str:
         import imagehash
         from PIL import Image
         import io
+        import hashlib
+        import tempfile
     except ImportError:
         raise ImportError("Pillow and ImageHash are required. pip install Pillow ImageHash")
 
     prs = Presentation(file_path)
-    text_parts = []
+    slide_width = prs.slide_width
+    slide_height = prs.slide_height
     
-    phash_cache = {}
+    # Phase 1: Scan Entire Presentation
+    parsed_slides = []
+    image_records = []
+    phash_counter = {}
     
     for idx, slide in enumerate(prs.slides, start=1):
         slide_types = set()
-        slide_text_parts = []
+        slide_parts = []
         
         slide_title = ""
         if slide.shapes.title:
             slide_title = slide.shapes.title.text.strip()
             
         if slide_title:
-            slide_text_parts.append(f"Title: {slide_title}")
+            slide_parts.append(f"Title: {slide_title}")
             
-        for shape in slide.shapes:
+        picture_count_in_slide = 0
+        
+        for shape_idx, shape in enumerate(slide.shapes):
             if shape.has_text_frame:
                 text = shape.text.strip()
                 if text and text != slide_title:
-                    slide_text_parts.append(text)
+                    slide_parts.append(text)
                     if "public class " in text or "def " in text or "SELECT " in text.upper():
                         slide_types.add("CODE")
                     else:
@@ -451,69 +488,268 @@ def extract_text_from_pptx(file_path: str) -> str:
                     row_data = []
                     for cell in row.cells:
                         row_data.append(cell.text.strip().replace("\n", " "))
-                    slide_text_parts.append(" | ".join(row_data))
+                    slide_parts.append(" | ".join(row_data))
                     
             elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                picture_count_in_slide += 1
+                is_first_picture = (picture_count_in_slide == 1)
+                
                 image_blob = shape.image.blob
                 img = Image.open(io.BytesIO(image_blob))
-                h = imagehash.phash(img)
+                h = str(imagehash.phash(img))
                 
-                # Check cache for perceptual hash <= 5 diff
-                cached_desc = None
-                for cached_hash, desc in phash_cache.items():
-                    if abs(h - cached_hash) <= 5:
-                        cached_desc = desc
-                        break
-                        
-                if cached_desc:
-                    slide_text_parts.append(cached_desc)
-                    slide_types.add("IMAGE")
-                else:
-                    import tempfile
-                    img_ext = shape.image.ext
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{img_ext}") as tmp:
-                        tmp.write(image_blob)
-                        tmp_path = tmp.name
-                    
-                    try:
-                        mime_type = guess_media_mime_type(tmp_path, f"image/{img_ext}")
-                        client = get_gemini_client()
-                        uploaded_file = client.files.upload(file=tmp_path)
-                        uploaded_file = wait_for_gemini_file_active(client, uploaded_file)
-                        
-                        response = client.models.generate_content(
-                            model=GEMINI_MODEL,
-                            contents=[uploaded_file, PPTX_IMAGE_PROMPT]
-                        )
-                        text_res = response.text.strip()
-                        
-                        client.files.delete(name=uploaded_file.name)
-                        
-                        lines = text_res.split("\n", 1)
-                        if lines:
-                            type_line = lines[0].upper()
-                            if "DIAGRAM" in type_line:
-                                slide_types.add("DIAGRAM")
-                            elif "CHART" in type_line:
-                                slide_types.add("CHART")
-                            elif "LOGO" in type_line:
-                                slide_types.add("IMAGE")
-                                phash_cache[h] = text_res
-                            else:
-                                slide_types.add("IMAGE")
-                                
-                        slide_text_parts.append(text_res)
-                    except Exception as e:
-                        logger.error(f"Failed to process image with Gemini: {e}")
-                        slide_text_parts.append("[Image extraction failed]")
-                        slide_types.add("IMAGE")
-                    finally:
-                        if os.path.exists(tmp_path):
-                            os.remove(tmp_path)
-            
+                phash_counter[h] = phash_counter.get(h, 0) + 1
+                
+                width_px = shape.width.inches * 96 if shape.width else 0
+                height_px = shape.height.inches * 96 if shape.height else 0
+                
+                width_ratio = shape.width / slide_width if slide_width and shape.width else 0
+                height_ratio = shape.height / slide_height if slide_height and shape.height else 0
+                
+                img_ext = shape.image.ext
+                
+                record = {
+                    "slide_index": idx,
+                    "shape_index": shape_idx,
+                    "is_first_picture": is_first_picture,
+                    "width_px": width_px,
+                    "height_px": height_px,
+                    "width_ratio": width_ratio,
+                    "height_ratio": height_ratio,
+                    "image_size": len(image_blob),
+                    "phash": h,
+                    "image_blob": image_blob,
+                    "ext": img_ext
+                }
+                image_records.append(record)
+                
+                slide_parts.append({
+                    "job_type": "image",
+                    "record": record
+                })
+                
             elif shape.shape_type == MSO_SHAPE_TYPE.MEDIA:
-                slide_text_parts.append("[Embedded Media: Không hỗ trợ trong Phase 1]")
-                slide_types.add("MIXED")
+                media_blob = None
+                media_ext = "mp4"
+                try:
+                    xml = shape._element.xml
+                    import re
+                    match = re.search(r'<(?:a:videoFile|a:audioFile)[^>]+r:link="(rId\d+)"', xml)
+                    if match:
+                        r_id = match.group(1)
+                        if r_id in shape.part.rels:
+                            rel = shape.part.rels[r_id]
+                            if rel.target_part:
+                                media_blob = rel.target_part.blob
+                                if hasattr(rel.target_part, 'partname') and rel.target_part.partname:
+                                    media_ext = rel.target_part.partname.ext.strip('.')
+                except Exception as e:
+                    logger.warning(f"Failed to extract media blob: {e}")
+                    
+                if media_blob:
+                    h = hashlib.md5(media_blob).hexdigest()
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{media_ext}") as tmp:
+                        tmp.write(media_blob)
+                        tmp_path = tmp.name
+                        
+                    is_audio = media_ext.lower() in ['mp3', 'wav', 'm4a', 'ogg', 'wma']
+                    job_type = "audio" if is_audio else "video"
+                    
+                    slide_parts.append({
+                        "job_type": job_type,
+                        "hash": h,
+                        "tmp_path": tmp_path,
+                        "ext": media_ext
+                    })
+                else:
+                    slide_parts.append("[Embedded Media: Lỗi trích xuất]")
+                    slide_types.add("MIXED")
+                
+        parsed_slides.append({
+            "idx": idx,
+            "parts": slide_parts,
+            "slide_types": slide_types
+        })
+
+    # Phase 2: Classification
+    stats = {
+        "total": len(image_records),
+        "small": 0,
+        "background": 0,
+        "template": 0,
+        "cache": 0,
+        "gemini": 0
+    }
+
+    media_cache = {} 
+    unique_image_jobs = []
+    unique_media_jobs = []
+    
+    for slide_data in parsed_slides:
+        for part in slide_data["parts"]:
+            if isinstance(part, dict) and "job_type" in part:
+                if part["job_type"] == "image":
+                    record = part["record"]
+                    h = record["phash"]
+                    idx = record["slide_index"]
+                    
+                    # Step 1: Small Image Filter
+                    if record["width_px"] < 120 or record["height_px"] < 120:
+                        logger.info(f"[SKIP][SMALL_IMAGE]\nSlide {idx}")
+                        part["classification"] = "SMALL_IMAGE"
+                        stats["small"] += 1
+                        continue
+                        
+                    # Step 2: Repeated Image Detection & Step 3: Background vs Template
+                    if phash_counter.get(h, 0) >= 3:
+                        is_bg_size = record["width_ratio"] > 0.8 and record["height_ratio"] > 0.8
+                        is_first = record["is_first_picture"]
+                        
+                        if is_bg_size and is_first:
+                            logger.info(f"[SKIP][BACKGROUND]\nSlide {idx}")
+                            part["classification"] = "BACKGROUND"
+                            stats["background"] += 1
+                        else:
+                            logger.info(f"[SKIP][TEMPLATE_GRAPHIC]\nSlide {idx}")
+                            part["classification"] = "TEMPLATE_GRAPHIC"
+                            stats["template"] += 1
+                        continue
+                        
+                    # Step 4: Duplicate Cache
+                    if h in media_cache:
+                        logger.info(f"[CACHE]\nReused Gemini result for Slide {idx}")
+                        part["classification"] = "CACHE"
+                        stats["cache"] += 1
+                        continue
+                        
+                    # Step 5: Gemini Analysis
+                    logger.info(f"[GEMINI]\nAnalyzing educational image on Slide {idx}...")
+                    part["classification"] = "GEMINI"
+                    stats["gemini"] += 1
+                    
+                    media_cache[h] = None 
+                    unique_image_jobs.append(part)
+                    
+                else: 
+                    h = part["hash"]
+                    if h in media_cache:
+                        part["classification"] = "CACHE"
+                    else:
+                        part["classification"] = "GEMINI"
+                        media_cache[h] = None
+                        unique_media_jobs.append(part)
+
+    # Phase 3: Process Media Concurrently
+    def process_job(job):
+        job_type = job["job_type"]
+        tmp_path = None
+        
+        try:
+            if job_type == "image":
+                record = job["record"]
+                ext = record["ext"]
+                h = record["phash"]
+                image_blob = record["image_blob"]
+                
+                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+                    tmp.write(image_blob)
+                    tmp_path = tmp.name
+                    
+                mime_type = guess_media_mime_type(tmp_path, f"image/{ext}")
+                return h, extract_image_inline(tmp_path, mime_type, prompt=PPTX_IMAGE_PROMPT).strip()
+                
+            elif job_type == "video":
+                tmp_path = job["tmp_path"]
+                ext = job["ext"]
+                h = job["hash"]
+                mime_type = guess_media_mime_type(tmp_path, f"video/{ext}")
+                return h, extract_media_with_gemini(tmp_path, mime_type).strip()
+                
+            elif job_type == "audio":
+                tmp_path = job["tmp_path"]
+                ext = job["ext"]
+                h = job["hash"]
+                mime_type = guess_media_mime_type(tmp_path, f"audio/{ext}")
+                return h, extract_media_with_gemini(tmp_path, mime_type).strip()
+                
+        except Exception as e:
+            logger.error(f"Failed to process {job_type} with Gemini: {e}")
+            h_val = job.get("record", {}).get("phash") if job_type == "image" else job.get("hash")
+            return h_val, f"[{job_type.capitalize()} extraction failed]"
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+    all_jobs = unique_image_jobs + unique_media_jobs
+    if all_jobs:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(process_job, job) for job in all_jobs]
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    h, text_res = future.result()
+                    media_cache[h] = text_res
+                except Exception as exc:
+                    logger.error(f"Job generated an exception: {exc}")
+
+    # Phase 4: Cache Gemini Result and Log Statistics
+    stats_msg = f"""
+========== PPT Image Statistics ==========
+Total images           : {stats['total']}
+Small skipped          : {stats['small']}
+Background skipped     : {stats['background']}
+Template skipped       : {stats['template']}
+Gemini cache reused    : {stats['cache']}
+Gemini analyzed        : {stats['gemini']}
+========================================="""
+    logger.info(stats_msg)
+
+    # Phase 5: Merge results back into the original slide order
+    text_parts = []
+    
+    for slide_data in parsed_slides:
+        idx = slide_data["idx"]
+        slide_types = slide_data["slide_types"]
+        slide_text_parts = []
+        
+        for part in slide_data["parts"]:
+            if isinstance(part, dict) and "job_type" in part:
+                if part["job_type"] == "image":
+                    classification = part.get("classification")
+                    
+                    if classification in ["SMALL_IMAGE", "BACKGROUND", "TEMPLATE_GRAPHIC"]:
+                        continue # Skip these images
+                        
+                    h = part["record"]["phash"]
+                    text_res = media_cache.get(h)
+                    if not text_res:
+                        text_res = "[Image extraction failed]"
+                        
+                    lines = text_res.split("\n", 1)
+                    if lines:
+                        type_line = lines[0].upper()
+                        if "DIAGRAM" in type_line:
+                            slide_types.add("DIAGRAM")
+                        elif "CHART" in type_line:
+                            slide_types.add("CHART")
+                        else:
+                            slide_types.add("IMAGE")
+                            
+                    slide_text_parts.append(text_res)
+                    
+                else:
+                    h = part["hash"]
+                    text_res = media_cache.get(h)
+                    if not text_res:
+                        text_res = "[Media extraction failed]"
+                    slide_types.add("MIXED")
+                    slide_text_parts.append(text_res)
+                    
+            else:
+                slide_text_parts.append(part)
                 
         if len(slide_types) == 0:
             slide_type = "TEXT"
