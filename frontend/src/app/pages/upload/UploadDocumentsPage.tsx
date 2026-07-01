@@ -65,6 +65,7 @@ export function UploadDocumentsPage() {
 
   const [details, setDetails] = useState({
     categoryId: "",
+    documentTitle: "",
     noteTitle: "",
     notes: "",
   });
@@ -194,13 +195,17 @@ export function UploadDocumentsPage() {
       try {
         setIsUploading(true);
 
+        const documentTitle = details.documentTitle.trim();
         const noteTitle = details.noteTitle.trim();
         const noteContent = details.notes.trim();
 
         for (const file of files) {
+          const finalDocumentTitle =
+            documentTitle && files.length === 1 ? documentTitle : file.name;
+
           const uploadResponse = await documentApi.uploadDocument({
             file,
-            title: file.name,
+            title: finalDocumentTitle,
             userId,
             description: noteContent,
             documentType: file.type,
@@ -241,6 +246,7 @@ export function UploadDocumentsPage() {
     setFiles([]);
     setDetails({
       categoryId: "",
+      documentTitle: "",
       noteTitle: "",
       notes: "",
     });
@@ -323,6 +329,35 @@ export function UploadDocumentsPage() {
                 <UploadFileList files={files} onRemove={removeFile} />
 
                 <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block space-y-1.5">
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                      Document title
+                    </span>
+
+                    <input
+                      value={details.documentTitle}
+                      onChange={(event) =>
+                        setDetails((current) => ({
+                          ...current,
+                          documentTitle: event.target.value,
+                        }))
+                      }
+                      disabled={files.length > 1}
+                      placeholder={
+                        files.length === 1
+                          ? `Default: ${files[0].name}`
+                          : "Multiple files will keep original names"
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
+                    />
+
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {files.length === 1
+                        ? "If empty, the original file name will be used."
+                        : "Custom title is only available when uploading one file."}
+                    </p>
+                  </label>
+
                   <label className="block space-y-1.5">
                     <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
                       Category
