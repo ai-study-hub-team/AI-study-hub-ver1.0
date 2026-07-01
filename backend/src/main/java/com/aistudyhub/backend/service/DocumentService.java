@@ -32,6 +32,7 @@ public class DocumentService {
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentProcessingAsyncService documentProcessingAsyncService;
     private final DocumentAccessService documentAccessService;
+    private final StorageQuotaService storageQuotaService;
 
     // Read upload dir from config (same value used in FileStorageService)
     @Value("${app.upload.dir:uploads}")
@@ -116,7 +117,13 @@ public class DocumentService {
                     .orElseThrow(() -> new RuntimeException("Category not found with id: " + categoryId));
         }
 
-        // 3. Save the file to the local "uploads/" directory
+        // 3. Validate quotas
+        String mimeType = fileStorageService.detectMimeType(file);
+        storageQuotaService.validateFileRestrictions(userId, mimeType);
+        storageQuotaService.validateFileSize(userId, file.getSize());
+        storageQuotaService.validateStorageLimit(userId, file.getSize());
+
+        // 4. Save the file to the local "uploads/" directory
         //    fileStorageService will throw IllegalArgumentException for unsupported file types
         String savedFileName = fileStorageService.saveFile(file);
 

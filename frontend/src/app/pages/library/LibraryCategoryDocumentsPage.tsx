@@ -14,6 +14,8 @@ import { toast } from "sonner";
 
 import { documentApi } from "../../services/documentApi";
 import { getCurrentUserId } from "../../services/apiClient";
+import { useTheme } from "../../../layouts/ThemeProvider";
+import { filterMyDocuments } from "../../utils/documentOwnership";
 
 interface LibraryCategoryDocument {
   id: number;
@@ -115,6 +117,7 @@ function DocumentRow({
 
 export function LibraryCategoryDocumentsPage() {
   const navigate = useNavigate();
+  const { theme } = useTheme();
   const { categoryId } = useParams();
   const [documents, setDocuments] = useState<LibraryCategoryDocument[]>([]);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -131,17 +134,19 @@ export function LibraryCategoryDocumentsPage() {
         }
 
         const response = await documentApi.getDocuments({
-          userId,
           page: 0,
           size: 100,
           categoryId: Number(categoryId),
         });
-
-        setDocuments(
-          (response.data.content ?? []).filter(
-            (document) => document.userId === userId,
-          ),
+        const currentCategoryId = Number(categoryId);
+        const myCategoryDocuments = filterMyDocuments(
+          response.data.content ?? [],
+          userId,
+        ).filter(
+          (document) => Number(document.categoryId) === currentCategoryId,
         );
+
+        setDocuments(myCategoryDocuments);
       } catch (error) {
         console.error(error);
         toast.error("Cannot load category documents.");
@@ -187,8 +192,10 @@ export function LibraryCategoryDocumentsPage() {
             onClick={() => setViewMode("grid")}
             className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
               viewMode === "grid"
-                ? "bg-white text-blue-600 shadow-sm"
-                : "text-slate-500"
+                ? theme === "dark"
+                  ? "bg-slate-700 text-blue-300 shadow-none"
+                  : "bg-white text-blue-600 shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
             }`}
           >
             <Grid3X3 className="h-4 w-4" />
@@ -198,8 +205,10 @@ export function LibraryCategoryDocumentsPage() {
             onClick={() => setViewMode("list")}
             className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
               viewMode === "list"
-                ? "bg-white text-blue-600 shadow-sm"
-                : "text-slate-500"
+                ? theme === "dark"
+                  ? "bg-slate-700 text-blue-300 shadow-none"
+                  : "bg-white text-blue-600 shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
             }`}
           >
             <List className="h-4 w-4" />

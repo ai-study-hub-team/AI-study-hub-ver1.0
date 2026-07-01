@@ -26,6 +26,8 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { useTheme } from "./ThemeProvider";
+import Chatbot3D from "../app/components/ui/Chatbot3D";
+import { GlobalDocumentSearch } from "../app/components/ui/GlobalDocumentSearch";
 
 interface DashboardLayoutProps {
   isAdmin?: boolean;
@@ -43,9 +45,7 @@ type StoredUser = {
 const getStoredUser = (): StoredUser | null => {
   try {
     const rawUser = localStorage.getItem("user");
-
     if (!rawUser) return null;
-
     return JSON.parse(rawUser);
   } catch {
     return null;
@@ -58,6 +58,7 @@ const getRoleFromToken = (): string | null => {
       localStorage.getItem("token") ||
       localStorage.getItem("accessToken") ||
       localStorage.getItem("jwt");
+
     const encodedPayload = token?.split(".")[1];
 
     if (!encodedPayload) return null;
@@ -93,8 +94,8 @@ const getCurrentRole = () => {
   const storedUser = getStoredUser();
 
   return (
-    storedUser?.role ||
     localStorage.getItem("role") ||
+    storedUser?.role ||
     getRoleFromToken() ||
     "STUDENT"
   );
@@ -102,7 +103,6 @@ const getCurrentRole = () => {
 
 const getInitials = (name: string) => {
   const cleanName = name.trim();
-
   if (!cleanName) return "U";
 
   const parts = cleanName.split(/\s+/);
@@ -136,19 +136,21 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
     return getInitials(displayName);
   }, [displayName]);
 
-  const isCurrentUserAdmin = useMemo(() => {
-    const role = displayRole?.toUpperCase();
+  const isCurrentAdmin = useMemo(() => {
+    const role = displayRole?.trim().toUpperCase();
 
-    return role === "ADMIN" || role === "ROLE_ADMIN";
-  }, [displayRole]);
+    return (
+      isAdmin ||
+      role === "ADMIN" ||
+      role === "ROLE_ADMIN" ||
+      role === "ADMINISTRATOR"
+    );
+  }, [displayRole, isAdmin]);
 
   const roleText = useMemo(() => {
-    if (isAdmin || isCurrentUserAdmin) {
-      return "Administrator";
-    }
-
+    if (isCurrentAdmin) return "Administrator";
     return "Student · Pro";
-  }, [isAdmin, isCurrentUserAdmin]);
+  }, [isCurrentAdmin]);
 
   const studentLinks = [
     { to: "/app/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -192,18 +194,19 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
     localStorage.removeItem("fullName");
     localStorage.removeItem("name");
     localStorage.removeItem("user");
+
     navigate("/login");
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <div className="relative flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <motion.aside
         initial={false}
         animate={{ width: isSidebarOpen ? 260 : 80 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
         className="relative z-20 flex flex-col h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-sm"
       >
-        <div className="flex items-center h-16 px-4 border-b border-slate-100 shrink-0">
+        <div className="flex items-center h-16 px-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap">
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-600 text-white shrink-0">
               <span className="font-bold text-lg">A</span>
@@ -221,7 +224,8 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
           </div>
 
           <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            type="button"
+            onClick={() => setIsSidebarOpen((prev) => !prev)}
             className="ml-auto p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors shrink-0"
           >
             <Menu className="w-4 h-4" />
@@ -279,25 +283,27 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
           })}
         </nav>
 
-        <div className="p-3 border-t border-slate-100 shrink-0 space-y-1">
-          {!isAdmin && isCurrentUserAdmin && (
+        <div className="p-3 border-t border-slate-100 dark:border-slate-800 shrink-0 space-y-2">
+          {!isAdmin && isCurrentAdmin && (
             <NavLink
-              to="/admin/users"
+              to="/admin"
               className="flex items-center gap-3 px-3 py-2.5 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transition-colors"
               title={!isSidebarOpen ? "Back to Admin Panel" : undefined}
             >
               <ShieldCheck className="w-5 h-5 shrink-0" />
 
               {isSidebarOpen && (
-                <span className="text-sm font-semibold">Back to Admin Panel</span>
+                <span className="text-sm font-semibold">
+                  Back to Admin Panel
+                </span>
               )}
             </NavLink>
           )}
 
-          <NavLink
-            to="/login"
+          <button
+            type="button"
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors"
             title={!isSidebarOpen ? "Log Out" : undefined}
           >
             <LogOut className="w-5 h-5 shrink-0" />
@@ -305,23 +311,27 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
             {isSidebarOpen && (
               <span className="text-sm font-medium">Log Out</span>
             )}
-          </NavLink>
+          </button>
         </div>
       </motion.aside>
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-16 flex items-center px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
+        <header className="h-16 flex items-center gap-4 px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
+          <GlobalDocumentSearch />
+
           <div className="ml-auto flex items-center gap-3">
             {!isAdmin && (
               <NavLink
                 to="/app/subscription/upgrade"
                 className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold rounded-xl hover:opacity-90 transition-opacity"
               >
-                <Zap className="w-3 h-3" /> Upgrade Pro
+                <Zap className="w-3 h-3" />
+                Upgrade Pro
               </NavLink>
             )}
 
             <button
+              type="button"
               onClick={toggleTheme}
               className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
               title={
@@ -337,12 +347,15 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
               )}
             </button>
 
-            <button className="relative p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+            <button
+              type="button"
+              className="relative p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+            >
               <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 border-2 border-white dark:border-slate-900 rounded-full"></span>
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 border-2 border-white dark:border-slate-900 rounded-full" />
             </button>
 
-            <div className="h-8 w-px bg-slate-200 dark:bg-slate-700"></div>
+            <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
 
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
@@ -368,6 +381,16 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
           </div>
         </main>
       </div>
+
+      {!isAdmin && (
+        <div className="fixed bottom-6 right-6 z-[9999]">
+          <div className="relative w-[320px] h-[240px]">
+            <div className="absolute bottom-0 right-0 w-[170px] h-[170px]">
+              <Chatbot3D />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

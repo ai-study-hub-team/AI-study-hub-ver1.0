@@ -36,6 +36,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String header = request.getHeader("Authorization");
 
+        System.out.println("Authorization = " + header);
         if (header == null || !header.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
@@ -43,6 +44,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String token = header.substring(7).trim();
 
+
+        System.out.println("Token = " + token);
+
+        System.out.println("Validate = " + jwtService.validateAccessToken(token));
         if (token.isEmpty() || !jwtService.validateAccessToken(token)) {
             authenticationEntryPoint.commence(
                     request,
@@ -84,5 +89,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+
     }
 }

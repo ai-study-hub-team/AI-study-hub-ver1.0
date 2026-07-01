@@ -13,12 +13,15 @@ import {
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { documentApi } from "../../services/documentApi";
 import {
   generateSummaryApi,
   getSummaryByDocumentApi,
   getSummariesApi,
+  type SummaryType,
 } from "../../services/aiApi";
 import { getCurrentUserId } from "../../services/apiClient";
 
@@ -44,11 +47,31 @@ export function AISummaryPage() {
   const [summaryData, setSummaryData] = useState<any>(defaultSummary);
   const [summaryHistory, setSummaryHistory] = useState<any[]>([]);
 
+  const [summaryType, setSummaryType] = useState<SummaryType>("SHORT");
+
   const visibleDocuments = showAllDocuments
     ? documents
     : documents.slice(0, DISPLAY_LIMIT);
 
   const hiddenDocumentCount = Math.max(documents.length - DISPLAY_LIMIT, 0);
+
+const summaryTypeOptions: { value: SummaryType; label: string; desc: string }[] = [
+  {
+    value: "SHORT",
+    label: "Short",
+    desc: "Quick and concise summary",
+  },
+  {
+    value: "DETAILED",
+    label: "Detailed",
+    desc: "Longer summary with more explanation",
+  },
+  {
+    value: "BULLET_POINTS",
+    label: "Bullet Points",
+    desc: "Main ideas in bullet format",
+  },
+];
 
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -95,8 +118,14 @@ export function AISummaryPage() {
     try {
       const res = await getSummaryByDocumentApi(doc.id, userId);
 
-      if (res.data) {
-        setSummaryData(res.data);
+      const summaries = Array.isArray(res.data)
+        ? res.data
+        : res.data
+          ? [res.data]
+          : [];
+
+      if (summaries.length > 0) {
+        setSummaryData(summaries[0]);
         setShowSummary(true);
       }
     } catch {
@@ -143,7 +172,9 @@ export function AISummaryPage() {
     const processStatus = selectedDoc.processStatus || selectedDoc.aiStatus;
 
     if (processStatus && processStatus !== "PROCESSED") {
-      toast.error("This document is not processed yet. Please wait until AI Status is PROCESSED.");
+      toast.error(
+        "This document is not processed yet. Please wait until AI Status is PROCESSED.",
+      );
       return;
     }
 
@@ -152,7 +183,7 @@ export function AISummaryPage() {
     setView("summary");
 
     try {
-      const res = await generateSummaryApi(userId, selectedDoc.id);
+      const res = await generateSummaryApi(userId, selectedDoc.id, summaryType);
 
       setSummaryData(res.data);
       setShowSummary(true);
@@ -306,11 +337,37 @@ export function AISummaryPage() {
                     >
                       {showAllDocuments
                         ? "Thu gọn"
-                        : `Xem thêm ${hiddenDocumentCount} file`}
+                        : `Xem thêm`}
                     </button>
                   )}
                 </>
               )}
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+            <h2 className="text-sm font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-4">
+              Summary Type
+            </h2>
+
+            <div className="space-y-2">
+              {summaryTypeOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setSummaryType(option.value)}
+                  className={`w-full p-3 rounded-2xl border-2 text-left transition-all ${
+                    summaryType === option.value
+                      ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
+                      : "border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                  }`}
+                >
+                  <p className="text-sm font-extrabold text-slate-900 dark:text-white">
+                    {option.label}
+                  </p>
+                  <p className="text-xs text-slate-500">{option.desc}</p>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -405,9 +462,45 @@ export function AISummaryPage() {
                       </div>
                     </div>
 
-                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
-                      {summaryData.summaryText}
-                    </p>
+                    <div className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          p: ({ children }) => (
+                            <p className="mb-3 text-slate-700 dark:text-slate-300">
+                              {children}
+                            </p>
+                          ),
+                          strong: ({ children }) => (
+                            <strong className="font-extrabold text-slate-900 dark:text-white">
+                              {children}
+                            </strong>
+                          ),
+                          ul: ({ children }) => (
+                            <ul className="list-disc pl-6 space-y-2 mb-4">
+                              {children}
+                            </ul>
+                          ),
+                          ol: ({ children }) => (
+                            <ol className="list-decimal pl-6 space-y-2 mb-4">
+                              {children}
+                            </ol>
+                          ),
+                          li: ({ children }) => (
+                            <li className="text-slate-700 dark:text-slate-300">
+                              {children}
+                            </li>
+                          ),
+                          code: ({ children }) => (
+                            <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 text-sm">
+                              {children}
+                            </code>
+                          ),
+                        }}
+                      >
+                        {summaryData.summaryText || ""}
+                      </ReactMarkdown>
+                    </div>
                   </div>
 
                   {summaryData.keyTakeaways?.length > 0 && (
@@ -493,7 +586,8 @@ export function AISummaryPage() {
                     Ready to generate summary
                   </h3>
                   <p className="text-slate-500 dark:text-slate-400 text-sm">
-                    Select a document and click Generate Summary.
+                    Select a document, choose summary type, and click Generate
+                    Summary.
                   </p>
                 </div>
               )}

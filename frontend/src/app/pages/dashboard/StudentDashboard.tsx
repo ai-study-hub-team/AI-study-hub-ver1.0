@@ -15,7 +15,12 @@ import {
 import { motion } from "motion/react";
 import { useNavigate } from "react-router";
 import axios from "axios";
-import { getAuthHeader, getCurrentUserId } from "../../services/apiClient";
+import {
+  apiClient,
+  getAuthHeader,
+  getCurrentUserId,
+} from "../../services/apiClient";
+import { filterMyDocuments } from "../../utils/documentOwnership";
 import {
   XAxis,
   YAxis,
@@ -41,6 +46,10 @@ const data = [
 type DocumentItem = {
   id?: number;
   userId?: number;
+  ownerId?: number;
+  user?: {
+    id?: number;
+  };
   title?: string;
   originalName?: string;
   fileName?: string;
@@ -172,33 +181,30 @@ export function StudentDashboard() {
           setDisplayName(getCurrentFullName());
         }
 
-        const documentsResponse = await axios.get(`${API_BASE_URL}/documents`, {
-          params: { userId },
-          ...getAuthHeader(),
-        });
+        const documentsResponse = await apiClient.get(
+          "/api/documents/search-filter",
+          {
+            params: {
+              page: 0,
+              size: 100,
+            },
+          },
+        );
 
         const documentsData = documentsResponse.data;
 
         if (Array.isArray(documentsData)) {
-          const userDocuments = documentsData.filter(
-            (document: DocumentItem) => Number(document.userId) === userId,
-          );
-          setDocuments(userDocuments);
-          setTotalDocuments(userDocuments.length);
+          const myDocuments = filterMyDocuments(documentsData, userId);
+          setDocuments(myDocuments);
+          setTotalDocuments(myDocuments.length);
         } else if (Array.isArray(documentsData?.data)) {
-          const userDocuments = documentsData.data.filter(
-            (document: DocumentItem) => Number(document.userId) === userId,
-          );
-          setDocuments(userDocuments);
-          setTotalDocuments(userDocuments.length);
+          const myDocuments = filterMyDocuments(documentsData.data, userId);
+          setDocuments(myDocuments);
+          setTotalDocuments(myDocuments.length);
         } else if (Array.isArray(documentsData?.content)) {
-          const userDocuments = documentsData.content.filter(
-            (document: DocumentItem) => Number(document.userId) === userId,
-          );
-          setDocuments(userDocuments);
-          setTotalDocuments(
-            userDocuments.length,
-          );
+          const myDocuments = filterMyDocuments(documentsData.content, userId);
+          setDocuments(myDocuments);
+          setTotalDocuments(myDocuments.length);
         } else {
           setDocuments([]);
           setTotalDocuments(0);

@@ -2,8 +2,10 @@ import logging
 import json
 import re
 from fastapi import HTTPException
-from typing import List
+from typing import List, Tuple
 from schemas.quiz_schema import QuizRequest, QuizResponse, QuizChunk
+from schemas.usage_schema import UsageResponse
+from gemini_usage import extract_usage
 from settings import GEMINI_MODEL
 
 logger = logging.getLogger("ai-service.quiz")
@@ -155,7 +157,7 @@ def build_quiz_prompt(text: str, question_count: int, difficulty: str, quiz_type
     prompt = f"{instruction}\n\n{title_part}\n=== NỘI DUNG TÀI LIỆU ===\n{text}"
     return prompt
 
-def call_gemini_quiz(prompt: str) -> str:
+def call_gemini_quiz(prompt: str) -> Tuple[str, UsageResponse]:
     try:
         client = get_gemini_client()
         from google.genai import types
@@ -172,7 +174,7 @@ def call_gemini_quiz(prompt: str) -> str:
         if not response.text:
             raise HTTPException(status_code=500, detail="Gemini returned empty text response.")
             
-        return response.text
+        return response.text, extract_usage(response)
     except HTTPException:
         raise
     except Exception as e:
@@ -199,13 +201,17 @@ def direct_quiz(request: QuizRequest, valid_chunks: List[QuizChunk]) -> QuizResp
     
     # Retry logic
     max_retries = 2
+    total_usage = UsageResponse(promptTokens=0, completionTokens=0, totalTokens=0)
     for attempt in range(max_retries):
         try:
-            gemini_text = call_gemini_quiz(prompt)
+            gemini_text, attempt_usage = call_gemini_quiz(prompt)
+            total_usage.promptTokens += attempt_usage.promptTokens
+            total_usage.completionTokens += attempt_usage.completionTokens
+            total_usage.totalTokens += attempt_usage.totalTokens
             quiz_data = extract_json_from_gemini_response(gemini_text)
             quiz_data = validate_quiz_data(quiz_data, request.questionCount)
             logger.info(f"Successfully generated {len(quiz_data['questions'])} questions on attempt {attempt + 1}")
-            return QuizResponse(**quiz_data)
+            return QuizResponse(**quiz_data, usage=total_usage)
         except Exception as e:
             logger.warning(f"Attempt {attempt + 1} failed: {e}")
             if attempt == max_retries - 1:
@@ -222,6 +228,7 @@ def map_reduce_quiz(request: QuizRequest, valid_chunks: List[QuizChunk]) -> Quiz
     # This prevents the final prompt from being too large, and since we need holistic questions, a summary works well.
     from summary_service import build_summary_prompt, call_gemini_summary
     
+    total_usage = UsageResponse(promptTokens=0, completionTokens=0, totalTokens=0)
     part_summaries = []
     for i, group in enumerate(groups):
         logger.info(f"Summarizing group {i+1}/{num_groups} for quiz generation...")
@@ -232,7 +239,11 @@ def map_reduce_quiz(request: QuizRequest, valid_chunks: List[QuizChunk]) -> Quiz
             document_title=f"Phần {i+1}/{num_groups}",
             is_final=False
         )
-        part_summaries.append(call_gemini_summary(prompt))
+        summary_text, summary_usage = call_gemini_summary(prompt)
+        part_summaries.append(summary_text)
+        total_usage.promptTokens += summary_usage.promptTokens
+        total_usage.completionTokens += summary_usage.completionTokens
+        total_usage.totalTokens += summary_usage.totalTokens
         
     combined_parts_text = "\n\n---\n\n".join([f"Phần {i+1}:\n{summary}" for i, summary in enumerate(part_summaries)])
     
@@ -249,11 +260,14 @@ def map_reduce_quiz(request: QuizRequest, valid_chunks: List[QuizChunk]) -> Quiz
     max_retries = 2
     for attempt in range(max_retries):
         try:
-            gemini_text = call_gemini_quiz(quiz_prompt)
+            gemini_text, attempt_usage = call_gemini_quiz(quiz_prompt)
+            total_usage.promptTokens += attempt_usage.promptTokens
+            total_usage.completionTokens += attempt_usage.completionTokens
+            total_usage.totalTokens += attempt_usage.totalTokens
             quiz_data = extract_json_from_gemini_response(gemini_text)
             quiz_data = validate_quiz_data(quiz_data, request.questionCount)
             logger.info(f"Successfully generated {len(quiz_data['questions'])} questions on attempt {attempt + 1}")
-            return QuizResponse(**quiz_data)
+            return QuizResponse(**quiz_data, usage=total_usage)
         except Exception as e:
             logger.warning(f"Attempt {attempt + 1} failed: {e}")
             if attempt == max_retries - 1:

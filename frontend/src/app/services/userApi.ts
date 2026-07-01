@@ -1,10 +1,6 @@
-import axios from "axios";
+import { apiClient } from "./apiClient";
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8080",
-});
-
-api.interceptors.request.use((config) => {
+apiClient.interceptors.request.use((config) => {
   const token =
     localStorage.getItem("token") ||
     localStorage.getItem("accessToken") ||
@@ -40,24 +36,54 @@ export interface UpdateUserStatusPayload {
   status: string;
 }
 
+export interface UpdateProfilePayload {
+  fullName: string;
+  email: string;
+}
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
 export const userApi = {
+  // Admin APIs
   getUsers: () => {
-    return api.get<UserResponse[]>("/api/users");
+    return apiClient.get<UserResponse[]>("/api/users");
   },
 
   getUserById: (id: number) => {
-    return api.get<UserResponse>(`/api/users/${id}`);
+    return apiClient.get<UserResponse>(`/api/users/${id}`);
   },
 
   updateUser: (id: number, payload: UpdateUserPayload) => {
-    return api.put<UserResponse>(`/api/users/${id}`, payload);
+    return apiClient.put<UserResponse>(`/api/users/${id}`, payload);
   },
 
   updateUserStatus: (id: number, payload: UpdateUserStatusPayload) => {
-    return api.patch<UserResponse>(`/api/users/${id}/status`, payload);
+    return apiClient.patch<UserResponse>(
+      `/api/users/${id}/status`,
+      payload,
+    );
   },
 
   deleteUser: (id: number) => {
-    return api.delete<void>(`/api/users/${id}`);
+    return apiClient.delete<void>(`/api/users/${id}`);
+  },
+
+  // Profile APIs
+  getProfile: () => {
+    return apiClient.get<UserResponse>("/api/account/me");
+  },
+
+  updateProfile: (payload: UpdateProfilePayload) => {
+    return apiClient.put<UserResponse>("/api/account/me", payload);
+  },
+
+  changePassword: (payload: ChangePasswordPayload) => {
+    return apiClient.put<void>(
+      "/api/account/change-password",
+      payload,
+    );
   },
 };
