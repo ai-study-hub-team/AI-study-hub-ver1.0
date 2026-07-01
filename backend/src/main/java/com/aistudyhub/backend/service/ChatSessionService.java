@@ -49,6 +49,7 @@ public class ChatSessionService {
     private final AiCitationRepository aiCitationRepository;
     private final DocumentChunkRepository documentChunkRepository;
     private final SemanticSearchService semanticSearchService;
+    private final TokenUsageService tokenUsageService;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -112,7 +113,10 @@ public class ChatSessionService {
             throw new RuntimeException("This chat session does not belong to the user.");
         }
 
-        // 3. Resolve active documentIds (request → session → empty)
+        // 3. Validate Token Quota before any AI calls
+        tokenUsageService.validateTokenQuota(user.getId(), "CHAT");
+
+        // 4. Resolve active documentIds (request → session → empty)
         List<Long> activeDocumentIds = resolveDocumentIds(request, chatSession);
         boolean hasDocuments = !activeDocumentIds.isEmpty();
         log.info("[Chat] resolved documentIds={} (hasDocuments={})", activeDocumentIds, hasDocuments);
@@ -174,22 +178,29 @@ public class ChatSessionService {
         // ── 8. Route: GENERAL_CHAT vs DOCUMENT_CHAT ──────────────────────────
         String answer;
         List<PythonContextChunk> contextChunks = List.of();
+        // Token usage accumulators — null-safe; will be summed at the end
+        PythonTokenUsage plannerUsage = null;
+        PythonTokenUsage answerUsage  = null;
 
         if (!hasDocuments) {
             // ── GENERAL CHAT MODE ──────────────────────────────────────────────
             log.info("[Chat] mode=GENERAL_CHAT — skipping semantic search and pgvector.");
-            answer = callGenerateAnswer(
+            PythonGenerateAnswerResponse generalResp = callGenerateAnswer(
                     request.getQuestion(), null, ChatIntent.GENERAL_CHAT.name(),
                     pythonHistory, List.of(), false);
+            answer      = generalResp.getAnswer();
+            answerUsage = generalResp.getUsage();
 
         } else {
             // ── DOCUMENT CHAT MODE ─────────────────────────────────────────────
             // Step 8a: call planner
             PythonAnalyzeChatQueryResponse plan = callAnalyzeChatQuery(
                     request.getQuestion(), pythonHistory, true, activeDocumentIds.size());
-            log.info("[Chat] planner — intent={}, strategy={}, rewritten='{}', confidence={}",
+            plannerUsage = plan.getUsage(); // may be null if fallback was used
+            log.info("[Chat] planner — intent={}, strategy={}, rewritten='{}', confidence={}, plannerTokens={}",
                     plan.getIntent(), plan.getRetrievalStrategy(),
-                    plan.getRewrittenQuestion(), plan.getConfidence());
+                    plan.getRewrittenQuestion(), plan.getConfidence(),
+                    plannerUsage != null ? plannerUsage.getTotalTokens() : "N/A (fallback)");
 
             ChatIntent intent = safeChatIntent(plan.getIntent());
             RetrievalStrategy strategy = safeRetrievalStrategy(plan.getRetrievalStrategy());
@@ -241,9 +252,11 @@ public class ChatSessionService {
             log.info("[Chat] contextChunks={} chunks resolved.", contextChunks.size());
 
             // Step 8c: Call /generate-answer
-            answer = callGenerateAnswer(
+            PythonGenerateAnswerResponse docResp = callGenerateAnswer(
                     request.getQuestion(), effectiveQuestion, intent.name(),
                     pythonHistory, contextChunks, true);
+            answer      = docResp.getAnswer();
+            answerUsage = docResp.getUsage();
         }
 
         // 9. Save ASSISTANT message
@@ -266,7 +279,43 @@ public class ChatSessionService {
             log.info("[Chat] GENERAL_CHAT — citations skipped.");
         }
 
-        // 11. Update session timestamp
+        // 11. Record combined token usage (planner + answer generation)
+        //     totalChatTokens = plannerTokens + answerTokens
+        //     Both may be null/zero when Gemini calls failed or used fallback.
+        long plannerTokens = safeTokens(plannerUsage);
+        long answerTokens  = safeTokens(answerUsage);
+        long totalChatTokens = plannerTokens + answerTokens;
+
+        log.info("[Chat][TokenTracking] plannerTokens={}, answerTokens={}, totalChatTokens={}",
+                plannerTokens, answerTokens, totalChatTokens);
+
+        if (totalChatTokens > 0) {
+            try {
+                // TODO: if quota pre-check needs per-call granularity, record each
+                //       sub-call separately. For now we record the combined total
+                //       once per user request to avoid double-counting.
+                tokenUsageService.recordUsage(
+                        user,
+                        "CHAT",
+                        "gemini",           // model name label
+                        totalChatTokens,
+                        null,               // no single documentId for chat
+                        null                // no requestId currently
+                );
+                log.info("[Chat][TokenTracking] recorded {} tokens for userId={}.",
+                        totalChatTokens, user.getId());
+            } catch (Exception e) {
+                // Token recording must never crash the chat response
+                log.error("[Chat][TokenTracking] Failed to record token usage for userId={}: {}",
+                        user.getId(), e.getMessage());
+            }
+        } else {
+            log.warn("[Chat][TokenTracking] totalChatTokens=0 for userId={}. "
+                    + "Either Gemini fallback was triggered or token extraction failed. "
+                    + "No usage recorded.", user.getId());
+        }
+
+        // 12. Update session timestamp
         chatSession.setUpdatedAt(LocalDateTime.now());
         chatSessionRepository.save(chatSession);
 
@@ -307,8 +356,9 @@ public class ChatSessionService {
     }
 
     /**
-     * Call Python /analyze-chat-query (Chat Planner). Returns a safe fallback on
-     * error.
+     * Call Python /analyze-chat-query (Chat Planner).
+     * Returns the full PythonAnalyzeChatQueryResponse including planner usage.
+     * Falls back to a safe default (Gemini not called, usage=null) on error.
      */
     private PythonAnalyzeChatQueryResponse callAnalyzeChatQuery(
             String question, List<PythonMessage> history,
@@ -332,7 +382,7 @@ public class ChatSessionService {
         } catch (Exception e) {
             log.warn("[Chat] /analyze-chat-query failed: {}. Using safe fallback.", e.getMessage());
         }
-        // Safe fallback
+        // Safe fallback — usage=null because Gemini was not called
         return PythonAnalyzeChatQueryResponse.builder()
                 .intent(ChatIntent.DOCUMENT_QA.name())
                 .rewrittenQuestion(question)
@@ -340,11 +390,16 @@ public class ChatSessionService {
                 .searchQueries(List.of(question))
                 .needsRetrieval(true)
                 .confidence(0.5)
+                .usage(null)
                 .build();
     }
 
-    /** Call Python /generate-answer. Returns a fallback error string on failure. */
-    private String callGenerateAnswer(String question, String rewrittenQuestion,
+    /**
+     * Call Python /generate-answer.
+     * Returns the full PythonGenerateAnswerResponse (answer + usage).
+     * Returns a fallback response with error text and zero usage on failure.
+     */
+    private PythonGenerateAnswerResponse callGenerateAnswer(String question, String rewrittenQuestion,
             String intent, List<PythonMessage> history,
             List<PythonContextChunk> contextChunks,
             boolean hasDocuments) {
@@ -366,12 +421,25 @@ public class ChatSessionService {
             ResponseEntity<PythonGenerateAnswerResponse> resp = restTemplate.postForEntity(url, entity,
                     PythonGenerateAnswerResponse.class);
             if (resp.getBody() != null && resp.getBody().getAnswer() != null) {
-                return resp.getBody().getAnswer();
+                return resp.getBody();
             }
         } catch (Exception e) {
             log.error("[Chat] /generate-answer failed: {}", e.getMessage());
         }
-        return "Lỗi kết nối đến Python AI service. Câu hỏi: \"" + question + "\"";
+        // Fallback response — usage=null (no Gemini call succeeded)
+        return PythonGenerateAnswerResponse.builder()
+                .answer("Lỗi kết nối đến Python AI service. Câu hỏi: \"" + question + "\"")
+                .usage(null)
+                .build();
+    }
+
+    /**
+     * Safely extract total token count from a PythonTokenUsage that may be null.
+     * Returns 0 if usage is null or totalTokens is null.
+     */
+    private long safeTokens(PythonTokenUsage usage) {
+        if (usage == null || usage.getTotalTokens() == null) return 0L;
+        return usage.getTotalTokens();
     }
 
     /** Standard semantic search — single query wrapper used by all branches. */

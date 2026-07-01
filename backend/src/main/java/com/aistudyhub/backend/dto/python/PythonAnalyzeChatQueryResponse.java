@@ -8,6 +8,11 @@ import java.util.List;
 /**
  * Response from Python /analyze-chat-query (Chat Planner).
  * Fields map directly from the Gemini-generated JSON plan.
+ *
+ * <p>The {@code usage} field captures token counts from the planner's
+ * Gemini call. It may be {@code null} when the planner used a safe fallback
+ * path (no Gemini call was made) — treat null as zero tokens on the
+ * Spring Boot side.
  */
 @Getter
 @Setter
@@ -28,4 +33,10 @@ public class PythonAnalyzeChatQueryResponse {
     private boolean      needsRetrieval;
     /** Planner's confidence score (0.0–1.0). */
     private double       confidence;
+    /**
+     * Token usage from the planner's Gemini call.
+     * Null when the planner used a safe fallback (Gemini was not called).
+     * Spring Boot should treat null as zero tokens.
+     */
+    private PythonTokenUsage usage;
 }
