@@ -12,7 +12,7 @@ import lombok.Setter;
 @Getter
 @Setter
 public class CreateChatSessionRequest {
-
+    private Long userId;
     // Optional: auto-generated as "New Chat" when blank or null
     @Size(max = 255, message = "Title must not exceed 255 characters")
     private String title;

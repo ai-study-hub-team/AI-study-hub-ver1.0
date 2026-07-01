@@ -7,6 +7,7 @@ import lombok.Data;
 @Data
 public class DocumentNoteCreateRequest {
 
+    private Long userId;
     @NotNull(message = "documentId cannot be null")
     private Long documentId;
 

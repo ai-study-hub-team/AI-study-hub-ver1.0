@@ -36,6 +36,7 @@ public class DocumentService {
     private final DocumentProcessingAsyncService documentProcessingAsyncService;
     private final DocumentAccessService documentAccessService;
     private final StorageQuotaService storageQuotaService;
+    private final CurrentUserService currentUserService;
 
     // Read upload dir from config (same value used in FileStorageService)
     @Value("${app.upload.dir:uploads}")
@@ -45,8 +46,7 @@ public class DocumentService {
 
     public DocumentResponse create(DocumentRequest request) {
         // 1. Validate user
-        User user = userRepository.findById(request.getUserId())
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + request.getUserId()));
+        User user = currentUserService.getCurrentUser();
 
         // 2. Validate category (optional)
         Category category = null;

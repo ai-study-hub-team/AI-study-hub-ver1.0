@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SummaryGenerateRequest {
-
+    private Long userId;
     @NotNull(message = "documentId is required")
     private Long documentId;
 

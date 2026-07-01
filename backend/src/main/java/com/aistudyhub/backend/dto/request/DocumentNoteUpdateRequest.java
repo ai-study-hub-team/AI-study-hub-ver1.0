@@ -6,6 +6,7 @@ import lombok.Data;
 
 @Data
 public class DocumentNoteUpdateRequest {
+    private Long userId;
 
     @NotBlank(message = "title cannot be blank")
     private String title;
