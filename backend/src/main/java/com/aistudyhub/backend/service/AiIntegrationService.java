@@ -52,6 +52,7 @@ public class AiIntegrationService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
+
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("documentId", documentId);
             requestBody.put("fileName", fileName);

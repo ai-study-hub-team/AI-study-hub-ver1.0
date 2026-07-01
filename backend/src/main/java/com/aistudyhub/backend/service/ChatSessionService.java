@@ -29,6 +29,7 @@ public class ChatSessionService {
     private final ChatMessageRepository chatMessageRepository;
     private final AiCitationRepository aiCitationRepository;
     private final DocumentChunkRepository documentChunkRepository;
+    private final TokenUsageService tokenUsageService;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -153,7 +154,10 @@ public class ChatSessionService {
                 .build();
         ChatMessage savedUserMessage = chatMessageRepository.save(userMessage);
 
-        // 8. Call Python AI Service
+        // 8. Validate Token Quota before calling AI
+        tokenUsageService.validateTokenQuota(user.getId());
+
+        // 9. Call Python AI Service
         PythonChatRequest pythonRequest = PythonChatRequest.builder()
                 .sessionId(chatSession.getSessionId())
                 .question(request.getQuestion())
@@ -164,6 +168,7 @@ public class ChatSessionService {
         String url = aiServiceBaseUrl + "/chat";
         String answer;
         List<PythonCitation> pythonCitations = new ArrayList<>();
+        String requestId = UUID.randomUUID().toString();
 
         try {
             log.info("Sending chat request to Python service: {}", url);
@@ -173,6 +178,16 @@ public class ChatSessionService {
                 answer = pythonResponse.getAnswer();
                 if (pythonResponse.getCitations() != null) {
                     pythonCitations = pythonResponse.getCitations();
+                }
+                if (pythonResponse.getUsage() != null) {
+                    tokenUsageService.recordUsage(
+                            user, 
+                            "CHAT", 
+                            "gemini-1.5-pro", 
+                            pythonResponse.getUsage().getTotalTokens(), 
+                            documentIds.isEmpty() ? null : documentIds.get(0), 
+                            requestId
+                    );
                 }
             } else {
                 throw new RuntimeException("Empty response body from Python AI service");

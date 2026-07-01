@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.exception;
-
+ 
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -11,12 +12,13 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
-
+ 
 /**
  * Catches exceptions thrown by controllers/services and returns
  * clean JSON error responses instead of HTML error pages.
  */
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     // Handle RuntimeException (e.g. "User not found", "Category not found")
@@ -44,6 +46,24 @@ public class GlobalExceptionHandler {
         body.put("error", "Validation Failed");
         body.put("fields", fieldErrors);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(QuotaExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleQuotaExceededException(QuotaExceededException ex) {
+        log.error("Quota exceeded: {}", ex.getMessage());
+        return createErrorResponse(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(PaymentException.class)
+    public ResponseEntity<Map<String, Object>> handlePaymentException(PaymentException ex) {
+        log.error("Payment error: {}", ex.getMessage());
+        return createErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(PlanRestrictionException.class)
+    public ResponseEntity<Map<String, Object>> handlePlanRestrictionException(PlanRestrictionException ex) {
+        log.error("Plan restriction error: {}", ex.getMessage());
+        return createErrorResponse(HttpStatus.FORBIDDEN, ex.getMessage(), null);
     }
 
     // Handle 403 Forbidden scenarios
@@ -119,5 +139,17 @@ public class GlobalExceptionHandler {
         body.put("message", "A system error occurred");
         body.put("path", request.getRequestURI());
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+    }
+
+    private ResponseEntity<Map<String, Object>> createErrorResponse(HttpStatus status, String message, Object details) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now().toString());
+        body.put("status", status.value());
+        body.put("error", status.getReasonPhrase());
+        body.put("message", message);
+        if (details != null) {
+            body.put("details", details);
+        }
+        return ResponseEntity.status(status).body(body);
     }
 }
