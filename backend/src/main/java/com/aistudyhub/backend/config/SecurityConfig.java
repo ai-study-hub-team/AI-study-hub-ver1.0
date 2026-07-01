@@ -61,7 +61,8 @@ public class SecurityConfig {
                                 "/api/payments/vnpay-return",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
-                                "/v3/api-docs/**"
+                                "/v3/api-docs/**",
+                                "/api/public/**"
                         ).permitAll()
                         .requestMatchers("/api/admin/**")
                         .hasRole("ADMIN")
