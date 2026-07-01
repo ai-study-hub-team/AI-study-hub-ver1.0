@@ -14,4 +14,18 @@ public class BackendApplication {
 		SpringApplication.run(BackendApplication.class, args);
 	}
 
+	@org.springframework.context.annotation.Bean
+	public org.springframework.boot.CommandLineRunner logActiveDataSource(javax.sql.DataSource dataSource) {
+		return args -> {
+			try (java.sql.Connection conn = dataSource.getConnection()) {
+				String url = conn.getMetaData().getURL();
+				System.out.println("=========================================================");
+				System.out.println("MAIN DATASOURCE URL = " + url);
+				System.out.println("=========================================================");
+			} catch (Exception e) {
+				System.err.println("Failed to fetch database URL: " + e.getMessage());
+			}
+		};
+	}
+
 }

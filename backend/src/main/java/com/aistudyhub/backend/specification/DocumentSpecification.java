@@ -5,6 +5,7 @@ import com.aistudyhub.backend.entity.CloudFile;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentProcessStatus;
 import com.aistudyhub.backend.entity.DocumentStatus;
+import com.aistudyhub.backend.entity.Folder;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
@@ -17,6 +18,16 @@ import java.util.List;
 
 public class DocumentSpecification {
 
+    /**
+     * Builds a combined Specification for document listing/search.
+     *
+     * <p>Folder filtering rules:
+     * <ul>
+     *   <li>{@code folderId} non-null → return only documents in that folder.</li>
+     *   <li>{@code rootOnly=true} → return only documents where folder_id IS NULL.</li>
+     *   <li>Neither provided → no folder filter (original behaviour).</li>
+     * </ul>
+     */
     public static Specification<Document> filterDocuments(
             String keyword,
             Long categoryId,
@@ -24,7 +35,9 @@ public class DocumentSpecification {
             String fileType,
             String tag,
             LocalDateTime fromDate,
-            LocalDateTime toDate
+            LocalDateTime toDate,
+            Long folderId,
+            Boolean rootOnly
     ) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -36,8 +49,9 @@ public class DocumentSpecification {
             predicates.add(cb.equal(root.get("status"), DocumentStatus.ACTIVE));
 
             // Join voi category va cloudFile theo quan he trong Entity Document.
-            Join<Document, Category> categoryJoin = root.join("category", JoinType.LEFT);
+            Join<Document, Category>  categoryJoin  = root.join("category",  JoinType.LEFT);
             Join<Document, CloudFile> cloudFileJoin = root.join("cloudFile", JoinType.LEFT);
+            Join<Document, Folder>    folderJoin    = root.join("folder",    JoinType.LEFT);
 
             // Search theo keyword trong title, description, tags, originalName.
             if (keyword != null && !keyword.isBlank()) {
@@ -55,9 +69,9 @@ public class DocumentSpecification {
                 Expression<String> originalNameExpression =
                         cb.lower(cb.coalesce(cloudFileJoin.<String>get("originalName"), ""));
 
-                Predicate titleLike = cb.like(titleExpression, searchValue);
-                Predicate descriptionLike = cb.like(descriptionExpression, searchValue);
-                Predicate tagsLike = cb.like(tagsExpression, searchValue);
+                Predicate titleLike        = cb.like(titleExpression,        searchValue);
+                Predicate descriptionLike  = cb.like(descriptionExpression,  searchValue);
+                Predicate tagsLike         = cb.like(tagsExpression,         searchValue);
                 Predicate originalNameLike = cb.like(originalNameExpression, searchValue);
 
                 predicates.add(cb.or(titleLike, descriptionLike, tagsLike, originalNameLike));
@@ -103,7 +117,35 @@ public class DocumentSpecification {
                 predicates.add(cb.lessThanOrEqualTo(root.<LocalDateTime>get("createdAt"), toDate));
             }
 
+            // ── Folder filters ───────────────────────────────────────────────
+            if (folderId != null) {
+                // Documents in a specific folder
+                predicates.add(cb.equal(folderJoin.get("id"), folderId));
+            } else if (Boolean.TRUE.equals(rootOnly)) {
+                // Documents with no folder (root-level)
+                predicates.add(cb.isNull(root.get("folder")));
+            }
+
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    // ─── Backward-compatible overload (no folder params) ──────────────────────
+
+    /**
+     * Original 7-argument signature kept for any internal callers
+     * that do not need folder filtering (e.g. getAiReadyDocuments).
+     */
+    public static Specification<Document> filterDocuments(
+            String keyword,
+            Long categoryId,
+            DocumentProcessStatus processStatus,
+            String fileType,
+            String tag,
+            LocalDateTime fromDate,
+            LocalDateTime toDate
+    ) {
+        return filterDocuments(keyword, categoryId, processStatus,
+                fileType, tag, fromDate, toDate, null, null);
     }
 }

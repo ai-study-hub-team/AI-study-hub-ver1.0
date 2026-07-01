@@ -19,6 +19,7 @@ PostgreSQL (document_chunks) remains the source of truth for chunkText.
 import logging
 import os
 from typing import Optional
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -61,11 +62,11 @@ def _get_db_connection():
     """
     Get a database connection from the pool.
     Uses psycopg2 with a simple connection (no pool for simplicity).
-    """ 
-  
+    """
     global _db_pool
     if _db_pool is None:
         try:
+            import psycopg2
             logger.info(
                 f"Connecting to pgvector database: "
                 f"{PGVECTOR_HOST}:{PGVECTOR_PORT}/{PGVECTOR_DATABASE}"
@@ -87,7 +88,6 @@ def _get_db_connection():
             raise RuntimeError(f"pgvector connection error: {e}") from e
 
     import psycopg2
-
     return psycopg2.connect(**_db_pool)
 
 

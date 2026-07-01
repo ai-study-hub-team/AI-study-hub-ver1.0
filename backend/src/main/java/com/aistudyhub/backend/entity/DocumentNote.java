@@ -3,7 +3,6 @@ package com.aistudyhub.backend.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
-
 @Entity
 @Table(name = "document_notes")
 @Getter
@@ -28,7 +27,7 @@ public class DocumentNote {
     @Column(nullable = false)
     private String title;
 
-    @Column(columnDefinition = "LONGTEXT", nullable = false)
+    @Column(columnDefinition = "TEXT", nullable = false)
     private String content;
 
     private LocalDateTime createdAt;
