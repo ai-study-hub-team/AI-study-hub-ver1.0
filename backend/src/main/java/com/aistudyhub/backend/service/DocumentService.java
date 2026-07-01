@@ -6,12 +6,14 @@ import com.aistudyhub.backend.specification.DocumentSpecification;
 import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.repository.CategoryRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
+import com.aistudyhub.backend.repository.FolderRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import lombok.extern.slf4j.Slf4j;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
@@ -27,10 +29,12 @@ public class DocumentService {
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
+    private final FolderRepository folderRepository;
     private final FileStorageService fileStorageService;
     private final AiIntegrationService aiIntegrationService;
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentProcessingAsyncService documentProcessingAsyncService;
+    private final StorageQuotaService storageQuotaService;
 
     // Read upload dir from config (same value used in FileStorageService)
     @Value("${app.upload.dir:uploads}")
@@ -99,10 +103,11 @@ public class DocumentService {
             String documentType,
             String visibility,
             Long userId,
-            Long categoryId) throws IOException {
+            Long categoryId,
+            Long folderId) throws IOException {
 
-        log.info("Upload received — title='{}', originalName='{}', userId={}, categoryId={}",
-                title, file.getOriginalFilename(), userId, categoryId);
+        log.info("Upload received — title='{}', originalName='{}', userId={}, categoryId={}, folderId={}",
+                title, file.getOriginalFilename(), userId, categoryId, folderId);
 
         // 1. Validate user
         User user = userRepository.findById(userId)
@@ -115,7 +120,22 @@ public class DocumentService {
                     .orElseThrow(() -> new RuntimeException("Category not found with id: " + categoryId));
         }
 
+        // 2b. Validate folder (optional) — must belong to the uploading user
+        Folder folder = null;
+        if (folderId != null) {
+            folder = folderRepository.findByIdAndUserId(folderId, userId)
+                    .orElseThrow(() -> new RuntimeException(
+                            "Folder not found or does not belong to user: " + folderId));
+        }
+
         // 3. Save the file to the local "uploads/" directory
+        // 3. Validate quotas
+        String mimeType = fileStorageService.detectMimeType(file);
+        storageQuotaService.validateFileRestrictions(userId, mimeType);
+        storageQuotaService.validateFileSize(userId, file.getSize());
+        storageQuotaService.validateStorageLimit(userId, file.getSize());
+
+        // 4. Save the file to the local "uploads/" directory
         //    fileStorageService will throw IllegalArgumentException for unsupported file types
         String savedFileName = fileStorageService.saveFile(file);
 
@@ -145,6 +165,7 @@ public class DocumentService {
                 .processStatus(DocumentProcessStatus.PROCESSING)
                 .user(user)
                 .category(category)
+                .folder(folder)
                 .cloudFile(cloudFile)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
@@ -230,6 +251,17 @@ public class DocumentService {
 
     // ─── Reprocess Document ────────────────────────────────────────────────────
 
+    /**
+     * Synchronously reprocesses an existing document through the full AI pipeline:
+     * text extraction → chunking → embedding → pgvector upsert → chunk save.
+     *
+     * <p>Unlike upload (which is async), reprocess is synchronous so the caller
+     * receives the final {@code PROCESSED} or {@code FAILED} status immediately.</p>
+     *
+     * <p>Pre-flight validation errors (document deleted, missing file, etc.) mark
+     * the document as {@code FAILED} before re-throwing, so the status is never
+     * left stuck on {@code PROCESSING}.</p>
+     */
     public DocumentResponse reprocessDocument(Long id) {
         Document document = documentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Document not found with id: " + id));
@@ -240,18 +272,31 @@ public class DocumentService {
 
         CloudFile cloudFile = document.getCloudFile();
         if (cloudFile == null || cloudFile.getFileUrl() == null) {
+            markFailed(document, "Document file metadata not found");
             throw new RuntimeException("Document file metadata not found");
         }
 
         java.nio.file.Path path = java.nio.file.Paths.get(cloudFile.getFileUrl()).toAbsolutePath();
         if (!java.nio.file.Files.exists(path)) {
+            markFailed(document, "Physical file does not exist at path: " + path);
             throw new RuntimeException("Physical file does not exist at path: " + path);
         }
 
-        long oldChunkCount = documentChunkRepository.countByDocumentId(id);
-        log.info("Reprocessing document ID: {}. Old chunk count: {}. File path sent: {}", 
-                 id, oldChunkCount, path);
+        // Set status to PROCESSING immediately so the UI reflects the in-progress state
+        document.setProcessStatus(DocumentProcessStatus.PROCESSING);
+        document.setProcessErrorMessage(null);
+        document.setUpdatedAt(LocalDateTime.now());
+        documentRepository.save(document);
 
+        long oldChunkCount = documentChunkRepository.countByDocumentId(id);
+        log.info("Reprocessing document ID: {}. Old chunk count: {}. File path sent: {}",
+                id, oldChunkCount, path);
+
+        // Delegate to AiIntegrationService which handles:
+        //  - calling the Python /process-document endpoint
+        //  - deleting old document_chunks + pgvector embeddings
+        //  - inserting new chunks
+        //  - setting final status (PROCESSED or FAILED)
         DocumentProcessStatus processStatus = aiIntegrationService.processDocument(
                 document.getId(),
                 cloudFile.getFileName(),
@@ -262,10 +307,24 @@ public class DocumentService {
 
         document = documentRepository.findById(id).orElseThrow();
         long newChunkCount = documentChunkRepository.countByDocumentId(id);
-        log.info("Finished reprocessing document ID: {}. Final status: {}. New chunk count: {}", 
-                 id, processStatus, newChunkCount);
+        log.info("Finished reprocessing document ID: {}. Final status: {}. New chunk count: {}",
+                id, processStatus, newChunkCount);
 
         return toResponse(document);
+    }
+
+    /** Marks a document as FAILED with an error message (pre-flight validation helper). */
+    private void markFailed(Document document, String errorMessage) {
+        try {
+            document.setProcessStatus(DocumentProcessStatus.FAILED);
+            document.setProcessErrorMessage(errorMessage);
+            document.setProcessedAt(LocalDateTime.now());
+            document.setUpdatedAt(LocalDateTime.now());
+            documentRepository.save(document);
+        } catch (Exception ex) {
+            log.error("Could not persist FAILED status for document ID {}: {}",
+                    document.getId(), ex.getMessage());
+        }
     }
 
     // ─── Search ────────────────────────────────────────────────────────────────
@@ -284,6 +343,27 @@ public class DocumentService {
             LocalDateTime fromDate,
             LocalDateTime toDate,
             Pageable pageable) {
+        return searchAndFilter(keyword, categoryId, processStatus,
+                fileType, tag, fromDate, toDate, null, null, pageable);
+    }
+
+    /**
+     * Extended search with optional folder filtering.
+     *
+     * @param folderId  when non-null, return only documents in this folder
+     * @param rootOnly  when {@code true}, return only root-level documents (folder = null)
+     */
+    public Page<DocumentResponse> searchAndFilter(
+            String keyword,
+            Long categoryId,
+            DocumentProcessStatus processStatus,
+            String fileType,
+            String tag,
+            LocalDateTime fromDate,
+            LocalDateTime toDate,
+            Long folderId,
+            Boolean rootOnly,
+            Pageable pageable) {
 
         return documentRepository.findAll(
                 DocumentSpecification.filterDocuments(
@@ -293,10 +373,51 @@ public class DocumentService {
                         fileType,
                         tag,
                         fromDate,
-                        toDate
+                        toDate,
+                        folderId,
+                        rootOnly
                 ),
                 pageable
         ).map(this::toResponse);
+    }
+
+    // ─── Move Document to Folder ───────────────────────────────────────────────
+
+    /**
+     * Moves a document into a folder, or back to root when {@code folderId} is null.
+     *
+     * <p>Security rules enforced:
+     * <ul>
+     *   <li>Document must belong to {@code userId}.</li>
+     *   <li>Target folder (if non-null) must belong to {@code userId}.</li>
+     * </ul>
+     */
+    @Transactional
+    public DocumentResponse moveDocumentToFolder(Long documentId, Long userId, Long folderId) {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document not found with id: " + documentId));
+
+        if (document.getStatus() == DocumentStatus.DELETED) {
+            throw new RuntimeException("Cannot move a deleted document.");
+        }
+        if (!document.getUser().getId().equals(userId)) {
+            throw new RuntimeException("Document " + documentId + " does not belong to user " + userId);
+        }
+
+        Folder folder = null;
+        if (folderId != null) {
+            folder = folderRepository.findByIdAndUserId(folderId, userId)
+                    .orElseThrow(() -> new RuntimeException(
+                            "Folder not found or does not belong to user: " + folderId));
+        }
+
+        document.setFolder(folder);
+        document.setUpdatedAt(LocalDateTime.now());
+        Document saved = documentRepository.save(document);
+
+        log.info("[Document] Moved document id={} to folder id={} for userId={}",
+                documentId, folderId, userId);
+        return toResponse(saved);
     }
 
     // ─── Mapper ────────────────────────────────────────────────────────────────
@@ -322,6 +443,12 @@ public class DocumentService {
             builder.categoryName(document.getCategory().getName());
         }
 
+        // Folder info (null = root level)
+        if (document.getFolder() != null) {
+            builder.folderId(document.getFolder().getId());
+            builder.folderName(document.getFolder().getName());
+        }
+
         // File info
         if (document.getCloudFile() != null) {
             CloudFile cf = document.getCloudFile();
@@ -333,6 +460,15 @@ public class DocumentService {
             builder.fileSize(cf.getFileSize());
             builder.storageProvider(cf.getStorageProvider());
         }
+
+        // Provenance (shared-upload fields; null for direct uploads)
+        if (document.getSourceType() != null) {
+            builder.sourceType(document.getSourceType().name());
+        }
+        builder.sourceSubmissionId(document.getSourceSubmissionId());
+        builder.contributedByUserId(document.getContributedByUserId());
+        builder.contributedByName(document.getContributedByName());
+        builder.contributedByEmail(document.getContributedByEmail());
 
         return builder.build();
     }

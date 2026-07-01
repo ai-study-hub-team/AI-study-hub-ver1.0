@@ -87,6 +87,7 @@ public class FileStorageService {
 
         return uniqueFileName;
     }
+
     /**
      * Returns the MIME type of the file.
      * Falls back to extension-based detection if MultipartFile content type is unknown.
@@ -149,35 +150,118 @@ public class FileStorageService {
     public String getMimeTypeFromFileName(String fileName) {
         String ext = getExtension(fileName).toLowerCase();
 
-        return switch (ext) {
+        switch (ext) {
             // Documents
-            case "pdf" -> "application/pdf";
-            case "txt" -> "text/plain";
-            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-            case "ppt" -> "application/vnd.ms-powerpoint";
-            case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-            case "xls" -> "application/vnd.ms-excel";
-            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case "pdf":
+                return "application/pdf";
+            case "txt":
+                return "text/plain";
+            case "docx":
+                return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "ppt":
+                return "application/vnd.ms-powerpoint";
+            case "pptx":
+                return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            case "xls":
+                return "application/vnd.ms-excel";
+            case "xlsx":
+                return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
             // Images
-            case "png" -> "image/png";
-            case "jpg", "jpeg" -> "image/jpeg";
-            case "webp" -> "image/webp";
-            case "gif" -> "image/gif";
+            case "png":
+                return "image/png";
+            case "jpg":
+            case "jpeg":
+                return "image/jpeg";
+            case "webp":
+                return "image/webp";
+            case "gif":
+                return "image/gif";
 
             // Videos
-            case "mp4" -> "video/mp4";
-            case "mov" -> "video/quicktime";
-            case "avi" -> "video/x-msvideo";
-            case "mkv" -> "video/x-matroska";
+            case "mp4":
+                return "video/mp4";
+            case "mov":
+                return "video/quicktime";
+            case "avi":
+                return "video/x-msvideo";
+            case "mkv":
+                return "video/x-matroska";
 
             // Audio
-            case "mp3" -> "audio/mpeg";
-            case "wav" -> "audio/wav";
-            case "m4a" -> "audio/x-m4a";
-            case "ogg" -> "audio/ogg";
+            case "mp3":
+                return "audio/mpeg";
+            case "wav":
+                return "audio/wav";
+            case "m4a":
+                return "audio/x-m4a";
+            case "ogg":
+                return "audio/ogg";
 
-            default -> "application/octet-stream";
-        };
+            default:
+                return "application/octet-stream";
+        }
     }
-}
+
+    // ─── Shared Submission Storage ──────────────────────────────────────────────
+
+    /**
+     * Saves a file uploaded through a public share link into a dedicated
+     * {@code shared-submissions/} sub-directory, separate from normal uploads.
+     *
+     * @param file the multipart file from User B
+     * @return the stored unique file name (e.g. {@code "abc123.pdf"})
+     * @throws IOException if saving fails
+     */
+    public String saveSharedSubmissionFile(MultipartFile file) throws IOException {
+        String originalFileName = file.getOriginalFilename();
+        if (originalFileName == null || originalFileName.isBlank()) {
+            throw new IllegalArgumentException("File name must not be empty");
+        }
+        String extension = getExtension(originalFileName).toLowerCase();
+        if (!ALLOWED_EXTENSIONS.contains(extension)) {
+            throw new IllegalArgumentException("Unsupported file type: ." + extension);
+        }
+        Path submissionsDir = Paths.get(uploadDir, "shared-submissions");
+        if (!Files.exists(submissionsDir)) {
+            Files.createDirectories(submissionsDir);
+        }
+        String uniqueFileName = UUID.randomUUID().toString().replace("-", "") + "." + extension;
+        Path targetPath = submissionsDir.resolve(uniqueFileName);
+        Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+        return uniqueFileName;
+    }
+
+    /**
+     * Returns the relative stored path for a shared submission file.
+     * e.g. {@code "uploads/shared-submissions/abc123.pdf"}
+     */
+    public String getSharedSubmissionFilePath(String storedFileName) {
+        return uploadDir + "/shared-submissions/" + storedFileName;
+    }
+
+    /**
+     * Copies an approved shared-submission file into the main uploads directory
+     * so the normal AI processing pipeline can access it the same way as a direct upload.
+     *
+     * @param submissionFileName the UUID-based file name stored in shared-submissions/
+     * @return the new unique file name in the main uploads/ directory
+     * @throws IOException if copy fails
+     */
+    public String copySharedSubmissionToUploads(String submissionFileName) throws IOException {
+        Path src = Paths.get(uploadDir, "shared-submissions", submissionFileName).toAbsolutePath();
+        if (!Files.exists(src)) {
+            throw new RuntimeException("Shared submission file not found: " + src);
+        }
+        String extension = getExtension(submissionFileName);
+        String newFileName = UUID.randomUUID().toString().replace("-", "")
+                + (extension.isBlank() ? "" : "." + extension);
+        Path uploadPath = Paths.get(uploadDir);
+        if (!Files.exists(uploadPath)) {
+            Files.createDirectories(uploadPath);
+        }
+        Path dest = uploadPath.resolve(newFileName);
+        Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
+        return newFileName;
+    }
+}

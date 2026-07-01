@@ -30,6 +30,10 @@ public class DocumentResponse {
     private Long categoryId;
     private String categoryName;
 
+    // Folder info (null if document is at root)
+    private Long folderId;
+    private String folderName;
+
     // File metadata (null if no file attached)
     private Long cloudFileId;
     private String fileName;          // stored file name on disk
@@ -46,4 +50,11 @@ public class DocumentResponse {
     private LocalDateTime processedAt;
     private String processErrorMessage;
     private Integer chunkCount;
+
+    // Shared-upload provenance (null for direct uploads)
+    private String sourceType;          // "DIRECT_UPLOAD" or "SHARED_UPLOAD"
+    private Long sourceSubmissionId;
+    private Long contributedByUserId;
+    private String contributedByName;
+    private String contributedByEmail;
 }

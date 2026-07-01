@@ -35,6 +35,7 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final SubscriptionService subscriptionService;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -58,6 +59,8 @@ public class AuthService {
             // Handles concurrent registration attempts for the same email.
             throw new EmailAlreadyUsedException();
         }
+        
+        subscriptionService.assignFreePlan(user);
 
         return issueTokenPair(user);
     }

@@ -5,7 +5,6 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
-
 @Entity
 @Table(name = "document_chunks")
 @Getter
@@ -27,7 +26,7 @@ public class DocumentChunk {
     @Column(name = "chunk_index", nullable = false)
     private Integer chunkIndex;
 
-    @Column(name = "chunk_text", columnDefinition = "LONGTEXT", nullable = false)
+    @Column(name = "chunk_text", columnDefinition = "TEXT", nullable = false)
     private String chunkText;
 
     @Column(name = "char_start", nullable = false)

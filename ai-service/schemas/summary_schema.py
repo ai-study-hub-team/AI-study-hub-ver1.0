@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional
+from schemas.usage_schema import UsageResponse
 
 class SummaryChunk(BaseModel):
     chunkIndex: int
@@ -16,3 +17,4 @@ class SummaryRequest(BaseModel):
 
 class SummaryResponse(BaseModel):
     summaryText: str
+    usage: UsageResponse

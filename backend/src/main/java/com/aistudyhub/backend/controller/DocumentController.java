@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.request.DocumentRequest;
+import com.aistudyhub.backend.dto.request.MoveDocumentRequest;
 import com.aistudyhub.backend.dto.response.DocumentResponse;
 import com.aistudyhub.backend.dto.response.SemanticSearchResponse;
 import com.aistudyhub.backend.service.DocumentService;
@@ -57,7 +58,9 @@ public class DocumentController {
             @RequestParam(required = false) String fileType,
             @RequestParam(required = false) String tag,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(required = false) Long folderId,
+            @RequestParam(required = false) Boolean rootOnly) {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
 
@@ -72,6 +75,8 @@ public class DocumentController {
                 tag,
                 fromDateTime,
                 toDateTime,
+                folderId,
+                rootOnly,
                 pageable
         ));
     }
@@ -153,11 +158,12 @@ public class DocumentController {
             @RequestParam(value = "documentType",  required = false) String documentType,
             @RequestParam(value = "visibility",    required = false) String visibility,
             @RequestParam("userId")       Long userId,
-            @RequestParam(value = "categoryId",    required = false) Long categoryId) {
+            @RequestParam(value = "categoryId",    required = false) Long categoryId,
+            @RequestParam(value = "folderId",      required = false) Long folderId) {
 
         try {
             DocumentResponse response = documentService.uploadDocument(
-                    file, title, description, documentType, visibility, userId, categoryId
+                    file, title, description, documentType, visibility, userId, categoryId, folderId
             );
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
@@ -262,6 +268,17 @@ public class DocumentController {
                 toDateTime,
                 pageable
         ));
+    }
+
+    // ─── PATCH /api/documents/{id}/folder ────────────────────────────────────────
+    // Move a document into a folder, or back to root (folderId = null).
+    @PatchMapping("/{id}/folder")
+    public ResponseEntity<DocumentResponse> moveToFolder(
+            @PathVariable Long id,
+            @RequestBody MoveDocumentRequest request) {
+        DocumentResponse response = documentService.moveDocumentToFolder(
+                id, request.getUserId(), request.getFolderId());
+        return ResponseEntity.ok(response);
     }
 
 }
