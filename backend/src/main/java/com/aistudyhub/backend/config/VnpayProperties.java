@@ -16,4 +16,5 @@ public class VnpayProperties {
     private String returnUrl;
     private String version = "2.1.0";
     private String command = "pay";
+    private String apiUrl = "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction";
 }

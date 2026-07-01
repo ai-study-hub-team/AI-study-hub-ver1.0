@@ -24,6 +24,7 @@ public class TokenUsageService {
     private final TokenUsageLogRepository tokenUsageLogRepository;
 
     @Transactional(readOnly = true)
+    // so sánh token hằng ngày
     public void validateTokenQuota(Long userId) {
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
         Long dailyLimit = subscription.getPlan().getDailyTokenLimit();
@@ -37,6 +38,7 @@ public class TokenUsageService {
     }
 
     @Transactional
+    // ghi lại lịch sử token và tỏngo token
     public void recordUsage(User user, String featureType, String modelName, Long tokens, Long documentId, String requestId) {
         if (tokens == null || tokens <= 0) {
             return;

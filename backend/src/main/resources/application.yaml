@@ -15,7 +15,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/ai_study_hub_test?useSSL=false&serverTimezone=Asia/Ho_Chi_Minh&allowPublicKeyRetrieval=true
     username: root
-    password: Tt@123456
+    password: Tt@130605
 
   jpa:
     hibernate:
@@ -43,7 +43,8 @@ ai:
 
 payment:
   vnpay:
-    tmn-code: "CHANGE_ME"
-    hash-secret: "CHANGE_ME"
+    tmn-code: "T4HAJOXL"
+    hash-secret: "PK3LLYU09798QYZBW0Y3GCQPEQZ7HVZD"
     pay-url: "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"
     return-url: "http://localhost:8080/api/payments/vnpay-return"
+    api-url: "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction"

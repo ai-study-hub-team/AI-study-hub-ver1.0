@@ -22,6 +22,7 @@ public class SubscriptionService {
     private final SubscriptionPlanRepository subscriptionPlanRepository;
 
     @Transactional
+    // user đăng ký tài khoản auto freeplan
     public void assignFreePlan(User user) {
         SubscriptionPlan freePlan = subscriptionPlanRepository.findByCode("FREE")
                 .orElseThrow(() -> new RuntimeException("Critical: FREE plan not found in database"));
@@ -41,12 +42,14 @@ public class SubscriptionService {
     }
 
     @Transactional(readOnly = true)
+
     public UserSubscription getCurrentSubscription(Long userId) {
         return userSubscriptionRepository.findByUserId(userId)
                 .orElseThrow(() -> new RuntimeException("User subscription not found for user ID: " + userId));
     }
 
     @Transactional
+    //mua proplan
     public void processSuccessfulPayment(Long userId, String planCode, Integer purchasedDays) {
         SubscriptionPlan newPlan = subscriptionPlanRepository.findByCode(planCode)
                 .orElseThrow(() -> new RuntimeException("Plan not found: " + planCode));
@@ -70,6 +73,7 @@ public class SubscriptionService {
     }
 
     @Transactional
+    // check trạng thái hằng ngày xem hết gói chưa
     public void expireOverdueSubscriptions() {
         LocalDateTime now = LocalDateTime.now();
         var overdueSubscriptions = userSubscriptionRepository.findAllByStatusAndEndDateBefore(SubscriptionStatus.ACTIVE, now);

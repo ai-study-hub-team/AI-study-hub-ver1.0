@@ -121,7 +121,7 @@ def delete_document_vectors(document_id: int):
         logger.error(f"Failed to delete old vectors for document ID {document_id}: {e}")
         raise RuntimeError(f"Pinecone deletion error: {e}") from e
 
-def upsert_document_chunks(document_id: int, original_file_name: str, chunks: list, user_id: Optional[int] = None) -> dict:
+def upsert_document_chunks(document_id: int, original_file_name: str, chunks: list) -> dict:
     """
     Embed each chunk and upsert into Pinecone.
 
@@ -172,8 +172,7 @@ def upsert_document_chunks(document_id: int, original_file_name: str, chunks: li
                 "originalFileName": original_file_name,
                 "documentType": ext,
             }
-            if user_id is not None:
-                metadata["userId"] = user_id
+            
             # Add dynamic fields if present
             for field in ["sheetIndex", "sheetName", "rowStart", "rowEnd", "slideStart", "slideEnd", "slideType"]:
                 if field in chunk and chunk[field] is not None:

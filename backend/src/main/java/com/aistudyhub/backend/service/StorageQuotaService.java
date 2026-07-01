@@ -19,6 +19,7 @@ public class StorageQuotaService {
     private final DocumentRepository documentRepository;
 
     @Transactional(readOnly = true)
+    // check dung lượng theo gói
     public void validateStorageLimit(Long userId, Long newFileBytes) {
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
         SubscriptionPlan plan = subscription.getPlan();
@@ -34,6 +35,7 @@ public class StorageQuotaService {
     }
 
     @Transactional(readOnly = true)
+    // check size file theo gói
     public void validateFileSize(Long userId, Long newFileBytes) {
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
         SubscriptionPlan plan = subscription.getPlan();
@@ -48,6 +50,8 @@ public class StorageQuotaService {
     }
 
     @Transactional(readOnly = true)
+    // check video audio theo gói
+
     public void validateFileRestrictions(Long userId, String mimeType) {
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
         SubscriptionPlan plan = subscription.getPlan();

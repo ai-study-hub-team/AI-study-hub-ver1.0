@@ -14,7 +14,7 @@ public class SubscriptionScheduler {
     private final SubscriptionService subscriptionService;
 
     // Run every hour
-    @Scheduled(cron = "0 0 * * * *")
+    @Scheduled(cron = "0 0 0 * * *")
     public void checkOverdueSubscriptions() {
         log.info("Running scheduled task to check for overdue subscriptions...");
         subscriptionService.expireOverdueSubscriptions();

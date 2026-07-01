@@ -107,7 +107,7 @@ public class AdminPlanService {
         subscriptionPlanRepository.save(plan);
         log.info("Soft deleted (disabled) plan with id: {}", id);
     }
-
+ // trả về frontend
     private PlanResponse toResponse(SubscriptionPlan plan) {
         return PlanResponse.builder()
                 .id(plan.getId())

@@ -6,6 +6,8 @@ import com.aistudyhub.backend.dto.response.PaymentStatusResponse;
 import com.aistudyhub.backend.dto.response.VnpayCreateResponse;
 import com.aistudyhub.backend.service.PaymentService;
 import com.aistudyhub.backend.service.VnpayService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +20,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/payments")
 @RequiredArgsConstructor
+@SecurityRequirement(name = "bearerAuth")
 public class PaymentController {
 
     private final VnpayService vnpayService;
@@ -26,10 +29,11 @@ public class PaymentController {
     @PostMapping("/vnpay/create")
     public ResponseEntity<VnpayCreateResponse> createPayment(
             Authentication authentication,
-            @Valid @RequestBody VnpayCreateRequest request) {
+            @Valid @RequestBody VnpayCreateRequest request,
+            HttpServletRequest httpRequest) {
         
         Long userId = (Long) authentication.getDetails();
-        String paymentUrl = vnpayService.createPaymentUrl(userId, request.getPlanCode());
+        String paymentUrl = vnpayService.createPaymentUrl(userId, request.getPlanCode(), httpRequest);
         
         // Extract order code from URL or return a standard response
         // For simplicity, we just return the URL, the frontend redirects to it.
