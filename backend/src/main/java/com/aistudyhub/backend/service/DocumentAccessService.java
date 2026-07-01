@@ -3,6 +3,7 @@ package com.aistudyhub.backend.service;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentStatus;
 import com.aistudyhub.backend.entity.User;
+import com.aistudyhub.backend.entity.DocumentSharePermission;
 import com.aistudyhub.backend.enums.UserRole;
 import com.aistudyhub.backend.exception.ForbiddenException;
 import com.aistudyhub.backend.repository.DocumentRepository;
@@ -103,4 +104,7 @@ public class DocumentAccessService {
 
         return document;
     }
+
+
+
 }

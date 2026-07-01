@@ -13,9 +13,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class SummaryGenerateRequest {
 
-    @NotNull(message = "userId is required")
-    private Long userId;
-
     @NotNull(message = "documentId is required")
     private Long documentId;
 

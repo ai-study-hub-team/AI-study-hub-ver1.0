@@ -17,6 +17,4 @@ public class CategoryRequest {
 
     private String description;
 
-    @NotNull(message = "userId is required")
-    private Long userId;
 }

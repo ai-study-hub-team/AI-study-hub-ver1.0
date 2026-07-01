@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.repository;
 
 import com.aistudyhub.backend.entity.DocumentShare;
+import com.aistudyhub.backend.entity.DocumentSharePermission;
 import com.aistudyhub.backend.entity.DocumentShareStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -56,4 +57,20 @@ public interface DocumentShareRepository extends JpaRepository<DocumentShare, Lo
             @Param("documentId") Long documentId,
             @Param("userId") Long userId
     );
+
+    @Query("""
+        select count(ds) > 0
+        from DocumentShare ds
+        where ds.document.id = :documentId
+          and ds.sharedWith.id = :userId
+          and ds.status = com.aistudyhub.backend.entity.DocumentShareStatus.ACTIVE
+          and ds.permission = :permission
+          and (ds.expiresAt is null or ds.expiresAt > CURRENT_TIMESTAMP)
+        """)
+    boolean hasActiveNonExpiredShareWithPermission(
+            @Param("documentId") Long documentId,
+            @Param("userId") Long userId,
+            @Param("permission") DocumentSharePermission permission
+    );
+
 }
