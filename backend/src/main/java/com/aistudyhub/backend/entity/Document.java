@@ -68,4 +68,39 @@ public class Document {
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "cloud_file_id", referencedColumnName = "id")
     private CloudFile cloudFile;
+
+    /**
+     * The folder this document belongs to.
+     * {@code null} means the document is at root level (no folder).
+     * Folder is pure metadata — does not affect AI processing.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "folder_id")
+    private Folder folder;
+
+    // ─── Shared-upload provenance ────────────────────────────────────────────
+
+    /**
+     * How this document was created.
+     * DIRECT_UPLOAD = owner uploaded it themselves (default).
+     * SHARED_UPLOAD = created from an approved SharedDocumentSubmission.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    @Builder.Default
+    private DocumentSourceType sourceType = DocumentSourceType.DIRECT_UPLOAD;
+
+    /** ID of the SharedDocumentSubmission that was approved to create this document. Null for direct uploads. */
+    private Long sourceSubmissionId;
+
+    /** User ID of the person who submitted the file via the shared link (User B). Null for direct uploads. */
+    private Long contributedByUserId;
+
+    /** Display name provided by the submitter (User B). */
+    @Column(length = 255)
+    private String contributedByName;
+
+    /** Email provided by the submitter (User B). */
+    @Column(length = 254)
+    private String contributedByEmail;
 }

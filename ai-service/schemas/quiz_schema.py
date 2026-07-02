@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional
+from schemas.usage_schema import UsageResponse
 
 class QuizChunk(BaseModel):
     chunkIndex: int
@@ -28,3 +29,4 @@ class QuizQuestion(BaseModel):
 class QuizResponse(BaseModel):
     title: str
     questions: List[QuizQuestion]
+    usage: UsageResponse

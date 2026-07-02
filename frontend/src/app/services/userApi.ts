@@ -1,5 +1,18 @@
 import { apiClient } from "./apiClient";
 
+apiClient.interceptors.request.use((config) => {
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("jwt");
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  return config;
+});
+
 export interface UserResponse {
   id: number;
   fullName: string;

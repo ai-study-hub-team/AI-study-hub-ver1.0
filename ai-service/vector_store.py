@@ -172,6 +172,7 @@ def upsert_document_chunks(document_id: int, original_file_name: str, chunks: li
                 "originalFileName": original_file_name,
                 "documentType": ext,
             }
+            
             # Add dynamic fields if present
             for field in ["sheetIndex", "sheetName", "rowStart", "rowEnd", "slideStart", "slideEnd", "slideType"]:
                 if field in chunk and chunk[field] is not None:

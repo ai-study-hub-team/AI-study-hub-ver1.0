@@ -7,6 +7,7 @@ Field names match exactly what Spring Boot's PythonChatResponse expects.
 
 from pydantic import BaseModel, field_validator
 from typing import List
+from schemas.usage_schema import UsageResponse
 
 
 # ─── Request Models ───────────────────────────────────────────────────────────
@@ -54,3 +55,4 @@ class CitationResponse(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     citations: List[CitationResponse]
+    usage: UsageResponse

@@ -1,0 +1,25 @@
+package com.aistudyhub.backend.repository;
+
+import com.aistudyhub.backend.entity.DocumentShareLink;
+import com.aistudyhub.backend.entity.DocumentShareStatus;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface DocumentShareLinkRepository extends JpaRepository<DocumentShareLink, Long> {
+
+    /** Look up a link by its hashed token — used to validate public URLs. */
+    Optional<DocumentShareLink> findByTokenHash(String tokenHash);
+
+    /** All share links created by a user (any status). */
+    List<DocumentShareLink> findByOwnerIdOrderByCreatedAtDesc(Long ownerId);
+
+    /** Active links only for a given user. */
+    List<DocumentShareLink> findByOwnerIdAndStatus(Long ownerId, DocumentShareStatus status);
+
+    /** Ownership check: find a specific link that belongs to a user. */
+    Optional<DocumentShareLink> findByIdAndOwnerId(Long id, Long ownerId);
+}

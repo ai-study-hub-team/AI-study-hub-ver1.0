@@ -13,8 +13,8 @@ spring:
     name: backend
 
   datasource:
-    url: jdbc:mysql://localhost:3306/ai_study_hub_test?useSSL=false&serverTimezone=Asia/Ho_Chi_Minh&allowPublicKeyRetrieval=true
-    username: root
+    url: jdbc:postgresql://localhost:5433/aistudyhub_pgvector_test
+    username: postgres
     password: 123456
 
   jpa:
@@ -36,7 +36,25 @@ spring:
 app:
   upload:
     dir: uploads   # Files will be saved to a folder named "uploads" in the project root
+# ── Frontend URL (used to build share links returned to User A) ──────────────
+  frontend:
+    base-url: http://localhost:5173
 
 ai:
   service:
     base-url: http://localhost:8000
+
+# ── Vector store configuration ─────────────────────────────────────────────────
+# Options: "pgvector" or "pinecone"
+# When "pgvector", semantic search queries pgvector directly from Spring Boot.
+# When "pinecone", semantic search goes through Python AI service (legacy).
+vector:
+  store: pgvector
+
+payment:
+  vnpay:
+    tmn-code: "T4HAJOXL"
+    hash-secret: "PK3LLYU09798QYZBW0Y3GCQPEQZ7HVZD"
+    pay-url: "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"
+    return-url: "http://localhost:8080/api/payments/vnpay-return"
+    api-url: "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction"
