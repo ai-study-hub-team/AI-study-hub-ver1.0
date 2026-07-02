@@ -1,7 +1,7 @@
 package com.aistudyhub.backend.controller;
 
-import com.aistudyhub.backend.dto.request.ShareDocumentRequest;
-import com.aistudyhub.backend.dto.response.ShareDocumentResponse;
+import com.aistudyhub.backend.dto.request.ShareRequest;
+import com.aistudyhub.backend.dto.response.ShareResultResponse;
 import com.aistudyhub.backend.dto.response.SharedUserResponse;
 import com.aistudyhub.backend.service.DocumentShareService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -22,36 +22,27 @@ public class DocumentShareController {
 
     private final DocumentShareService documentShareService;
 
-    @RequestMapping(method = RequestMethod.POST, path = {"", "/users"})
-    public ResponseEntity<ShareDocumentResponse> shareToUsers(
+    @PostMapping
+    public ResponseEntity<ShareResultResponse> shareToUsers(
             @PathVariable Long documentId,
-            @Valid @RequestBody ShareDocumentRequest request
+            @Valid @RequestBody ShareRequest request
     ) {
         return ResponseEntity.ok(documentShareService.shareDocumentToUsers(documentId, request));
     }
 
-    @RequestMapping(method = RequestMethod.GET, path = {"", "/users"})
+    @GetMapping
     public ResponseEntity<List<SharedUserResponse>> getSharedUsers(
             @PathVariable Long documentId
     ) {
         return ResponseEntity.ok(documentShareService.getSharedUsers(documentId));
     }
 
-    @PatchMapping("/{shareId}/revoke")
-    public ResponseEntity<Void> revokeShareById(
+    @DeleteMapping("/{targetUserId}")
+    public ResponseEntity<Void> revokeShare(
             @PathVariable Long documentId,
-            @PathVariable Long shareId
+            @PathVariable Long targetUserId
     ) {
-        documentShareService.revokeShareById(documentId, shareId);
-        return ResponseEntity.noContent().build();
-    }
-
-    @DeleteMapping("/users/{userId}")
-    public ResponseEntity<Void> revokeShareByUserId(
-            @PathVariable Long documentId,
-            @PathVariable Long userId
-    ) {
-        documentShareService.revokeShare(documentId, userId);
+        documentShareService.revokeShare(documentId, targetUserId);
         return ResponseEntity.noContent().build();
     }
 }

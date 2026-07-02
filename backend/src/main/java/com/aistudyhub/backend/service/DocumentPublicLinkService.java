@@ -12,6 +12,7 @@ import com.aistudyhub.backend.entity.DocumentStatus;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.exception.BadRequestException;
 import com.aistudyhub.backend.exception.ForbiddenException;
+import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.DocumentPublicLinkRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import lombok.RequiredArgsConstructor;
@@ -97,30 +98,28 @@ public class DocumentPublicLinkService {
     @Transactional
     public PublicDocumentResponse getPublicDocumentByToken(String token) {
         if (token == null || token.isBlank()) {
-            throw new RuntimeException(PUBLIC_DOCUMENT_NOT_FOUND);
+            throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
         }
 
         DocumentPublicLink publicLink = documentPublicLinkRepository
                 .findByToken(token.trim())
-                .orElseThrow(() -> new RuntimeException(PUBLIC_DOCUMENT_NOT_FOUND));
+                .orElseThrow(() -> new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND));
 
         if (!Boolean.TRUE.equals(publicLink.getIsActive())) {
-            throw new RuntimeException(PUBLIC_DOCUMENT_NOT_FOUND);
+            throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
         }
 
         if (isExpired(publicLink.getExpiresAt())) {
-            throw new RuntimeException(PUBLIC_DOCUMENT_NOT_FOUND);
+            throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
         }
 
         Document document = publicLink.getDocument();
 
         if (document == null || document.getStatus() != DocumentStatus.ACTIVE) {
-            throw new RuntimeException(PUBLIC_DOCUMENT_NOT_FOUND);
+            throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
         }
 
-        Long currentViewCount = publicLink.getViewCount() != null
-                ? publicLink.getViewCount()
-                : 0L;
+        Long currentViewCount = publicLink.getViewCount() != null ? publicLink.getViewCount() : 0L;
         publicLink.setViewCount(currentViewCount + 1);
         documentPublicLinkRepository.save(publicLink);
 
@@ -134,6 +133,7 @@ public class DocumentPublicLinkService {
                 .allowDownload(Boolean.TRUE.equals(publicLink.getAllowDownload()))
                 .build();
     }
+
 
     private Document getActiveDocument(Long documentId) {
         Document document = documentRepository.findById(documentId)

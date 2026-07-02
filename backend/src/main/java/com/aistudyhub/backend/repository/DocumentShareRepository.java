@@ -16,14 +16,6 @@ import java.util.Optional;
 @Repository
 public interface DocumentShareRepository extends JpaRepository<DocumentShare, Long> {
 
-    boolean existsByDocumentIdAndSharedWithId(Long documentId, Long sharedWithUserId);
-
-    boolean existsByDocumentIdAndSharedWithIdAndStatus(
-            Long documentId,
-            Long sharedWithUserId,
-            DocumentShareStatus status
-    );
-
     Optional<DocumentShare> findByDocumentIdAndSharedWithId(
             Long documentId,
             Long sharedWithUserId
@@ -34,17 +26,6 @@ public interface DocumentShareRepository extends JpaRepository<DocumentShare, Lo
             DocumentShareStatus status
     );
 
-    @Modifying
-    @Query("""
-            update DocumentShare s
-            set s.status = com.aistudyhub.backend.entity.DocumentShareStatus.REVOKED
-            where s.document.id = :documentId
-              and s.sharedWith.id = :userId
-            """)
-    int revokeByDocumentIdAndUserId(
-            @Param("documentId") Long documentId,
-            @Param("userId") Long userId
-    );
 
     @Query("""
             select case when count(s) > 0 then true else false end
@@ -74,22 +55,19 @@ public interface DocumentShareRepository extends JpaRepository<DocumentShare, Lo
             @Param("permission") DocumentSharePermission permission
     );
 
-    Optional<DocumentShare> findByIdAndDocumentId(Long id, Long documentId);
-
     @Query("""
-        select ds
-        from DocumentShare ds
-        join fetch ds.document d
-        join fetch ds.owner o
-        where ds.sharedWith.id = :userId
-          and ds.status = com.aistudyhub.backend.entity.DocumentShareStatus.ACTIVE
-          and (ds.expiresAt is null or ds.expiresAt > :now)
-          and d.status = com.aistudyhub.backend.entity.DocumentStatus.ACTIVE
-        order by ds.createdAt desc
-        """)
+    select ds
+    from DocumentShare ds
+    join fetch ds.document d
+    join fetch ds.owner o
+    where ds.sharedWith.id = :userId
+      and ds.status = com.aistudyhub.backend.entity.DocumentShareStatus.ACTIVE
+      and (ds.expiresAt is null or ds.expiresAt > :now)
+      and d.status = com.aistudyhub.backend.entity.DocumentStatus.ACTIVE
+    order by ds.createdAt desc
+    """)
     List<DocumentShare> findActiveNonExpiredBySharedWithUserId(
             @Param("userId") Long userId,
             @Param("now") LocalDateTime now
     );
-
 }

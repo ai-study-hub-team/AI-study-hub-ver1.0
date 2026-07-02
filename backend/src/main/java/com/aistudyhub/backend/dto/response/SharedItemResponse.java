@@ -11,10 +11,9 @@ import java.time.LocalDateTime;
 @Builder
 public class SharedItemResponse {
     private Long shareId;
-    private Long resourceId;
-    private String resourceType;
+    private Long itemId;
+    private String itemType;
     private String title;
-    private String name;
     private Long ownerId;
     private String ownerName;
     private String ownerEmail;

@@ -11,8 +11,6 @@ public interface DocumentPublicLinkRepository extends JpaRepository<DocumentPubl
 
     Optional<DocumentPublicLink> findByToken(String token);
 
-    Optional<DocumentPublicLink> findByDocumentIdAndIsActiveTrue(Long documentId);
-
     Optional<DocumentPublicLink> findByDocumentId(Long documentId);
 
     boolean existsByToken(String token);

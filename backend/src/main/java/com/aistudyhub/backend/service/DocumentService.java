@@ -2,6 +2,7 @@ package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.dto.request.DocumentRequest;
 import com.aistudyhub.backend.dto.response.DocumentResponse;
+import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.specification.DocumentSpecification;
 import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.repository.CategoryRepository;
@@ -95,7 +96,6 @@ public class DocumentService {
      * @param description short description
      * @param documentType type label (e.g. "LECTURE", "EXERCISE") — stored in tags for now
      * @param visibility  visibility label (e.g. "PUBLIC", "PRIVATE") — stored in tags for now
-     * @param userId      owner's user ID
      * @param categoryId  optional category ID
      */
     public DocumentResponse uploadDocument(
@@ -104,16 +104,16 @@ public class DocumentService {
             String description,
             String documentType,
             String visibility,
-            Long userId,
             Long categoryId,
-            Long folderId) throws IOException {
+            Long folderId
+    ) throws IOException {
 
-        log.info("Upload received — title='{}', originalName='{}', userId={}, categoryId={}, folderId={}",
-                title, file.getOriginalFilename(), userId, categoryId, folderId);
+        log.info("Upload received — title='{}', originalName='{}', categoryId={}, folderId={}",
+                title, file.getOriginalFilename(), categoryId, folderId);
 
         // 1. Validate user
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+        User user = currentUserService.getCurrentUser();
+        Long userId = user.getId();
 
         // 2. Validate category (optional)
         Category category = null;
@@ -126,8 +126,7 @@ public class DocumentService {
         Folder folder = null;
         if (folderId != null) {
             folder = folderRepository.findByIdAndUserId(folderId, userId)
-                    .orElseThrow(() -> new RuntimeException(
-                            "Folder not found or does not belong to user: " + folderId));
+                    .orElseThrow(() -> new NotFoundException("Folder not found"));
         }
 
         // 3. Save the file to the local "uploads/" directory
@@ -202,8 +201,7 @@ public class DocumentService {
     // ─── Update ────────────────────────────────────────────────────────────────
 
     public DocumentResponse update(Long id, DocumentRequest request) {
-        Document document = documentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + id));
+        Document document = documentAccessService.getOwnedActiveDocument(id);
 
         if (document.getStatus() == DocumentStatus.DELETED) {
             throw new RuntimeException("Cannot update a deleted document");
@@ -236,9 +234,7 @@ public class DocumentService {
     // ─── Soft Delete ───────────────────────────────────────────────────────────
 
     public void delete(Long id) {
-        Document document = documentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + id));
-
+        Document document = documentAccessService.getOwnedActiveDocument(id);
         // Soft delete: change status to DELETED instead of removing from DB
         document.setStatus(DocumentStatus.DELETED);
         document.setUpdatedAt(LocalDateTime.now());
@@ -259,8 +255,7 @@ public class DocumentService {
      * left stuck on {@code PROCESSING}.</p>
      */
     public DocumentResponse reprocessDocument(Long id) {
-        Document document = documentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + id));
+        Document document = documentAccessService.getOwnedActiveDocument(id);
 
         if (document.getStatus() == DocumentStatus.DELETED) {
             throw new RuntimeException("Cannot reprocess a deleted document");
