@@ -21,6 +21,8 @@ public interface DocumentRepository extends JpaRepository<Document, Long>, JpaSp
     // Get all ACTIVE documents for a user
     List<Document> findByUser_IdAndStatus(Long userId, DocumentStatus status);
 
+    List<Document> findByFolderIdAndStatus(Long folderId, DocumentStatus status);
+
     // Calculate total storage used by a user for ACTIVE documents
     @Query("SELECT COALESCE(SUM(c.fileSize), 0) FROM Document d JOIN d.cloudFile c WHERE d.user.id = :userId AND d.status = com.aistudyhub.backend.entity.DocumentStatus.ACTIVE")
     Long calculateTotalStorageUsedByUserId(@Param("userId") Long userId);
