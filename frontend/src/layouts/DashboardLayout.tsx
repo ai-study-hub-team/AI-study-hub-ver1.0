@@ -23,6 +23,7 @@ import {
   Folder,
   Trash2,
   Tags,
+  Share2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
@@ -162,6 +163,7 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
     { to: "/app/categories", icon: Tags, label: "Categories" },
     { to: "/app/upload", icon: UploadCloud, label: "Upload" },
     { to: "/app/trash", icon: Trash2, label: "Trash" },
+    { to: "/app/shares", icon: Share2, label: "Shares" },
     { to: "/app/chat", icon: MessageSquare, label: "AI Chat" },
     { to: "/app/summary", icon: FileSearch, label: "AI Summary" },
     { to: "/app/quiz", icon: Puzzle, label: "Quiz Generator" },

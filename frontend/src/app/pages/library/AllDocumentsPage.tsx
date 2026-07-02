@@ -12,6 +12,7 @@ import {
   Eye,
   Pencil,
   Save,
+  Share2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -22,6 +23,7 @@ import { getCurrentUserId } from "../../services/apiClient";
 import type { AiStatus } from "../../constants/documentStatus";
 import { useTheme } from "../../../layouts/ThemeProvider";
 import { filterMyDocuments } from "../../utils/documentOwnership";
+import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 
 interface LibraryDocument {
   id: number;
@@ -49,10 +51,10 @@ const statusBadgeClass: Record<AiStatus, string> = {
 };
 
 const documentListGridClass =
-  "grid grid-cols-[320px_150px_150px_120px_150px_150px_220px] items-center";
+  "grid grid-cols-[320px_150px_150px_120px_150px_150px_260px] items-center";
 
 const actionIconButtonClass =
-  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300";
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-300";
 
 const deleteIconButtonClass =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
@@ -85,6 +87,8 @@ function DocumentRow({
   onDelete,
   onReprocess,
   onDownload,
+  onShare,
+  sharingDocumentId,
   onViewFile,
   onEdit,
 }: {
@@ -93,6 +97,8 @@ function DocumentRow({
   onDelete: (documentId: number) => void;
   onReprocess: (documentId: number) => void;
   onDownload: (documentId: number, fileName: string) => void;
+  onShare: (documentId: number) => void | Promise<void>;
+  sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
   onEdit: (document: LibraryDocument) => void;
 }) {
@@ -137,7 +143,7 @@ function DocumentRow({
         {document.aiStatus}
       </span>
 
-      <div className="flex min-w-[220px] items-center justify-end gap-1">
+      <div className="flex min-w-[260px] items-center justify-end gap-1">
         <button
           onClick={() => onToggleFavorite(document.id)}
           className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
@@ -174,6 +180,21 @@ function DocumentRow({
         </button>
 
         <button
+          type="button"
+          onClick={() => onShare(document.id)}
+          disabled={sharingDocumentId === document.id}
+          className={actionIconButtonClass}
+          title="Share document"
+          aria-label="Share document"
+        >
+          <Share2
+            className={`h-4 w-4 ${
+              sharingDocumentId === document.id ? "animate-pulse" : ""
+            }`}
+          />
+        </button>
+
+        <button
           onClick={() => onReprocess(document.id)}
           className={actionIconButtonClass}
           title="Reprocess"
@@ -199,6 +220,8 @@ function DocumentCard({
   onDelete,
   onReprocess,
   onDownload,
+  onShare,
+  sharingDocumentId,
   onViewFile,
   onEdit,
 }: {
@@ -207,6 +230,8 @@ function DocumentCard({
   onDelete: (documentId: number) => void;
   onReprocess: (documentId: number) => void;
   onDownload: (documentId: number, fileName: string) => void;
+  onShare: (documentId: number) => void | Promise<void>;
+  sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
   onEdit: (document: LibraryDocument) => void;
 }) {
@@ -297,9 +322,25 @@ function DocumentCard({
 
         <button
           onClick={() => onDownload(document.id, document.name)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+          className={actionIconButtonClass}
+          title="Download"
         >
           <Download className="h-4 w-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onShare(document.id)}
+          disabled={sharingDocumentId === document.id}
+          className={actionIconButtonClass}
+          title="Share document"
+          aria-label="Share document"
+        >
+          <Share2
+            className={`h-4 w-4 ${
+              sharingDocumentId === document.id ? "animate-pulse" : ""
+            }`}
+          />
         </button>
 
         <button
@@ -343,6 +384,8 @@ export function AllDocumentsPage() {
   const [editingDocument, setEditingDocument] =
     useState<LibraryDocument | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const { createAndCopyPublicLink, loadingDocumentId } =
+    useCreatePublicLink();
 
   const loadDocuments = async () => {
     try {
@@ -538,7 +581,7 @@ export function AllDocumentsPage() {
 
       {viewMode === "list" ? (
         <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="min-w-[1260px]">
+          <div className="min-w-[1300px]">
             <div
               className={`${documentListGridClass} border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60`}
             >
@@ -566,6 +609,8 @@ export function AllDocumentsPage() {
                   onDelete={setDeleteId}
                   onReprocess={handleReprocess}
                   onDownload={handleDownload}
+                  onShare={createAndCopyPublicLink}
+                  sharingDocumentId={loadingDocumentId}
                   onViewFile={handleViewFile}
                   onEdit={handleOpenEdit}
                 />
@@ -593,6 +638,8 @@ export function AllDocumentsPage() {
                   onDelete={setDeleteId}
                   onReprocess={handleReprocess}
                   onDownload={handleDownload}
+                  onShare={createAndCopyPublicLink}
+                  sharingDocumentId={loadingDocumentId}
                   onViewFile={handleViewFile}
                   onEdit={handleOpenEdit}
                 />

@@ -7,6 +7,7 @@ import {
   Sparkles,
   RotateCcw,
   Medal,
+  Share2,
   TrendingUp,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -21,6 +22,7 @@ import {
   getQuizByIdApi,
 } from "../../services/aiApi";
 import { getCurrentUserId } from "../../services/apiClient";
+import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 
 type View = "setup" | "quiz" | "result" | "history" | "leaderboard" | "review";
 
@@ -76,6 +78,8 @@ export function QuizGeneratorPage() {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [quizHistoryData, setQuizHistoryData] = useState<any[]>([]);
+  const { createAndCopyPublicLink, loadingDocumentId } =
+    useCreatePublicLink();
 
   const visibleDocuments = showAllDocuments
     ? documents
@@ -449,7 +453,7 @@ export function QuizGeneratorPage() {
 
                             {processStatus && (
                               <span
-                                className={`ml-auto text-[11px] font-bold ${
+                                className={`text-[11px] font-bold ${
                                   isProcessed
                                     ? "text-emerald-600"
                                     : "text-amber-600"
@@ -458,6 +462,27 @@ export function QuizGeneratorPage() {
                                 {processStatus}
                               </span>
                             )}
+
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                createAndCopyPublicLink(doc.id);
+                              }}
+                              disabled={loadingDocumentId === doc.id}
+                              className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-300"
+                              title="Share document"
+                              aria-label="Share document"
+                            >
+                              <Share2
+                                className={`h-4 w-4 ${
+                                  loadingDocumentId === doc.id
+                                    ? "animate-pulse"
+                                    : ""
+                                }`}
+                              />
+                            </button>
                           </label>
                         );
                       })}

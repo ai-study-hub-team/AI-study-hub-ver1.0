@@ -17,6 +17,7 @@ import {
   RotateCcw,
   Trash2,
   Download,
+  Share2,
   Upload,
   Eye,
   Pencil,
@@ -37,6 +38,7 @@ import { folderApi } from "../../services/folderApi";
 import { getCurrentUserId } from "../../services/apiClient";
 import type { AiStatus } from "../../constants/documentStatus";
 import { filterMyDocuments } from "../../utils/documentOwnership";
+import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 
 interface LibraryDocument {
   id: number;
@@ -284,6 +286,8 @@ function DocumentRow({
   onDelete,
   onReprocess,
   onDownload,
+  onShare,
+  sharingDocumentId,
   onViewFile,
   onEdit,
 }: {
@@ -292,6 +296,8 @@ function DocumentRow({
   onDelete: (documentId: number) => void;
   onReprocess: (documentId: number) => void;
   onDownload: (documentId: number, fileName: string) => void;
+  onShare: (documentId: number) => void | Promise<void>;
+  sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
   onEdit: (document: LibraryDocument) => void;
 }) {
@@ -299,7 +305,7 @@ function DocumentRow({
   const extension = getFileExtension(document);
 
   return (
-    <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_220px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70">
+    <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_260px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
           <FileIcon className="h-5 w-5" />
@@ -339,7 +345,7 @@ function DocumentRow({
       >
         {document.aiStatus}
       </span>
-      <div className="flex min-w-[220px] items-center justify-end gap-1">
+      <div className="flex min-w-[260px] items-center justify-end gap-1">
         <button
           onClick={() => onToggleFavorite(document.id)}
           className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
@@ -374,6 +380,21 @@ function DocumentRow({
           title="Download"
         >
           <Download className="h-4 w-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onShare(document.id)}
+          disabled={sharingDocumentId === document.id}
+          className={actionIconButtonClass}
+          title="Share document"
+          aria-label="Share document"
+        >
+          <Share2
+            className={`h-4 w-4 ${
+              sharingDocumentId === document.id ? "animate-pulse" : ""
+            }`}
+          />
         </button>
 
         <button
@@ -419,6 +440,8 @@ export function MyLibrary() {
   const [editCategoryName, setEditCategoryName] = useState("");
   const [editCategoryDescription, setEditCategoryDescription] = useState("");
   const [deleteCategoryId, setDeleteCategoryId] = useState<number | null>(null);
+  const { createAndCopyPublicLink, loadingDocumentId } =
+    useCreatePublicLink();
   const [editingFolder, setEditingFolder] = useState<LibraryFolder | null>(null);
   const [editFolderName, setEditFolderName] = useState("");
   const [editFolderDescription, setEditFolderDescription] = useState("");
@@ -1295,6 +1318,23 @@ export function MyLibrary() {
                       </button>
 
                       <button
+                        type="button"
+                        onClick={() => createAndCopyPublicLink(document.id)}
+                        disabled={loadingDocumentId === document.id}
+                        className={actionIconButtonClass}
+                        title="Share document"
+                        aria-label="Share document"
+                      >
+                        <Share2
+                          className={`h-4 w-4 ${
+                            loadingDocumentId === document.id
+                              ? "animate-pulse"
+                              : ""
+                          }`}
+                        />
+                      </button>
+
+                      <button
                         onClick={() => handleReprocess(document.id)}
                         className={actionIconButtonClass}
                         title="Reprocess"
@@ -1345,8 +1385,8 @@ export function MyLibrary() {
           </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="min-w-[1420px]">
-              <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_220px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60">
+            <div className="min-w-[1460px]">
+              <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_260px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60">
                 <div>Document Name</div>
                 <div>Category</div>
                 <div>Folder</div>
@@ -1366,6 +1406,8 @@ export function MyLibrary() {
                     onDelete={setDeleteId}
                     onReprocess={handleReprocess}
                     onDownload={handleDownload}
+                    onShare={createAndCopyPublicLink}
+                    sharingDocumentId={loadingDocumentId}
                     onViewFile={handleViewFile}
                     onEdit={handleOpenEdit}
                   />
