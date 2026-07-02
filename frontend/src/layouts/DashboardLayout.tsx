@@ -22,6 +22,7 @@ import {
   UploadCloud,
   Folder,
   Trash2,
+  Tags,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
@@ -71,7 +72,9 @@ const getRoleFromToken = (): string | null => {
       authorities?: string[];
     };
 
-    return payload.role || payload.roles?.[0] || payload.authorities?.[0] || null;
+    return (
+      payload.role || payload.roles?.[0] || payload.authorities?.[0] || null
+    );
   } catch {
     return null;
   }
@@ -154,9 +157,10 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
 
   const studentLinks = [
     { to: "/app/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-    { to: "/app/categories", icon: Folder, label: "Categories" },
-    { to: "/app/upload", icon: UploadCloud, label: "Upload" },
     { to: "/app/library", icon: Library, label: "My Library" },
+    { to: "/app/folders", icon: Folder, label: "Folders" },
+    { to: "/app/categories", icon: Tags, label: "Categories" },
+    { to: "/app/upload", icon: UploadCloud, label: "Upload" },
     { to: "/app/trash", icon: Trash2, label: "Trash" },
     { to: "/app/chat", icon: MessageSquare, label: "AI Chat" },
     { to: "/app/summary", icon: FileSearch, label: "AI Summary" },

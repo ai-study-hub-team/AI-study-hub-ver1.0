@@ -3,6 +3,7 @@ import {
   Search,
   Grid,
   List,
+  Folder,
   FolderPlus,
   FileText,
   ChevronDown,
@@ -32,13 +33,17 @@ import { favoriteApi, type FavoriteDocument } from "../../services/favoriteApi";
 
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { documentApi } from "../../services/documentApi";
+import { folderApi } from "../../services/folderApi";
 import { getCurrentUserId } from "../../services/apiClient";
 import type { AiStatus } from "../../constants/documentStatus";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 
 interface LibraryDocument {
   id: number;
-  categoryId: number;
+  categoryId: number | null;
+  categoryName: string;
+  folderId: number | null;
+  folderName: string;
   name: string;
   folder: string;
   date: string;
@@ -57,6 +62,19 @@ interface LibraryCategory {
   userId: number;
   count: number;
   color: string;
+}
+
+interface LibraryFolder {
+  id: number;
+  name: string;
+  description: string;
+  userId: number;
+  parentFolderId: number | null;
+  parentFolderName: string | null;
+  documentCount: number;
+  childFolderCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 const categoryColors = ["blue", "emerald", "purple", "amber"];
@@ -123,11 +141,13 @@ function CategoryCard({
   onClick,
   onEdit,
   onDelete,
+  allowActions = true,
 }: {
   category: LibraryCategory;
   onClick: () => void;
   onEdit: (category: LibraryCategory) => void;
   onDelete: (categoryId: number) => void;
+  allowActions?: boolean;
 }) {
   return (
     <motion.div
@@ -153,24 +173,101 @@ function CategoryCard({
       </div>
 
       <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        {allowActions && (
+          <>
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit(category);
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30 dark:hover:text-blue-300"
+              title="Edit category"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete(category.id);
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-red-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+              title="Delete category"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </>
+        )}
+
+        <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600" />
+      </div>
+    </motion.div>
+  );
+}
+
+
+function FolderCard({
+  folder,
+  isActive,
+  onClick,
+  onEdit,
+  onDelete,
+}: {
+  folder: LibraryFolder;
+  isActive: boolean;
+  onClick: () => void;
+  onEdit: (folder: LibraryFolder) => void;
+  onDelete: (folderId: number) => void;
+}) {
+  return (
+    <motion.div
+      whileHover={{ y: -3 }}
+      onClick={onClick}
+      className={`group flex cursor-pointer items-center gap-4 rounded-2xl border p-4 text-left shadow-sm transition-colors ${
+        isActive
+          ? "border-blue-200 bg-blue-50/70 dark:border-blue-800 dark:bg-blue-950/30"
+          : "border-slate-100 bg-white hover:border-blue-100 hover:bg-blue-50/40 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20"
+      }`}
+    >
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-slate-800 dark:text-blue-300">
+        <Folder className="h-5 w-5" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
+          {folder.name}
+        </h3>
+        <p className="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">
+          {folder.description || "No description"}
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-400">
+          <span>{folder.documentCount} documents</span>
+          <span>•</span>
+          <span>{folder.childFolderCount} subfolders</span>
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <button
+          type="button"
           onClick={(event) => {
             event.stopPropagation();
-            onEdit(category);
+            onEdit(folder);
           }}
           className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30 dark:hover:text-blue-300"
-          title="Edit category"
+          title="Edit folder"
         >
           <Pencil className="h-4 w-4" />
         </button>
 
         <button
+          type="button"
           onClick={(event) => {
             event.stopPropagation();
-            onDelete(category.id);
+            onDelete(folder.id);
           }}
           className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-red-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
-          title="Delete category"
+          title="Delete folder"
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -202,7 +299,7 @@ function DocumentRow({
   const extension = getFileExtension(document);
 
   return (
-    <div className="grid grid-cols-[320px_150px_150px_120px_150px_150px_220px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70">
+    <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_220px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
           <FileIcon className="h-5 w-5" />
@@ -218,7 +315,11 @@ function DocumentRow({
       </div>
 
       <span className="inline-flex w-fit rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-        {document.folder || "Uncategorized"}
+        {document.categoryName || "Uncategorized"}
+      </span>
+
+      <span className="inline-flex w-fit rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
+        {document.folderName || "No Folder"}
       </span>
 
       <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
@@ -300,6 +401,8 @@ export function MyLibrary() {
   const [view, setView] = useState<"grid" | "list">("grid");
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
   const [allCategories, setAllCategories] = useState<CategoryResponse[]>([]);
+  const [folders, setFolders] = useState<LibraryFolder[]>([]);
+  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [uploadStatusFilter, setUploadStatusFilter] = useState<string>("ALL");
@@ -316,14 +419,22 @@ export function MyLibrary() {
   const [editCategoryName, setEditCategoryName] = useState("");
   const [editCategoryDescription, setEditCategoryDescription] = useState("");
   const [deleteCategoryId, setDeleteCategoryId] = useState<number | null>(null);
+  const [editingFolder, setEditingFolder] = useState<LibraryFolder | null>(null);
+  const [editFolderName, setEditFolderName] = useState("");
+  const [editFolderDescription, setEditFolderDescription] = useState("");
+  const [deleteFolderId, setDeleteFolderId] = useState<number | null>(null);
   const mapLibraryDocument = (
     document: any,
     favoriteMap: Record<number, boolean> = {},
   ): LibraryDocument => ({
     id: document.id,
-    categoryId: document.categoryId,
+    categoryId: document.categoryId ?? document.category?.id ?? null,
+    categoryName:
+      document.categoryName || document.category?.name || "Uncategorized",
+    folderId: document.folderId ?? document.folder?.id ?? null,
+    folderName: document.folderName || document.folder?.name || "No Folder",
     name: document.title || document.originalName || document.fileName,
-    folder: document.categoryName || "Uncategorized",
+    folder: document.folderName || document.folder?.name || "No Folder",
     date: formatDocumentDate(document.createdAt),
     createdAt: document.createdAt,
     type: document.type || document.fileType,
@@ -332,6 +443,25 @@ export function MyLibrary() {
     fileSize: document.fileSize ?? 0,
     fav: Boolean(favoriteMap[document.id]),
   });
+
+  const loadFolders = async () => {
+    try {
+      const rawUserId = getCurrentUserId();
+      const userId = Number(rawUserId);
+
+      if (!Number.isInteger(userId) || userId <= 0) {
+        toast.error("Please log in again to view your folders.");
+        setFolders([]);
+        return;
+      }
+
+      const response = await folderApi.getFolders(userId);
+      setFolders(response.data ?? []);
+    } catch (error) {
+      console.error("Cannot load folders:", error);
+      toast.error("Cannot load folders.");
+    }
+  };
 
   const loadCategories = async () => {
     try {
@@ -365,6 +495,7 @@ export function MyLibrary() {
 
   useEffect(() => {
     loadCategories();
+    loadFolders();
   }, []);
 
   useEffect(() => {
@@ -613,8 +744,93 @@ export function MyLibrary() {
     }
   };
 
+  const handleOpenEditFolder = (folder: LibraryFolder) => {
+    setEditingFolder(folder);
+    setEditFolderName(folder.name);
+    setEditFolderDescription(folder.description ?? "");
+  };
+
+  const handleUpdateFolder = async () => {
+    if (!editingFolder) return;
+
+    if (!editFolderName.trim()) {
+      toast.error("Folder name is required.");
+      return;
+    }
+
+    try {
+      await folderApi.updateFolder(editingFolder.id, {
+        name: editFolderName.trim(),
+        description: editFolderDescription.trim(),
+        userId: editingFolder.userId,
+        parentFolderId: editingFolder.parentFolderId ?? null,
+      });
+
+      toast.success("Folder updated.");
+      setEditingFolder(null);
+      setEditFolderName("");
+      setEditFolderDescription("");
+      await loadFolders();
+    } catch (error: any) {
+      console.error("Cannot update folder:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot update folder.",
+      );
+    }
+  };
+
+  const handleDeleteFolder = async () => {
+    if (!deleteFolderId) return;
+
+    const folder = folders.find(
+      (item) => Number(item.id) === Number(deleteFolderId),
+    );
+
+    if (!folder) {
+      toast.error("Folder not found.");
+      return;
+    }
+
+    const documentCount = Math.max(
+      folder.documentCount ?? 0,
+      documents.filter(
+        (document) => Number(document.folderId) === Number(deleteFolderId),
+      ).length,
+    );
+    const childFolderCount = folder.childFolderCount ?? 0;
+
+    if (documentCount > 0 || childFolderCount > 0) {
+      toast.error("Cannot delete folder that contains documents or subfolders.");
+      return;
+    }
+
+    const rawUserId = getCurrentUserId();
+    const userId = Number(rawUserId);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      toast.error("Please log in again to delete this folder.");
+      return;
+    }
+
+    try {
+      await folderApi.deleteFolder(deleteFolderId, userId);
+      toast.success("Folder deleted.");
+      setDeleteFolderId(null);
+      await loadFolders();
+    } catch (error: any) {
+      console.error("Cannot delete folder:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot delete folder.",
+      );
+    }
+  };
+
   const categories = useMemo<LibraryCategory[]>(() => {
-    return allCategories.map((category, index) => {
+    const mappedCategories = allCategories.map((category, index) => {
       const count = documents.filter(
         (document) => Number(document.categoryId) === Number(category.id),
       ).length;
@@ -628,6 +844,28 @@ export function MyLibrary() {
         color: categoryColors[index % categoryColors.length],
       };
     });
+
+    const noCategoryCount = documents.filter(
+      (document) =>
+        document.categoryId === null ||
+        document.categoryId === undefined ||
+        !allCategories.some(
+          (category) => Number(category.id) === Number(document.categoryId),
+        ),
+    ).length;
+
+    if (noCategoryCount > 0) {
+      mappedCategories.push({
+        id: 0,
+        name: "Uncategorized",
+        description: "Documents without category",
+        userId: Number(getCurrentUserId()) || 0,
+        count: noCategoryCount,
+        color: "amber",
+      });
+    }
+
+    return mappedCategories;
   }, [allCategories, documents]);
 
   const deletingCategory = categories.find(
@@ -636,8 +874,35 @@ export function MyLibrary() {
 
   const deletingCategoryItemCount = deletingCategory?.count ?? 0;
 
+  const deletingFolder = folders.find(
+    (folder) => Number(folder.id) === Number(deleteFolderId),
+  );
+
+  const deletingFolderDocumentCount = deleteFolderId
+    ? Math.max(
+        deletingFolder?.documentCount ?? 0,
+        documents.filter(
+          (document) => Number(document.folderId) === Number(deleteFolderId),
+        ).length,
+      )
+    : 0;
+
+  const deletingFolderChildCount = deletingFolder?.childFolderCount ?? 0;
+
+  const selectedFolder = folders.find((folder) => folder.id === selectedFolderId);
+
+  const rootFolders = useMemo(() => {
+    return folders.filter((folder) => folder.parentFolderId === null);
+  }, [folders]);
+
   const filteredDocuments = useMemo(() => {
     let result = [...documents];
+
+    if (selectedFolderId !== null) {
+      result = result.filter(
+        (document) => Number(document.folderId) === Number(selectedFolderId),
+      );
+    }
 
     if (uploadStatusFilter !== "ALL") {
       result = result.filter(
@@ -661,7 +926,7 @@ export function MyLibrary() {
     });
 
     return result;
-  }, [documents, searchQuery, uploadStatusFilter, aiStatusFilter, sortOrder]);
+  }, [documents, selectedFolderId, uploadStatusFilter, aiStatusFilter, sortOrder]);
 
   return (
     <div className="space-y-8">
@@ -698,15 +963,23 @@ export function MyLibrary() {
           </button>
 
           <button
-            onClick={() => navigate("/app/categories")}
+            onClick={() => navigate("/app/folders")}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-700"
           >
             <FolderPlus className="h-4.5 w-4.5" />
+            New Folder
+          </button>
+
+          <button
+            onClick={() => navigate("/app/categories")}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-700"
+          >
+            <Library className="h-4.5 w-4.5" />
             New Category
           </button>
         </div>
       </div>
-      <div className="grid w-full max-w-5xl grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-4">
         {/* Categories */}
         <motion.button
           whileHover={{ y: -3 }}
@@ -724,6 +997,26 @@ export function MyLibrary() {
 
           <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
             Categories
+          </p>
+        </motion.button>
+
+        {/* Folders */}
+        <motion.button
+          whileHover={{ y: -3 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => navigate("/app/folders")}
+          className="rounded-2xl border border-slate-100 bg-white p-5 text-left shadow-sm transition-all hover:border-blue-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
+        >
+          <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
+            <Folder className="h-4.5 w-4.5" />
+          </div>
+
+          <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+            {folders.length}
+          </p>
+
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+            Folders
           </p>
         </motion.button>
 
@@ -767,6 +1060,40 @@ export function MyLibrary() {
           </p>
         </motion.button>
       </div>
+      {/* Folders Section */}
+      <section>
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+              Folders
+            </h2>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              Organize your documents into folders
+            </p>
+          </div>
+
+        </div>
+
+        {rootFolders.length > 0 ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {rootFolders.map((folder) => (
+              <FolderCard
+                key={folder.id}
+                folder={folder}
+                isActive={false}
+                onClick={() => navigate(`/app/folders/${folder.id}`)}
+                onEdit={handleOpenEditFolder}
+                onDelete={setDeleteFolderId}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+            No folders yet. Use the New Folder button above to add one.
+          </div>
+        )}
+      </section>
+
       {/* Categories Section */}
       <section>
         <div className="flex items-center justify-between mb-6">
@@ -776,19 +1103,26 @@ export function MyLibrary() {
         </div>
         {categories.length > 0 ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {categories.map((category) => (
-              <CategoryCard
-                key={category.id}
-                category={category}
-                onClick={() =>
-                  navigate(`/app/categories/${category.id}`, {
-                    state: { from: "/app/library" },
-                  })
-                }
-                onEdit={handleOpenEditCategory}
-                onDelete={setDeleteCategoryId}
-              />
-            ))}
+            {categories.map((category) => {
+              const isNoCategory = Number(category.id) === 0;
+
+              return (
+                <CategoryCard
+                  key={category.id}
+                  category={category}
+                  onClick={() => {
+                    if (isNoCategory) return;
+
+                    navigate(`/app/categories/${category.id}`, {
+                      state: { from: "/app/library" },
+                    });
+                  }}
+                  onEdit={handleOpenEditCategory}
+                  onDelete={setDeleteCategoryId}
+                  allowActions={!isNoCategory}
+                />
+              );
+            })}
           </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
@@ -802,9 +1136,19 @@ export function MyLibrary() {
           <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
             Documents
           </h2>
-          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-            {filteredDocuments.length} files
-          </p>
+          <div className="flex items-center gap-3">
+            {selectedFolder && (
+              <button
+                onClick={() => setSelectedFolderId(null)}
+                className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-300"
+              >
+                {selectedFolder.name} ×
+              </button>
+            )}
+            <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+              {filteredDocuments.length} files
+            </p>
+          </div>
         </div>
         {/* Search */}
         <div className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center">
@@ -977,9 +1321,15 @@ export function MyLibrary() {
                   </p>
 
                   <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-800">
-                    <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                      {document.folder}
-                    </span>
+                    <div className="flex min-w-0 flex-wrap gap-2">
+                      <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        {document.categoryName || "Uncategorized"}
+                      </span>
+
+                      <span className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
+                        {document.folderName || "No Folder"}
+                      </span>
+                    </div>
 
                     <span
                       className={`rounded-full px-2 py-1 text-[11px] font-extrabold ring-1 ${
@@ -995,10 +1345,11 @@ export function MyLibrary() {
           </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="min-w-[1260px]">
-              <div className="grid grid-cols-[320px_150px_150px_120px_150px_150px_220px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60">
+            <div className="min-w-[1420px]">
+              <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_220px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60">
                 <div>Document Name</div>
                 <div>Category</div>
+                <div>Folder</div>
                 <div>Date Added</div>
                 <div>Size</div>
                 <div>Upload Status</div>
@@ -1038,6 +1389,8 @@ export function MyLibrary() {
           </div>
         )}
       </section>
+
+
       {deleteId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
@@ -1118,6 +1471,117 @@ export function MyLibrary() {
                 className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
               >
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingFolder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                Edit Folder
+              </h2>
+
+              <button
+                onClick={() => setEditingFolder(null)}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Name
+                </label>
+                <input
+                  value={editFolderName}
+                  onChange={(event) => setEditFolderName(event.target.value)}
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  placeholder="Folder name"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Description
+                </label>
+                <textarea
+                  value={editFolderDescription}
+                  onChange={(event) =>
+                    setEditFolderDescription(event.target.value)
+                  }
+                  className="mt-2 min-h-24 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  placeholder="Folder description"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => setEditingFolder(null)}
+                className="rounded-xl px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleUpdateFolder}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+              >
+                <Save className="h-4 w-4" />
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteFolderId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+              Delete Folder?
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Are you sure you want to delete this folder? This action cannot
+              be undone.
+            </p>
+
+            {(deletingFolderDocumentCount > 0 || deletingFolderChildCount > 0) && (
+              <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-300">
+                This folder contains {deletingFolderDocumentCount}{" "}
+                {deletingFolderDocumentCount === 1 ? "document" : "documents"}
+                {" "}and {deletingFolderChildCount}{" "}
+                {deletingFolderChildCount === 1 ? "subfolder" : "subfolders"}.
+                Please move or delete them first.
+              </p>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteFolderId(null)}
+                className="rounded-xl px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDeleteFolder}
+                disabled={
+                  deletingFolderDocumentCount > 0 || deletingFolderChildCount > 0
+                }
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300 dark:disabled:bg-red-900"
+              >
+                Delete
               </button>
             </div>
           </div>

@@ -17,6 +17,7 @@ export interface GetDocumentsParams {
   size?: number;
   keyword?: string;
   categoryId?: number;
+  folderId?: number;
   processStatus?: ProcessStatus;
   fileType?: string;
   tag?: string;
@@ -28,6 +29,7 @@ export interface UploadDocumentPayload {
   file: File;
   title: string;
   userId: number;
+  folderId: number;
   description?: string;
   documentType?: string;
   visibility?: string;
@@ -39,6 +41,7 @@ export interface CreateDocumentPayload {
   description?: string;
   tags?: string;
   userId: number;
+  folderId?: number;
   categoryId?: number;
   originalName?: string;
   fileUrl?: string;
@@ -51,6 +54,7 @@ export interface UpdateDocumentPayload {
   description?: string;
   tags?: string;
   userId?: number;
+  folderId?: number | null;
   categoryId?: number | null;
   originalName?: string;
   fileUrl?: string;
@@ -95,6 +99,13 @@ export interface SemanticSearchResponse {
   error?: string;
 }
 
+type DocumentWithFolderMeta = DocumentResponse & {
+  folderId?: number | null;
+  folderName?: string | null;
+  folder?: string | { id?: number; name?: string | null } | null;
+  parentFolderName?: string | null;
+};
+
 const mapDocumentStatus = (status: string | undefined): DocumentStatus => {
   if (status === "DELETED") return "DELETED";
   return "ACTIVE";
@@ -107,6 +118,36 @@ const mapAiStatus = (status: string | undefined): AiStatus => {
   return "UPLOADED";
 };
 
+const getDocumentFolderName = (document: DocumentResponse): string => {
+  const item = document as DocumentWithFolderMeta;
+
+  if (typeof item.folderName === "string" && item.folderName.trim()) {
+    return item.folderName.trim();
+  }
+
+  if (typeof item.folder === "string" && item.folder.trim()) {
+    return item.folder.trim();
+  }
+
+  if (
+    typeof item.folder === "object" &&
+    item.folder !== null &&
+    typeof item.folder.name === "string" &&
+    item.folder.name.trim()
+  ) {
+    return item.folder.name.trim();
+  }
+
+  if (
+    typeof item.parentFolderName === "string" &&
+    item.parentFolderName.trim()
+  ) {
+    return item.parentFolderName.trim();
+  }
+
+  return "No Folder";
+};
+
 const mapDocumentResponse = (
   document: DocumentResponse,
 ): DocumentListItemResponse => ({
@@ -117,7 +158,7 @@ const mapDocumentResponse = (
   documentStatus: mapDocumentStatus(document.status),
   aiStatus: mapAiStatus(document.processStatus),
   uploadedAt: document.createdAt,
-  folder: document.categoryName || "Uncategorized",
+  folder: getDocumentFolderName(document),
 });
 
 const mapPageDocumentResponse = (
@@ -174,14 +215,10 @@ export const documentApi = {
 
   // PUT /api/documents/{id}
   async updateDocument(id: number, payload: UpdateDocumentPayload) {
-    /**
-     * Backend hiện tại bắt buộc userId khi update.
-     * Nhưng nhiều màn hình FE chỉ gửi title/description/categoryId.
-     * Vì vậy mình lấy document hiện tại trước, rồi merge lại payload.
-     */
     const currentResponse = await api.get<DocumentResponse>(
       `/api/documents/${id}`,
     );
+
     const currentDocument = currentResponse.data;
 
     const updatePayload: UpdateDocumentPayload = {
@@ -189,6 +226,10 @@ export const documentApi = {
       description: payload.description ?? currentDocument.description ?? "",
       tags: payload.tags ?? currentDocument.tags ?? "",
       userId: payload.userId ?? currentDocument.userId,
+      folderId:
+        payload.folderId !== undefined
+          ? payload.folderId
+          : (currentDocument as DocumentWithFolderMeta).folderId,
       categoryId:
         payload.categoryId !== undefined
           ? payload.categoryId
@@ -225,6 +266,7 @@ export const documentApi = {
           documentType: payload.documentType,
           visibility: payload.visibility,
           userId: payload.userId,
+          folderId: payload.folderId,
           categoryId: payload.categoryId,
         },
       })

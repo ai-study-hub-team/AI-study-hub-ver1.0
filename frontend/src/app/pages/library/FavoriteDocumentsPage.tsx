@@ -22,6 +22,7 @@ import {
   type FavoriteDocument,
   type FavoriteDocumentPageResponse,
 } from "../../services/favoriteApi";
+import { folderApi } from "../../services/folderApi";
 import type { AiStatus } from "../../constants/documentStatus";
 import { useTheme } from "../../../layouts/ThemeProvider";
 import { getCurrentUserId } from "../../services/apiClient";
@@ -32,6 +33,7 @@ interface FavoriteLibraryDocument {
   id: number;
   name: string;
   description: string;
+  category: string;
   folder: string;
   date: string;
   type: string;
@@ -39,8 +41,45 @@ interface FavoriteLibraryDocument {
   documentStatus: string;
   visibility: string;
   ownerName: string;
+  fileSize: number;
   fav: boolean;
 }
+
+type FavoriteDocumentWithMeta = FavoriteDocument & {
+  categoryName?: string;
+  category?: string;
+  folderName?: string;
+  folder?: string;
+  createdAt?: string;
+  uploadedAt?: string;
+  originalName?: string;
+  fileName?: string;
+  fileSize?: number;
+  documentStatus?: string;
+};
+
+type DocumentMetaItem = {
+  id: number;
+  title?: string;
+  originalName?: string;
+  fileName?: string;
+  name?: string;
+  categoryName?: string;
+  category?: string;
+  categoryId?: number;
+  folderName?: string;
+  folder?: string | { id?: number; name?: string | null } | null;
+  folderId?: number | null;
+  createdAt?: string;
+  uploadedAt?: string;
+  type?: string;
+  fileType?: string;
+  fileSize?: number;
+  documentStatus?: string;
+  status?: string;
+  aiStatus?: AiStatus;
+  processStatus?: string;
+};
 
 const statusBadgeClass: Record<AiStatus, string> = {
   UPLOADED:
@@ -54,7 +93,7 @@ const statusBadgeClass: Record<AiStatus, string> = {
 };
 
 const favoriteListGridClass =
-  "grid grid-cols-[320px_180px_150px_150px_150px_220px] items-center";
+  "grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_220px] items-center";
 
 const actionIconButtonClass =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300";
@@ -67,6 +106,11 @@ const mapAiStatus = (status: string | undefined): AiStatus => {
   if (status === "PROCESSED") return "PROCESSED";
   if (status === "FAILED") return "FAILED";
   return "UPLOADED";
+};
+
+const mapDocumentStatus = (status: string | undefined) => {
+  if (status === "DELETED") return "DELETED";
+  return "ACTIVE";
 };
 
 const formatDocumentDate = (date: string | undefined) => {
@@ -91,22 +135,97 @@ const getFileExtension = (document: FavoriteLibraryDocument) => {
     : extensionFromType || "FILE";
 };
 
+const getValidText = (value?: string | null) => {
+  const text = value?.trim();
+
+  if (!text) return "";
+
+  if (
+    text.toLowerCase() === "no folder" ||
+    text.toLowerCase() === "no folder."
+  ) {
+    return "";
+  }
+
+  return text;
+};
+
+const getFolderNameFromMeta = (
+  meta?: DocumentMetaItem,
+  folderNameFromFolderApi?: string,
+) => {
+  const folderFromApi = getValidText(folderNameFromFolderApi);
+
+  if (folderFromApi) return folderFromApi;
+
+  const folderName = getValidText(meta?.folderName);
+
+  if (folderName) return folderName;
+
+  if (typeof meta?.folder === "string") {
+    const folder = getValidText(meta.folder);
+
+    if (folder) return folder;
+  }
+
+  if (
+    typeof meta?.folder === "object" &&
+    meta.folder !== null &&
+    typeof meta.folder.name === "string"
+  ) {
+    const folder = getValidText(meta.folder.name);
+
+    if (folder) return folder;
+  }
+
+  return "No folder";
+};
+
 const mapFavoriteDocument = (
   document: FavoriteDocument,
-): FavoriteLibraryDocument => ({
-  favoriteId: document.favoriteId,
-  id: document.documentId,
-  name: document.title || "Untitled document",
-  description: document.description || "",
-  folder: "Favorite",
-  date: formatDocumentDate(document.favoritedAt),
-  type: document.fileType || "",
-  aiStatus: mapAiStatus(document.processStatus),
-  documentStatus: "ACTIVE",
-  visibility: document.visibility || "PRIVATE",
-  ownerName: document.ownerName || "Unknown",
-  fav: true,
-});
+  meta?: DocumentMetaItem,
+  folderNameFromFolderApi?: string,
+): FavoriteLibraryDocument => {
+  const item = document as FavoriteDocumentWithMeta;
+
+  return {
+    favoriteId: item.favoriteId,
+    id: item.documentId,
+    name:
+      meta?.title ||
+      item.title ||
+      meta?.originalName ||
+      item.originalName ||
+      meta?.fileName ||
+      item.fileName ||
+      meta?.name ||
+      "Untitled document",
+    description: item.description || "",
+    category:
+      meta?.categoryName ||
+      item.categoryName ||
+      meta?.category ||
+      item.category ||
+      "Uncategorized",
+    folder: getFolderNameFromMeta(meta, folderNameFromFolderApi),
+    date: formatDocumentDate(
+      meta?.createdAt ||
+        meta?.uploadedAt ||
+        item.createdAt ||
+        item.uploadedAt ||
+        item.favoritedAt,
+    ),
+    type: meta?.type || meta?.fileType || item.fileType || "",
+    aiStatus:
+      meta?.aiStatus || mapAiStatus(meta?.processStatus || item.processStatus),
+    documentStatus:
+      meta?.documentStatus || mapDocumentStatus(meta?.status) || "ACTIVE",
+    visibility: item.visibility || "PRIVATE",
+    ownerName: item.ownerName || "Unknown",
+    fileSize: meta?.fileSize ?? item.fileSize ?? 0,
+    fav: true,
+  };
+};
 
 function FavoriteDocumentRow({
   document,
@@ -138,22 +257,31 @@ function FavoriteDocumentRow({
           <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
             {document.name}
           </p>
+
           <p className="text-[11px] font-bold uppercase text-slate-400 dark:text-slate-500">
             {getFileExtension(document)}
           </p>
         </div>
       </div>
 
-      <p className="truncate text-sm font-semibold text-slate-500 dark:text-slate-400">
-        {document.ownerName}
-      </p>
+      <span className="inline-flex w-fit max-w-[140px] rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+        <span className="truncate">{document.category || "Uncategorized"}</span>
+      </span>
+
+      <span className="inline-flex w-fit max-w-[140px] rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
+        <span className="truncate">{document.folder || "No folder"}</span>
+      </span>
 
       <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
         {document.date}
       </p>
 
-      <span className="inline-flex w-fit rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-extrabold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
-        {document.visibility}
+      <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+        {(document.fileSize / 1024).toFixed(1)} KB
+      </p>
+
+      <span className="inline-flex w-fit rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800">
+        {document.documentStatus}
       </span>
 
       <span
@@ -164,6 +292,7 @@ function FavoriteDocumentRow({
 
       <div className="flex min-w-[220px] items-center justify-end gap-1">
         <button
+          type="button"
           onClick={() => onToggleFavorite(document.id)}
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-amber-400 transition-colors hover:bg-amber-50 dark:hover:bg-amber-950/30"
           title="Remove from favorites"
@@ -172,6 +301,7 @@ function FavoriteDocumentRow({
         </button>
 
         <button
+          type="button"
           onClick={() => onViewFile(document.id)}
           className={actionIconButtonClass}
           title="View file"
@@ -180,6 +310,7 @@ function FavoriteDocumentRow({
         </button>
 
         <button
+          type="button"
           onClick={() => onEdit(document)}
           className={actionIconButtonClass}
           title="Rename"
@@ -188,6 +319,7 @@ function FavoriteDocumentRow({
         </button>
 
         <button
+          type="button"
           onClick={() => onDownload(document.id, document.name)}
           className={actionIconButtonClass}
           title="Download"
@@ -196,6 +328,7 @@ function FavoriteDocumentRow({
         </button>
 
         <button
+          type="button"
           onClick={() => onReprocess(document.id)}
           className={actionIconButtonClass}
           title="Reprocess"
@@ -204,6 +337,7 @@ function FavoriteDocumentRow({
         </button>
 
         <button
+          type="button"
           onClick={() => onDelete(document.id)}
           className={deleteIconButtonClass}
           title="Delete"
@@ -240,6 +374,7 @@ function FavoriteDocumentCard({
         </div>
 
         <button
+          type="button"
           onClick={() => onToggleFavorite(document.id)}
           className="rounded-lg p-2 text-amber-400 transition-colors hover:bg-amber-50 dark:hover:bg-amber-950/30"
           title="Remove from favorites"
@@ -260,28 +395,42 @@ function FavoriteDocumentCard({
 
       <div className="mt-4 space-y-2 text-sm">
         <div className="flex justify-between gap-3">
-          <span className="text-slate-400">Owner</span>
+          <span className="text-slate-400">Category</span>
           <span className="truncate font-bold text-slate-600 dark:text-slate-300">
-            {document.ownerName}
+            {document.category || "Uncategorized"}
           </span>
         </div>
 
         <div className="flex justify-between gap-3">
-          <span className="text-slate-400">Favorited</span>
+          <span className="text-slate-400">Folder</span>
+          <span className="truncate font-bold text-slate-600 dark:text-slate-300">
+            {document.folder || "No folder"}
+          </span>
+        </div>
+
+        <div className="flex justify-between gap-3">
+          <span className="text-slate-400">Date</span>
           <span className="font-semibold text-slate-600 dark:text-slate-300">
             {document.date}
           </span>
         </div>
 
         <div className="flex justify-between gap-3">
-          <span className="text-slate-400">Visibility</span>
+          <span className="text-slate-400">Size</span>
           <span className="font-semibold text-slate-600 dark:text-slate-300">
-            {document.visibility}
+            {(document.fileSize / 1024).toFixed(1)} KB
           </span>
         </div>
       </div>
 
       <div className="mt-4 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-slate-400">Upload Status</span>
+          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800">
+            {document.documentStatus}
+          </span>
+        </div>
+
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-slate-400">AI Status</span>
           <span
@@ -294,6 +443,7 @@ function FavoriteDocumentCard({
 
       <div className="mt-5 flex items-center justify-end gap-1 border-t border-slate-100 pt-4 dark:border-slate-800">
         <button
+          type="button"
           onClick={() => onViewFile(document.id)}
           className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
           title="View file"
@@ -302,6 +452,7 @@ function FavoriteDocumentCard({
         </button>
 
         <button
+          type="button"
           onClick={() => onEdit(document)}
           className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
           title="Rename"
@@ -310,6 +461,7 @@ function FavoriteDocumentCard({
         </button>
 
         <button
+          type="button"
           onClick={() => onDownload(document.id, document.name)}
           className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
           title="Download"
@@ -318,6 +470,7 @@ function FavoriteDocumentCard({
         </button>
 
         <button
+          type="button"
           onClick={() => onReprocess(document.id)}
           className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
           title="Reprocess"
@@ -326,6 +479,7 @@ function FavoriteDocumentCard({
         </button>
 
         <button
+          type="button"
           onClick={() => onDelete(document.id)}
           className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
           title="Delete"
@@ -341,9 +495,11 @@ function EmptyFavorites() {
   return (
     <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
       <Star className="mx-auto mb-3 h-10 w-10 text-slate-300" />
+
       <h3 className="font-bold text-slate-900 dark:text-slate-100">
         No favorite documents yet
       </h3>
+
       <p className="text-sm text-slate-500 dark:text-slate-400">
         Click the star icon on a document to add it here.
       </p>
@@ -375,11 +531,54 @@ export function FavoriteDocumentsPage() {
         return;
       }
 
-      const response = await favoriteApi.getFavorites(0, 100);
-      const data = response.data as FavoriteDocumentPageResponse;
-      const myFavorites = filterMyDocuments(data.content ?? [], userId);
+      const [favoriteResponse, documentResponse, folderResponse] =
+        await Promise.all([
+          favoriteApi.getFavorites(0, 100),
+          documentApi.getDocuments({
+            page: 0,
+            size: 1000,
+          }),
+          folderApi.getFolders(userId),
+        ]);
 
-      setDocuments(myFavorites.map(mapFavoriteDocument));
+      const favoriteData = favoriteResponse.data as FavoriteDocumentPageResponse;
+      const favoriteItems = favoriteData.content ?? [];
+
+      const documentItems = filterMyDocuments(
+        documentResponse.data.content ?? [],
+        userId,
+      ) as DocumentMetaItem[];
+
+      const folderItems = folderResponse.data ?? [];
+
+      const documentMap = new Map<number, DocumentMetaItem>();
+      const folderMap = new Map<number, string>();
+
+      documentItems.forEach((document) => {
+        documentMap.set(Number(document.id), document);
+      });
+
+      folderItems.forEach((folder) => {
+        folderMap.set(Number(folder.id), folder.name);
+      });
+
+      setDocuments(
+        favoriteItems.map((favorite) => {
+          const documentMeta = documentMap.get(Number(favorite.documentId));
+
+          const folderId = Number(documentMeta?.folderId);
+          const folderNameFromFolderApi =
+            Number.isInteger(folderId) && folderId > 0
+              ? folderMap.get(folderId)
+              : undefined;
+
+          return mapFavoriteDocument(
+            favorite,
+            documentMeta,
+            folderNameFromFolderApi,
+          );
+        }),
+      );
     } catch (error) {
       console.error(error);
       toast.error("Failed to load favorite documents");
@@ -487,6 +686,7 @@ export function FavoriteDocumentsPage() {
   return (
     <div className="space-y-6">
       <button
+        type="button"
         onClick={() => navigate("/app/library")}
         className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
       >
@@ -508,6 +708,7 @@ export function FavoriteDocumentsPage() {
         <div className="inline-flex w-full flex-wrap items-center gap-2 sm:w-auto md:justify-end">
           <div className="inline-flex h-10 shrink-0 items-center rounded-xl bg-slate-100 p-0.5 dark:bg-slate-800">
             <button
+              type="button"
               onClick={() => setViewMode("grid")}
               className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
                 viewMode === "grid"
@@ -521,6 +722,7 @@ export function FavoriteDocumentsPage() {
             </button>
 
             <button
+              type="button"
               onClick={() => setViewMode("list")}
               className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
                 viewMode === "list"
@@ -538,14 +740,16 @@ export function FavoriteDocumentsPage() {
 
       {viewMode === "list" ? (
         <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="min-w-[1170px]">
+          <div className="min-w-[1410px]">
             <div
               className={`${favoriteListGridClass} border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60`}
             >
               <div>Document Name</div>
-              <div>Owner</div>
-              <div>Favorited At</div>
-              <div>Visibility</div>
+              <div>Category</div>
+              <div>Folder</div>
+              <div>Date Added</div>
+              <div>Size</div>
+              <div>Upload Status</div>
               <div>AI Status</div>
               <div className="text-right">Actions</div>
             </div>
@@ -619,6 +823,7 @@ export function FavoriteDocumentsPage() {
 
             <div className="mt-6 flex justify-end gap-3">
               <button
+                type="button"
                 onClick={() => setDeleteId(null)}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
@@ -626,6 +831,7 @@ export function FavoriteDocumentsPage() {
               </button>
 
               <button
+                type="button"
                 onClick={async () => {
                   if (deleteId === null) return;
 
@@ -671,6 +877,7 @@ export function FavoriteDocumentsPage() {
 
             <div className="mt-6 flex justify-end gap-3">
               <button
+                type="button"
                 onClick={() => {
                   setEditingDocument(null);
                   setEditTitle("");
@@ -682,6 +889,7 @@ export function FavoriteDocumentsPage() {
               </button>
 
               <button
+                type="button"
                 onClick={handleUpdateDocumentName}
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
               >

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import {
   CheckCircle2,
   ChevronRight,
@@ -7,6 +7,7 @@ import {
   FileQuestion,
   FileText,
   FileVideo,
+  Folder,
   Presentation,
   Youtube,
 } from "lucide-react";
@@ -15,6 +16,7 @@ import { toast } from "sonner";
 import { documentApi } from "../../services/documentApi";
 import { documentNoteApi } from "../../services/documentNoteApi";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
+import { folderApi, type FolderResponse } from "../../services/folderApi";
 import { getCurrentUserId } from "../../services/apiClient";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 import { CollaborationCard } from "./components/CollaborationCard";
@@ -40,6 +42,13 @@ const uploadTypes: UploadType[] = [
   { label: "Youtube Video", icon: Youtube },
 ];
 
+type ListResponse<T> = T[] | { content?: T[] };
+
+const normalizeList = <T,>(data: ListResponse<T> | null | undefined): T[] => {
+  if (Array.isArray(data)) return data;
+  return data?.content ?? [];
+};
+
 const formatUploadedAt = (date: string | undefined) => {
   if (!date) return "";
 
@@ -53,8 +62,19 @@ const formatUploadedAt = (date: string | undefined) => {
   });
 };
 
+const getFolderOptionLabel = (folder: FolderResponse) => {
+  if (folder.parentFolderName) {
+    return `${folder.parentFolderName} / ${folder.name}`;
+  }
+
+  return folder.name;
+};
+
 export function UploadDocumentsPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const presetFolderId = searchParams.get("folderId");
 
   const [step, setStep] = useState<UploadStep>(1);
   const [files, setFiles] = useState<File[]>([]);
@@ -62,13 +82,37 @@ export function UploadDocumentsPage() {
   const [recentUploads, setRecentUploads] = useState<RecentUpload[]>([]);
   const [activeFilter, setActiveFilter] = useState<UploadFilter>("All");
   const [categories, setCategories] = useState<CategoryResponse[]>([]);
+  const [folders, setFolders] = useState<FolderResponse[]>([]);
 
   const [details, setDetails] = useState({
+    folderId: "",
     categoryId: "",
     documentTitle: "",
     noteTitle: "",
     notes: "",
   });
+
+  const loadFolders = useCallback(async () => {
+    try {
+      const userId = getCurrentUserId();
+
+      if (!userId) {
+        toast.error("Please login again.");
+        return;
+      }
+
+      const response = await folderApi.getFolders(userId);
+
+      const folderData = normalizeList<FolderResponse>(
+        response.data as ListResponse<FolderResponse>,
+      ).filter((folder) => Number(folder.userId) === userId);
+
+      setFolders(folderData);
+    } catch (error) {
+      console.error("Cannot load folders:", error);
+      toast.error("Cannot load folders.");
+    }
+  }, []);
 
   const loadCategories = useCallback(async () => {
     try {
@@ -82,9 +126,9 @@ export function UploadDocumentsPage() {
       const response = await categoryApi.getCategories();
 
       setCategories(
-        (response.data ?? []).filter(
-          (category) => Number(category.userId) === userId,
-        ),
+        normalizeList<CategoryResponse>(
+          response.data as ListResponse<CategoryResponse>,
+        ).filter((category) => Number(category.userId) === userId),
       );
     } catch (error) {
       console.error("Cannot load categories:", error);
@@ -138,13 +182,42 @@ export function UploadDocumentsPage() {
   useEffect(() => {
     loadRecentUploads();
     loadCategories();
-  }, [loadRecentUploads, loadCategories]);
+    loadFolders();
+  }, [loadRecentUploads, loadCategories, loadFolders]);
+
+  useEffect(() => {
+    if (!presetFolderId) return;
+
+    const folderId = Number(presetFolderId);
+
+    if (!Number.isInteger(folderId) || folderId <= 0) return;
+
+    setDetails((current) => ({
+      ...current,
+      folderId: String(folderId),
+    }));
+  }, [presetFolderId]);
 
   const filteredUploads = useMemo(() => {
     if (activeFilter === "All") return recentUploads;
 
     return recentUploads.filter((upload) => upload.aiStatus === activeFilter);
   }, [activeFilter, recentUploads]);
+
+  const sortedFolders = useMemo(() => {
+    return [...folders].sort((left, right) => {
+      const leftName = getFolderOptionLabel(left).toLowerCase();
+      const rightName = getFolderOptionLabel(right).toLowerCase();
+
+      return leftName.localeCompare(rightName);
+    });
+  }, [folders]);
+
+  const selectedPresetFolderExists = useMemo(() => {
+    if (!presetFolderId) return false;
+
+    return folders.some((folder) => String(folder.id) === presetFolderId);
+  }, [folders, presetFolderId]);
 
   const addFiles = (selectedFiles: File[]) => {
     setFiles((current) => [...current, ...selectedFiles]);
@@ -163,9 +236,9 @@ export function UploadDocumentsPage() {
     }
 
     if (step === 1) {
-      if (categories.length === 0) {
-        toast.error("Please create a category before uploading documents.");
-        navigate("/app/categories");
+      if (folders.length === 0) {
+        toast.error("Please create a folder before uploading documents.");
+        navigate("/app/folders");
         return;
       }
 
@@ -174,14 +247,14 @@ export function UploadDocumentsPage() {
     }
 
     if (step === 2) {
-      if (categories.length === 0) {
-        toast.error("Please create a category before uploading documents.");
-        navigate("/app/categories");
+      if (folders.length === 0) {
+        toast.error("Please create a folder before uploading documents.");
+        navigate("/app/folders");
         return;
       }
 
-      if (!details.categoryId) {
-        toast.error("Please select a category.");
+      if (!details.folderId) {
+        toast.error("Please select a folder.");
         return;
       }
 
@@ -210,7 +283,10 @@ export function UploadDocumentsPage() {
             description: noteContent,
             documentType: file.type,
             visibility: "PRIVATE",
-            categoryId: Number(details.categoryId),
+            folderId: Number(details.folderId),
+            ...(details.categoryId
+              ? { categoryId: Number(details.categoryId) }
+              : {}),
           });
 
           const uploadedDocument = uploadResponse.data;
@@ -245,6 +321,7 @@ export function UploadDocumentsPage() {
     setStep(1);
     setFiles([]);
     setDetails({
+      folderId: presetFolderId || "",
       categoryId: "",
       documentTitle: "",
       noteTitle: "",
@@ -265,8 +342,8 @@ export function UploadDocumentsPage() {
           </h1>
 
           <p className="mt-1 text-slate-500 dark:text-slate-400">
-            Upload files, add a little context, and generate study materials in
-            one flow.
+            Upload files, choose a folder, optionally add a category, and
+            generate study materials in one flow.
           </p>
         </div>
       </div>
@@ -303,25 +380,27 @@ export function UploadDocumentsPage() {
                   </h2>
 
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Select a category and add a note for this upload.
+                    Select a folder. Category is optional and only used as a
+                    label.
                   </p>
                 </div>
 
-                {categories.length === 0 && (
+                {folders.length === 0 && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
                     <h3 className="font-bold text-amber-900 dark:text-amber-200">
-                      No categories yet
+                      No folders yet
                     </h3>
 
                     <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
-                      Please create a category before uploading documents.
+                      You must create a folder before uploading documents.
                     </p>
 
                     <button
-                      onClick={() => navigate("/app/categories")}
+                      type="button"
+                      onClick={() => navigate("/app/folders")}
                       className="mt-3 rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700"
                     >
-                      Create Category
+                      Create Folder
                     </button>
                   </div>
                 )}
@@ -360,7 +439,52 @@ export function UploadDocumentsPage() {
 
                   <label className="block space-y-1.5">
                     <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                      Category
+                      Folder <span className="text-red-500">*</span>
+                    </span>
+
+                    <select
+                      value={details.folderId}
+                      onChange={(event) =>
+                        setDetails((current) => ({
+                          ...current,
+                          folderId: event.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    >
+                      <option value="">Select folder</option>
+
+                      {sortedFolders.map((folder) => (
+                        <option key={folder.id} value={folder.id}>
+                          {getFolderOptionLabel(folder)}
+                        </option>
+                      ))}
+                    </select>
+
+                    {presetFolderId &&
+                      details.folderId === presetFolderId &&
+                      selectedPresetFolderExists && (
+                        <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-300">
+                          Folder was preselected from the folder page.
+                        </p>
+                      )}
+
+                    <button
+                      type="button"
+                      onClick={() => navigate("/app/folders")}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700"
+                    >
+                      <Folder className="h-3.5 w-3.5" />
+                      Create or manage folders
+                    </button>
+                  </label>
+
+                  <label className="block space-y-1.5 md:col-span-2">
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                      Category{" "}
+                      <span className="font-medium text-slate-400">
+                        optional
+                      </span>
                     </span>
 
                     <select
@@ -373,7 +497,7 @@ export function UploadDocumentsPage() {
                       }
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                     >
-                      <option value="">Select category</option>
+                      <option value="">No category</option>
 
                       {categories.map((category) => (
                         <option key={category.id} value={category.id}>
@@ -381,6 +505,10 @@ export function UploadDocumentsPage() {
                         </option>
                       ))}
                     </select>
+
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Category is only a label. Documents are stored in folders.
+                    </p>
                   </label>
                 </div>
 
@@ -446,6 +574,7 @@ export function UploadDocumentsPage() {
             <div className="mt-6 flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 dark:border-slate-800 sm:flex-row sm:justify-end">
               {step > 1 && (
                 <button
+                  type="button"
                   onClick={() => setStep((current) => (current === 3 ? 2 : 1))}
                   className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
@@ -455,6 +584,7 @@ export function UploadDocumentsPage() {
 
               {step < 3 ? (
                 <button
+                  type="button"
                   onClick={goNext}
                   disabled={isUploading}
                   className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-extrabold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -467,6 +597,7 @@ export function UploadDocumentsPage() {
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={resetFlow}
                   className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-extrabold text-white transition-colors hover:bg-blue-700"
                 >

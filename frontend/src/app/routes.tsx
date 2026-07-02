@@ -28,6 +28,8 @@ import { ProfilePage } from "./pages/profile/ProfilePage";
 import { StorageDashboard } from "./pages/storage/StorageDashboard";
 import { CategoriesPage } from "./pages/categories/CategoriesPage";
 import { CategoryDocumentsPage } from "./pages/categories/CategoryDocumentsPage";
+import { FoldersPage } from "./pages/folders/FoldersPage";
+import { FolderDocumentsPage } from "./pages/folders/FolderDocumentsPage";
 import { FavoriteDocumentsPage } from "./pages/library/FavoriteDocumentsPage";
 import { PricingPage } from "./pages/subscription/PricingPage";
 import { SubscriptionDashboard } from "./pages/subscription/SubscriptionDashboard";
@@ -40,6 +42,7 @@ import { ReportManagement } from "./pages/admin/ReportManagement";
 import { SubscriptionAdmin } from "./pages/admin/SubscriptionAdmin";
 import { AnalyticsDashboard } from "./pages/admin/AnalyticsDashboard";
 import VerifyResetCodePage from "./pages/auth/VerifyResetCodePage";
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -62,12 +65,23 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="dashboard" replace /> },
           { path: "dashboard", element: <StudentDashboard /> },
           { path: "upload", element: <UploadDocumentsPage /> },
+
           { path: "library", element: <MyLibrary /> },
           { path: "library/categories", element: <AllCategoriesPage /> },
-          { path: "library/categories/:categoryId", element: <LibraryCategoryDocumentsPage />, },
+          {
+            path: "library/categories/:categoryId",
+            element: <LibraryCategoryDocumentsPage />,
+          },
           { path: "library/documents", element: <AllDocumentsPage /> },
-          { path: "library/:id/preview", element: <DocumentPreviewPage />, },
-          { path: "library/favorites", element: <FavoriteDocumentsPage />, },
+          {
+            path: "library/:id/preview",
+            element: <DocumentPreviewPage />,
+          },
+          { path: "library/favorites", element: <FavoriteDocumentsPage /> },
+
+          { path: "folders", element: <FoldersPage /> },
+          { path: "folders/:folderId", element: <FolderDocumentsPage /> },
+
           { path: "trash", element: <TrashPage /> },
           { path: "chat", element: <AIChatPage /> },
           { path: "summary", element: <AISummaryPage /> },
@@ -75,7 +89,10 @@ export const router = createBrowserRouter([
           { path: "profile", element: <ProfilePage /> },
           { path: "storage", element: <StorageDashboard /> },
           { path: "categories", element: <CategoriesPage /> },
-          { path: "categories/:categoryId", element: <CategoryDocumentsPage />, },
+          {
+            path: "categories/:categoryId",
+            element: <CategoryDocumentsPage />,
+          },
           { path: "subscription", element: <SubscriptionDashboard /> },
           { path: "subscription/upgrade", element: <UpgradePlanPage /> },
         ],
