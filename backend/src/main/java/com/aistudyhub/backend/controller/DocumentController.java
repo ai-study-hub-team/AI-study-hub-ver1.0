@@ -157,14 +157,14 @@ public class DocumentController {
             @RequestParam(value = "description",   required = false) String description,
             @RequestParam(value = "documentType",  required = false) String documentType,
             @RequestParam(value = "visibility",    required = false) String visibility,
-            @RequestParam("userId")       Long userId,
             @RequestParam(value = "categoryId",    required = false) Long categoryId,
             @RequestParam(value = "folderId",      required = false) Long folderId) {
 
         try {
             DocumentResponse response = documentService.uploadDocument(
-                    file, title, description, documentType, visibility, userId, categoryId, folderId
+                    file, title, description, documentType, visibility, categoryId, folderId
             );
+
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
         } catch (IllegalArgumentException e) {

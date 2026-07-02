@@ -9,9 +9,9 @@ import java.util.List;
 @Getter
 @Setter
 @Builder
-public class ShareDocumentResponse {
+public class ShareResultResponse {
     private String message;
     private List<String> sharedEmails;
-    private List<String> notRegisteredEmails;
     private List<String> alreadySharedEmails;
+    private List<String> notFoundEmails;
 }

@@ -1,9 +1,9 @@
 package com.aistudyhub.backend.service;
 
-import com.aistudyhub.backend.dto.request.ShareDocumentRequest;
-import com.aistudyhub.backend.dto.response.ShareDocumentResponse;
+import com.aistudyhub.backend.dto.response.ShareResultResponse;
 import com.aistudyhub.backend.dto.response.SharedItemResponse;
 import com.aistudyhub.backend.dto.response.SharedUserResponse;
+import com.aistudyhub.backend.dto.request.ShareRequest;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentShare;
 import com.aistudyhub.backend.entity.DocumentSharePermission;
@@ -12,6 +12,7 @@ import com.aistudyhub.backend.entity.DocumentStatus;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.exception.BadRequestException;
 import com.aistudyhub.backend.exception.ForbiddenException;
+import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.DocumentShareRepository;
 import com.aistudyhub.backend.repository.UserRepository;
@@ -38,10 +39,7 @@ public class DocumentShareService {
     private final ShareValidationService shareValidationService;
 
     @Transactional
-    public ShareDocumentResponse shareDocumentToUsers(
-            Long documentId,
-            ShareDocumentRequest request
-    ) {
+    public ShareResultResponse shareDocumentToUsers(Long documentId, ShareRequest request) {
         User currentUser = currentUserService.getCurrentUser();
         Document document = getActiveDocument(documentId);
         ensureOwner(document, currentUser);
@@ -50,7 +48,7 @@ public class DocumentShareService {
         shareValidationService.validateExpiresAt(request.getExpiresAt());
 
         List<String> sharedEmails = new ArrayList<>();
-        List<String> notRegisteredEmails = new ArrayList<>();
+        List<String> notFoundEmails = new ArrayList<>();
         List<String> alreadySharedEmails = new ArrayList<>();
         List<User> emailReceivers = new ArrayList<>();
 
@@ -60,7 +58,7 @@ public class DocumentShareService {
             User receiver = userRepository.findByEmail(email).orElse(null);
 
             if (receiver == null) {
-                notRegisteredEmails.add(email);
+                notFoundEmails.add(email);
                 continue;
             }
 
@@ -101,22 +99,19 @@ public class DocumentShareService {
             try {
                 resendEmailService.sendDocumentSharedEmail(receiver, currentUser, document, permission);
             } catch (Exception ex) {
-                log.warn(
-                        "Failed to send share email. documentId={}, receiverEmail={}",
-                        document.getId(),
-                        receiver.getEmail(),
-                        ex
-                );
+                log.warn("Failed to send share email. documentId={}, receiverEmail={}",
+                        document.getId(), receiver.getEmail(), ex);
             }
         }
 
-        return ShareDocumentResponse.builder()
-                .message("Document share completed")
+        return ShareResultResponse.builder()
+                .message("Share document successfully")
                 .sharedEmails(sharedEmails)
-                .notRegisteredEmails(notRegisteredEmails)
                 .alreadySharedEmails(alreadySharedEmails)
+                .notFoundEmails(notFoundEmails)
                 .build();
     }
+
 
     @Transactional(readOnly = true)
     public List<SharedUserResponse> getSharedUsers(Long documentId) {
@@ -144,21 +139,11 @@ public class DocumentShareService {
 
         DocumentShare share = documentShareRepository
                 .findByDocumentIdAndSharedWithId(document.getId(), userId)
-                .orElseThrow(() -> new RuntimeException("Document share not found"));
+                .orElseThrow(() -> new NotFoundException("Document share not found"));
 
-        share.setStatus(DocumentShareStatus.REVOKED);
-        documentShareRepository.save(share);
-    }
-
-    @Transactional
-    public void revokeShareById(Long documentId, Long shareId) {
-        User currentUser = currentUserService.getCurrentUser();
-        Document document = getActiveDocument(documentId);
-        ensureOwner(document, currentUser);
-
-        DocumentShare share = documentShareRepository
-                .findByIdAndDocumentId(shareId, document.getId())
-                .orElseThrow(() -> new RuntimeException("Document share not found"));
+        if (share.getStatus() != DocumentShareStatus.ACTIVE) {
+            throw new NotFoundException("Active document share not found");
+        }
 
         share.setStatus(DocumentShareStatus.REVOKED);
         documentShareRepository.save(share);
@@ -177,10 +162,10 @@ public class DocumentShareService {
 
     private Document getActiveDocument(Long documentId) {
         Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + documentId));
+                .orElseThrow(() -> new NotFoundException("Document not found"));
 
         if (document.getStatus() != DocumentStatus.ACTIVE) {
-            throw new RuntimeException("Document not found with id: " + documentId);
+            throw new NotFoundException("Document not found");
         }
 
         return document;
@@ -208,7 +193,8 @@ public class DocumentShareService {
                 .email(sharedWith != null ? sharedWith.getEmail() : null)
                 .permission(share.getPermission() != null ? share.getPermission().name() : null)
                 .status(share.getStatus() != null ? share.getStatus().name() : null)
-                .createdAt(share.getCreatedAt())
+                .shareId(share.getId())
+                .sharedAt(share.getCreatedAt())
                 .expiresAt(share.getExpiresAt())
                 .build();
     }
@@ -219,8 +205,8 @@ public class DocumentShareService {
 
         return SharedItemResponse.builder()
                 .shareId(share.getId())
-                .resourceId(document != null ? document.getId() : null)
-                .resourceType("DOCUMENT")
+                .itemId(document != null ? document.getId() : null)
+                .itemType("DOCUMENT")
                 .title(document != null ? document.getTitle() : null)
                 .ownerId(owner != null ? owner.getId() : null)
                 .ownerName(owner != null ? owner.getFullName() : null)

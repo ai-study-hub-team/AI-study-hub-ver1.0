@@ -17,9 +17,8 @@ public interface FolderShareRepository extends JpaRepository<FolderShare, Long> 
 
     Optional<FolderShare> findByFolderIdAndSharedWithId(Long folderId, Long sharedWithUserId);
 
-    Optional<FolderShare> findByIdAndFolderId(Long id, Long folderId);
-
     List<FolderShare> findByFolderIdAndStatus(Long folderId, FolderShareStatus status);
+
 
     @Query("""
             select fs

@@ -1,9 +1,9 @@
 package com.aistudyhub.backend.service;
 
-import com.aistudyhub.backend.dto.request.ShareFolderRequest;
-import com.aistudyhub.backend.dto.response.ShareDocumentResponse;
 import com.aistudyhub.backend.dto.response.SharedItemResponse;
 import com.aistudyhub.backend.dto.response.SharedUserResponse;
+import com.aistudyhub.backend.dto.request.ShareRequest;
+import com.aistudyhub.backend.dto.response.ShareResultResponse;
 import com.aistudyhub.backend.entity.DocumentSharePermission;
 import com.aistudyhub.backend.entity.Folder;
 import com.aistudyhub.backend.entity.FolderShare;
@@ -11,6 +11,7 @@ import com.aistudyhub.backend.entity.FolderShareStatus;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.exception.BadRequestException;
 import com.aistudyhub.backend.exception.ForbiddenException;
+import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.FolderRepository;
 import com.aistudyhub.backend.repository.FolderShareRepository;
 import com.aistudyhub.backend.repository.UserRepository;
@@ -37,7 +38,7 @@ public class FolderShareService {
     private final ResendEmailService resendEmailService;
 
     @Transactional
-    public ShareDocumentResponse shareFolder(Long folderId, ShareFolderRequest request) {
+    public ShareResultResponse shareFolder(Long folderId, ShareRequest request) {
         User currentUser = currentUserService.getCurrentUser();
         Folder folder = getFolderOrThrow(folderId);
         ensureOwner(folder, currentUser);
@@ -47,7 +48,7 @@ public class FolderShareService {
         Set<String> normalizedEmails = shareValidationService.normalizeEmails(request.getEmails());
 
         List<String> sharedEmails = new ArrayList<>();
-        List<String> notRegisteredEmails = new ArrayList<>();
+        List<String> notFoundEmails = new ArrayList<>();
         List<String> alreadySharedEmails = new ArrayList<>();
         List<User> emailReceivers = new ArrayList<>();
 
@@ -55,7 +56,7 @@ public class FolderShareService {
             User receiver = userRepository.findByEmail(email).orElse(null);
 
             if (receiver == null) {
-                notRegisteredEmails.add(email);
+                notFoundEmails.add(email);
                 continue;
             }
 
@@ -105,11 +106,11 @@ public class FolderShareService {
             }
         }
 
-        return ShareDocumentResponse.builder()
-                .message("Folder share completed")
+        return ShareResultResponse.builder()
+                .message("Share folder successfully")
                 .sharedEmails(sharedEmails)
-                .notRegisteredEmails(notRegisteredEmails)
                 .alreadySharedEmails(alreadySharedEmails)
+                .notFoundEmails(notFoundEmails)
                 .build();
     }
 
@@ -128,18 +129,27 @@ public class FolderShareService {
     }
 
     @Transactional
-    public void revokeFolderShare(Long folderId, Long shareId) {
+    public void revokeFolderShare(Long folderId, Long userId) {
         User currentUser = currentUserService.getCurrentUser();
         Folder folder = getFolderOrThrow(folderId);
         ensureOwner(folder, currentUser);
 
+        if (currentUser.getId().equals(userId)) {
+            throw new BadRequestException("Owner share cannot be revoked");
+        }
+
         FolderShare share = folderShareRepository
-                .findByIdAndFolderId(shareId, folder.getId())
-                .orElseThrow(() -> new RuntimeException("Folder share not found"));
+                .findByFolderIdAndSharedWithId(folder.getId(), userId)
+                .orElseThrow(() -> new NotFoundException("Folder share not found"));
+
+        if (share.getStatus() != FolderShareStatus.ACTIVE) {
+            throw new NotFoundException("Active folder share not found");
+        }
 
         share.setStatus(FolderShareStatus.REVOKED);
         folderShareRepository.save(share);
     }
+
 
     @Transactional(readOnly = true)
     public List<SharedItemResponse> getSharedFoldersForCurrentUser() {
@@ -154,7 +164,7 @@ public class FolderShareService {
 
     private Folder getFolderOrThrow(Long folderId) {
         return folderRepository.findById(folderId)
-                .orElseThrow(() -> new RuntimeException("Folder not found with id: " + folderId));
+                .orElseThrow(() -> new NotFoundException("Folder not found"));
     }
 
     private void ensureOwner(Folder folder, User currentUser) {
@@ -172,12 +182,13 @@ public class FolderShareService {
         User sharedWith = share.getSharedWith();
 
         return SharedUserResponse.builder()
+                .shareId(share.getId())
                 .userId(sharedWith != null ? sharedWith.getId() : null)
                 .fullName(sharedWith != null ? sharedWith.getFullName() : null)
                 .email(sharedWith != null ? sharedWith.getEmail() : null)
                 .permission(share.getPermission() != null ? share.getPermission().name() : null)
                 .status(share.getStatus() != null ? share.getStatus().name() : null)
-                .createdAt(share.getCreatedAt())
+                .sharedAt(share.getCreatedAt())
                 .expiresAt(share.getExpiresAt())
                 .build();
     }
@@ -188,9 +199,9 @@ public class FolderShareService {
 
         return SharedItemResponse.builder()
                 .shareId(share.getId())
-                .resourceId(folder != null ? folder.getId() : null)
-                .resourceType("FOLDER")
-                .name(folder != null ? folder.getName() : null)
+                .itemId(folder != null ? folder.getId() : null)
+                .itemType("FOLDER")
+                .title(folder != null ? folder.getName() : null)
                 .ownerId(owner != null ? owner.getId() : null)
                 .ownerName(owner != null ? owner.getFullName() : null)
                 .ownerEmail(owner != null ? owner.getEmail() : null)
@@ -200,4 +211,5 @@ public class FolderShareService {
                 .status(share.getStatus() != null ? share.getStatus().name() : null)
                 .build();
     }
+
 }

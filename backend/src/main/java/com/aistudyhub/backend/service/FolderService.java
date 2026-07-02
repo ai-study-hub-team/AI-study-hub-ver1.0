@@ -5,6 +5,7 @@ import com.aistudyhub.backend.dto.request.FolderUpdateRequest;
 import com.aistudyhub.backend.dto.response.FolderResponse;
 import com.aistudyhub.backend.entity.Folder;
 import com.aistudyhub.backend.entity.User;
+import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.FolderRepository;
 import com.aistudyhub.backend.repository.UserRepository;
@@ -25,23 +26,21 @@ public class FolderService {
     private final FolderRepository folderRepository;
     private final UserRepository userRepository;
     private final DocumentRepository documentRepository;
+    private final CurrentUserService currentUserService;
 
     // ─── Create ────────────────────────────────────────────────────────────────
 
     @Transactional
     public FolderResponse createFolder(FolderCreateRequest request) {
-        User user = userRepository.findById(request.getUserId())
-                .orElseThrow(() -> new RuntimeException(
-                        "User not found with id: " + request.getUserId()));
+        User user = currentUserService.getCurrentUser();
+
 
         // Resolve optional parent folder — must belong to the same user
         Folder parentFolder = null;
         if (request.getParentFolderId() != null) {
             parentFolder = folderRepository.findByIdAndUserId(
-                    request.getParentFolderId(), user.getId())
-                    .orElseThrow(() -> new RuntimeException(
-                            "Parent folder not found or does not belong to user: "
-                                    + request.getParentFolderId()));
+                            request.getParentFolderId(), user.getId())
+                    .orElseThrow(() -> new NotFoundException("Parent folder not found"));
         }
 
         // Duplicate name check under the same parent
@@ -57,10 +56,7 @@ public class FolderService {
                 .updatedAt(now)
                 .build();
 
-        Folder saved = folderRepository.save(folder);
-        log.info("[Folder] Created folder id={}, name='{}', userId={}, parentId={}",
-                saved.getId(), saved.getName(), user.getId(), request.getParentFolderId());
-        return toResponse(saved);
+        return toResponse(folderRepository.save(folder));
     }
 
     // ─── Read All (for a user) ─────────────────────────────────────────────────
