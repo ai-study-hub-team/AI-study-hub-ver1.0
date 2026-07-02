@@ -91,7 +91,7 @@ public class SummaryService {
         SummaryType type = request.getSummaryType() != null ? request.getSummaryType() : SummaryType.DETAILED;
 
         // 8. Validate Token Quota before calling AI
-        tokenUsageService.validateTokenQuota(user.getId());
+        tokenUsageService.validateTokenQuota(user.getId(), "SUMMARY");
 
         // 9. Call Python API
         PythonSummaryRequest pythonRequest = PythonSummaryRequest.builder()

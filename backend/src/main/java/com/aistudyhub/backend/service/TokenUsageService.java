@@ -25,16 +25,27 @@ public class TokenUsageService {
 
     @Transactional(readOnly = true)
     // so sánh token hằng ngày
-    public void validateTokenQuota(Long userId) {
+    public void validateTokenQuota(Long userId, String featureType) {
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
         Long dailyLimit = subscription.getPlan().getDailyTokenLimit();
+        LocalDate today = LocalDate.now();
 
-        UserDailyUsage usage = userDailyUsageRepository.findByUserIdAndUsageDate(userId, LocalDate.now())
+        UserDailyUsage usage = userDailyUsageRepository.findByUserIdAndUsageDate(userId, today)
                 .orElse(null);
 
-        if (usage != null && usage.getTotalTokens() >= dailyLimit) {
+        long used = (usage != null) ? usage.getTotalTokens() : 0L;
+
+        log.info("[TokenQuota][{}] userId={}, date={}, used={}, limit={}",
+                featureType, userId, today, used, dailyLimit);
+
+        if (used >= dailyLimit) {
+            log.warn("[TokenQuota][{}] QUOTA EXCEEDED userId={}, used={}, limit={}",
+                    featureType, userId, used, dailyLimit);
             throw new QuotaExceededException("Daily token quota exceeded. Please upgrade your plan or try again tomorrow.");
         }
+        
+        log.info("[TokenQuota][{}] allowed userId={}, used={}, limit={}",
+                featureType, userId, used, dailyLimit);
     }
 
     @Transactional
@@ -83,5 +94,6 @@ public class TokenUsageService {
         }
 
         userDailyUsageRepository.save(usage);
+        log.info("[TokenUsage][{}] recorded tokens={}, userId={}", featureType, tokens, user.getId());
     }
 }

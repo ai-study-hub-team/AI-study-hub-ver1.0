@@ -34,18 +34,20 @@ public class DocumentService {
     private final AiIntegrationService aiIntegrationService;
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentProcessingAsyncService documentProcessingAsyncService;
+    private final DocumentAccessService documentAccessService;
     private final StorageQuotaService storageQuotaService;
+    private final CurrentUserService currentUserService;
 
     // Read upload dir from config (same value used in FileStorageService)
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
+    private final FolderAccessService folderAccessService;
 
     // ─── Create ────────────────────────────────────────────────────────────────
 
     public DocumentResponse create(DocumentRequest request) {
         // 1. Validate user
-        User user = userRepository.findById(request.getUserId())
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + request.getUserId()));
+        User user = currentUserService.getCurrentUser();
 
         // 2. Validate category (optional)
         Category category = null;
@@ -193,13 +195,7 @@ public class DocumentService {
     // ─── Read One ──────────────────────────────────────────────────────────────
 
     public DocumentResponse getById(Long id) {
-        Document document = documentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + id));
-
-        // Don't return soft-deleted documents
-        if (document.getStatus() == DocumentStatus.DELETED) {
-            throw new RuntimeException("Document not found with id: " + id);
-        }
+        Document document = documentAccessService.getAccessibleDocument(id);
         return toResponse(document);
     }
 
@@ -490,4 +486,23 @@ public class DocumentService {
         }
         return sb.isEmpty() ? null : sb.toString();
     }
+
+    public DocumentResponse getDownloadableById(Long id) {
+        Document document = documentAccessService.getDownloadableDocument(id);
+        return toResponse(document);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<DocumentResponse> getDocumentsInAccessibleFolder(Long folderId) {
+        User currentUser = currentUserService.getCurrentUser();
+        Folder folder = folderAccessService.getAccessibleFolder(currentUser, folderId);
+
+        return documentRepository.findByFolderIdAndStatus(folder.getId(), DocumentStatus.ACTIVE)
+                .stream()
+                .filter(document -> documentAccessService.canViewDocument(currentUser, document))
+                .map(this::toResponse)
+                .toList();
+    }
+
 }
+

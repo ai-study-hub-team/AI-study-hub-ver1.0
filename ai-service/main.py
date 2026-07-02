@@ -351,7 +351,7 @@ Quy tắc bắt buộc:
             config=config
         )
         answer = response.text or "Không nhận được phản hồi từ mô hình AI."
-        usage = extract_usage(response)
+        usage = extract_usage(response, "chat-legacy")
     except Exception as e:
         logger.exception(f"Error calling Gemini: {e}")
         answer = f"Lỗi khi gọi mô hình AI: {str(e)}"
@@ -512,6 +512,9 @@ Return ONLY this JSON, no markdown, no explanation:
         needs_retrieval = bool(data.get("needsRetrieval", True))
         confidence = float(data.get("confidence", 0.8))
 
+        # Extract token usage from planner Gemini call
+        planner_usage = extract_usage(response, "chat-planner")
+
         logger.info(f"[analyze-chat-query] intent={intent}, strategy={strategy}, confidence={confidence}")
         return AnalyzeChatQueryResponse(
             intent=intent,
@@ -520,9 +523,11 @@ Return ONLY this JSON, no markdown, no explanation:
             searchQueries=queries,
             needsRetrieval=needs_retrieval,
             confidence=confidence,
+            usage=planner_usage,
         )
     except Exception as e:
         logger.warning(f"[analyze-chat-query] Gemini call or JSON parse failed: {e}. Using fallback.")
+        # Safe fallback: no Gemini was called (or it failed), so usage=None
         return safe_fallback(request.question)
 
 
@@ -636,12 +641,15 @@ async def generate_answer_endpoint(request: GenerateAnswerRequest):
             config=config
         )
         answer = response.text or "Không nhận được phản hồi từ mô hình AI."
+        answer_usage = extract_usage(response, "generate-answer")
         logger.info("[generate-answer] Gemini answered successfully.")
     except Exception as e:
         logger.exception(f"[generate-answer] Gemini call failed: {e}")
         answer = f"Lỗi khi gọi mô hình AI: {str(e)}"
+        from schemas.usage_schema import UsageResponse
+        answer_usage = UsageResponse()
 
-    return GenerateAnswerResponse(answer=answer)
+    return GenerateAnswerResponse(answer=answer, usage=answer_usage)
 
 
 # ─── Document Summary Endpoint ────────────────────────────────────────────────

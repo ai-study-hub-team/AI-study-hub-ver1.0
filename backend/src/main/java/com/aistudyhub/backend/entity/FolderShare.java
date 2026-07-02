@@ -7,10 +7,10 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(
-        name = "document_shares",
+        name = "folder_shares",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_document_share_document_user",
-                columnNames = {"document_id", "shared_with_user_id"}
+                name = "uk_folder_share_folder_user",
+                columnNames = {"folder_id", "shared_with_user_id"}
         )
 )
 @Getter
@@ -18,15 +18,15 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class DocumentShare {
+public class FolderShare {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "document_id", nullable = false)
-    private Document document;
+    @JoinColumn(name = "folder_id", nullable = false)
+    private Folder folder;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "owner_id", nullable = false)
@@ -44,15 +44,15 @@ public class DocumentShare {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default
-    private DocumentShareStatus status = DocumentShareStatus.ACTIVE;
+    private FolderShareStatus status = FolderShareStatus.ACTIVE;
+
+    private LocalDateTime expiresAt;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Column(nullable = false)
     private LocalDateTime updatedAt;
-
-    private LocalDateTime expiresAt;
 
     @PrePersist
     void prePersist() {
@@ -65,7 +65,7 @@ public class DocumentShare {
             permission = DocumentSharePermission.VIEW;
         }
         if (status == null) {
-            status = DocumentShareStatus.ACTIVE;
+            status = FolderShareStatus.ACTIVE;
         }
     }
 
