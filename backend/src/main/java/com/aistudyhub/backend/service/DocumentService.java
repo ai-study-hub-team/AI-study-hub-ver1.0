@@ -41,6 +41,7 @@ public class DocumentService {
     // Read upload dir from config (same value used in FileStorageService)
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
+    private final FolderAccessService folderAccessService;
 
     // ─── Create ────────────────────────────────────────────────────────────────
 
@@ -487,8 +488,21 @@ public class DocumentService {
     }
 
     public DocumentResponse getDownloadableById(Long id) {
-        Document document = documentAccessService.getAccessibleDocument(id);
-        // TODO: check permission DOWNLOAD nếu user không phải owner/admin
+        Document document = documentAccessService.getDownloadableDocument(id);
         return toResponse(document);
     }
+
+    @Transactional(readOnly = true)
+    public java.util.List<DocumentResponse> getDocumentsInAccessibleFolder(Long folderId) {
+        User currentUser = currentUserService.getCurrentUser();
+        Folder folder = folderAccessService.getAccessibleFolder(currentUser, folderId);
+
+        return documentRepository.findByFolderIdAndStatus(folder.getId(), DocumentStatus.ACTIVE)
+                .stream()
+                .filter(document -> documentAccessService.canViewDocument(currentUser, document))
+                .map(this::toResponse)
+                .toList();
+    }
+
 }
+

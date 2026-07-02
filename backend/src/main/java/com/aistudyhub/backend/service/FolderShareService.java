@@ -1,19 +1,18 @@
 package com.aistudyhub.backend.service;
 
-import com.aistudyhub.backend.dto.request.ShareDocumentRequest;
+import com.aistudyhub.backend.dto.request.ShareFolderRequest;
 import com.aistudyhub.backend.dto.response.ShareDocumentResponse;
 import com.aistudyhub.backend.dto.response.SharedItemResponse;
 import com.aistudyhub.backend.dto.response.SharedUserResponse;
-import com.aistudyhub.backend.entity.Document;
-import com.aistudyhub.backend.entity.DocumentShare;
 import com.aistudyhub.backend.entity.DocumentSharePermission;
-import com.aistudyhub.backend.entity.DocumentShareStatus;
-import com.aistudyhub.backend.entity.DocumentStatus;
+import com.aistudyhub.backend.entity.Folder;
+import com.aistudyhub.backend.entity.FolderShare;
+import com.aistudyhub.backend.entity.FolderShareStatus;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.exception.BadRequestException;
 import com.aistudyhub.backend.exception.ForbiddenException;
-import com.aistudyhub.backend.repository.DocumentRepository;
-import com.aistudyhub.backend.repository.DocumentShareRepository;
+import com.aistudyhub.backend.repository.FolderRepository;
+import com.aistudyhub.backend.repository.FolderShareRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,33 +27,29 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class DocumentShareService {
+public class FolderShareService {
 
-    private final DocumentRepository documentRepository;
+    private final FolderRepository folderRepository;
+    private final FolderShareRepository folderShareRepository;
     private final UserRepository userRepository;
-    private final DocumentShareRepository documentShareRepository;
     private final CurrentUserService currentUserService;
-    private final ResendEmailService resendEmailService;
     private final ShareValidationService shareValidationService;
+    private final ResendEmailService resendEmailService;
 
     @Transactional
-    public ShareDocumentResponse shareDocumentToUsers(
-            Long documentId,
-            ShareDocumentRequest request
-    ) {
+    public ShareDocumentResponse shareFolder(Long folderId, ShareFolderRequest request) {
         User currentUser = currentUserService.getCurrentUser();
-        Document document = getActiveDocument(documentId);
-        ensureOwner(document, currentUser);
+        Folder folder = getFolderOrThrow(folderId);
+        ensureOwner(folder, currentUser);
 
         DocumentSharePermission permission = shareValidationService.parsePermission(request.getPermission());
         shareValidationService.validateExpiresAt(request.getExpiresAt());
+        Set<String> normalizedEmails = shareValidationService.normalizeEmails(request.getEmails());
 
         List<String> sharedEmails = new ArrayList<>();
         List<String> notRegisteredEmails = new ArrayList<>();
         List<String> alreadySharedEmails = new ArrayList<>();
         List<User> emailReceivers = new ArrayList<>();
-
-        Set<String> normalizedEmails = shareValidationService.normalizeEmails(request.getEmails());
 
         for (String email : normalizedEmails) {
             User receiver = userRepository.findByEmail(email).orElse(null);
@@ -65,11 +60,11 @@ public class DocumentShareService {
             }
 
             if (receiver.getId().equals(currentUser.getId())) {
-                throw new BadRequestException("Owner cannot share document to yourself");
+                throw new BadRequestException("Owner cannot share folder to yourself");
             }
 
-            DocumentShare share = documentShareRepository
-                    .findByDocumentIdAndSharedWithId(document.getId(), receiver.getId())
+            FolderShare share = folderShareRepository
+                    .findByFolderIdAndSharedWithId(folder.getId(), receiver.getId())
                     .orElse(null);
 
             if (share != null && isActiveAndNotExpired(share)) {
@@ -78,32 +73,32 @@ public class DocumentShareService {
             }
 
             if (share == null) {
-                share = DocumentShare.builder()
-                        .document(document)
+                share = FolderShare.builder()
+                        .folder(folder)
                         .owner(currentUser)
                         .sharedWith(receiver)
                         .permission(permission)
-                        .status(DocumentShareStatus.ACTIVE)
+                        .status(FolderShareStatus.ACTIVE)
                         .expiresAt(request.getExpiresAt())
                         .build();
             } else {
                 share.setPermission(permission);
-                share.setStatus(DocumentShareStatus.ACTIVE);
+                share.setStatus(FolderShareStatus.ACTIVE);
                 share.setExpiresAt(request.getExpiresAt());
             }
 
-            documentShareRepository.save(share);
+            folderShareRepository.save(share);
             sharedEmails.add(email);
             emailReceivers.add(receiver);
         }
 
         for (User receiver : emailReceivers) {
             try {
-                resendEmailService.sendDocumentSharedEmail(receiver, currentUser, document, permission);
+                resendEmailService.sendFolderSharedEmail(receiver, currentUser, folder, permission);
             } catch (Exception ex) {
                 log.warn(
-                        "Failed to send share email. documentId={}, receiverEmail={}",
-                        document.getId(),
+                        "Failed to send folder share email. folderId={}, receiverEmail={}",
+                        folder.getId(),
                         receiver.getEmail(),
                         ex
                 );
@@ -111,7 +106,7 @@ public class DocumentShareService {
         }
 
         return ShareDocumentResponse.builder()
-                .message("Document share completed")
+                .message("Folder share completed")
                 .sharedEmails(sharedEmails)
                 .notRegisteredEmails(notRegisteredEmails)
                 .alreadySharedEmails(alreadySharedEmails)
@@ -119,13 +114,13 @@ public class DocumentShareService {
     }
 
     @Transactional(readOnly = true)
-    public List<SharedUserResponse> getSharedUsers(Long documentId) {
+    public List<SharedUserResponse> getFolderShares(Long folderId) {
         User currentUser = currentUserService.getCurrentUser();
-        Document document = getActiveDocument(documentId);
-        ensureOwner(document, currentUser);
+        Folder folder = getFolderOrThrow(folderId);
+        ensureOwner(folder, currentUser);
 
-        return documentShareRepository
-                .findByDocumentIdAndStatus(document.getId(), DocumentShareStatus.ACTIVE)
+        return folderShareRepository
+                .findByFolderIdAndStatus(folder.getId(), FolderShareStatus.ACTIVE)
                 .stream()
                 .filter(this::isActiveAndNotExpired)
                 .map(this::toSharedUserResponse)
@@ -133,73 +128,47 @@ public class DocumentShareService {
     }
 
     @Transactional
-    public void revokeShare(Long documentId, Long userId) {
+    public void revokeFolderShare(Long folderId, Long shareId) {
         User currentUser = currentUserService.getCurrentUser();
-        Document document = getActiveDocument(documentId);
-        ensureOwner(document, currentUser);
+        Folder folder = getFolderOrThrow(folderId);
+        ensureOwner(folder, currentUser);
 
-        if (currentUser.getId().equals(userId)) {
-            throw new BadRequestException("Owner share cannot be revoked");
-        }
+        FolderShare share = folderShareRepository
+                .findByIdAndFolderId(shareId, folder.getId())
+                .orElseThrow(() -> new RuntimeException("Folder share not found"));
 
-        DocumentShare share = documentShareRepository
-                .findByDocumentIdAndSharedWithId(document.getId(), userId)
-                .orElseThrow(() -> new RuntimeException("Document share not found"));
-
-        share.setStatus(DocumentShareStatus.REVOKED);
-        documentShareRepository.save(share);
-    }
-
-    @Transactional
-    public void revokeShareById(Long documentId, Long shareId) {
-        User currentUser = currentUserService.getCurrentUser();
-        Document document = getActiveDocument(documentId);
-        ensureOwner(document, currentUser);
-
-        DocumentShare share = documentShareRepository
-                .findByIdAndDocumentId(shareId, document.getId())
-                .orElseThrow(() -> new RuntimeException("Document share not found"));
-
-        share.setStatus(DocumentShareStatus.REVOKED);
-        documentShareRepository.save(share);
+        share.setStatus(FolderShareStatus.REVOKED);
+        folderShareRepository.save(share);
     }
 
     @Transactional(readOnly = true)
-    public List<SharedItemResponse> getSharedDocumentsForCurrentUser() {
+    public List<SharedItemResponse> getSharedFoldersForCurrentUser() {
         User currentUser = currentUserService.getCurrentUser();
 
-        return documentShareRepository
+        return folderShareRepository
                 .findActiveNonExpiredBySharedWithUserId(currentUser.getId(), LocalDateTime.now())
                 .stream()
                 .map(this::toSharedItemResponse)
                 .toList();
     }
 
-    private Document getActiveDocument(Long documentId) {
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + documentId));
-
-        if (document.getStatus() != DocumentStatus.ACTIVE) {
-            throw new RuntimeException("Document not found with id: " + documentId);
-        }
-
-        return document;
+    private Folder getFolderOrThrow(Long folderId) {
+        return folderRepository.findById(folderId)
+                .orElseThrow(() -> new RuntimeException("Folder not found with id: " + folderId));
     }
 
-    private void ensureOwner(Document document, User currentUser) {
-        if (document.getUser() == null
-                || !document.getUser().getId().equals(currentUser.getId())) {
-            throw new ForbiddenException("Only document owner can share this document");
+    private void ensureOwner(Folder folder, User currentUser) {
+        if (folder.getUser() == null || !folder.getUser().getId().equals(currentUser.getId())) {
+            throw new ForbiddenException("Only folder owner can share this folder");
         }
     }
 
-    private boolean isActiveAndNotExpired(DocumentShare share) {
-        return share.getStatus() == DocumentShareStatus.ACTIVE
-                && (share.getExpiresAt() == null
-                || share.getExpiresAt().isAfter(LocalDateTime.now()));
+    private boolean isActiveAndNotExpired(FolderShare share) {
+        return share.getStatus() == FolderShareStatus.ACTIVE
+                && (share.getExpiresAt() == null || share.getExpiresAt().isAfter(LocalDateTime.now()));
     }
 
-    private SharedUserResponse toSharedUserResponse(DocumentShare share) {
+    private SharedUserResponse toSharedUserResponse(FolderShare share) {
         User sharedWith = share.getSharedWith();
 
         return SharedUserResponse.builder()
@@ -213,15 +182,15 @@ public class DocumentShareService {
                 .build();
     }
 
-    private SharedItemResponse toSharedItemResponse(DocumentShare share) {
-        Document document = share.getDocument();
+    private SharedItemResponse toSharedItemResponse(FolderShare share) {
+        Folder folder = share.getFolder();
         User owner = share.getOwner();
 
         return SharedItemResponse.builder()
                 .shareId(share.getId())
-                .resourceId(document != null ? document.getId() : null)
-                .resourceType("DOCUMENT")
-                .title(document != null ? document.getTitle() : null)
+                .resourceId(folder != null ? folder.getId() : null)
+                .resourceType("FOLDER")
+                .name(folder != null ? folder.getName() : null)
                 .ownerId(owner != null ? owner.getId() : null)
                 .ownerName(owner != null ? owner.getFullName() : null)
                 .ownerEmail(owner != null ? owner.getEmail() : null)

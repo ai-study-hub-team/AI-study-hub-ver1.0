@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -71,6 +72,24 @@ public interface DocumentShareRepository extends JpaRepository<DocumentShare, Lo
             @Param("documentId") Long documentId,
             @Param("userId") Long userId,
             @Param("permission") DocumentSharePermission permission
+    );
+
+    Optional<DocumentShare> findByIdAndDocumentId(Long id, Long documentId);
+
+    @Query("""
+        select ds
+        from DocumentShare ds
+        join fetch ds.document d
+        join fetch ds.owner o
+        where ds.sharedWith.id = :userId
+          and ds.status = com.aistudyhub.backend.entity.DocumentShareStatus.ACTIVE
+          and (ds.expiresAt is null or ds.expiresAt > :now)
+          and d.status = com.aistudyhub.backend.entity.DocumentStatus.ACTIVE
+        order by ds.createdAt desc
+        """)
+    List<DocumentShare> findActiveNonExpiredBySharedWithUserId(
+            @Param("userId") Long userId,
+            @Param("now") LocalDateTime now
     );
 
 }
