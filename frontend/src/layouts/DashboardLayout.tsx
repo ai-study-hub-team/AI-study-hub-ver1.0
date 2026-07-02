@@ -28,6 +28,7 @@ import { motion } from "motion/react";
 import { useTheme } from "./ThemeProvider";
 import Chatbot3D from "../app/components/ui/Chatbot3D";
 import { GlobalDocumentSearch } from "../app/components/ui/GlobalDocumentSearch";
+import { subscriptionApi } from "../app/services/subscriptionApi";
 
 interface DashboardLayoutProps {
   isAdmin?: boolean;
@@ -60,7 +61,6 @@ const getRoleFromToken = (): string | null => {
       localStorage.getItem("jwt");
 
     const encodedPayload = token?.split(".")[1];
-
     if (!encodedPayload) return null;
 
     const payload = JSON.parse(
@@ -122,15 +122,11 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [displayName, setDisplayName] = useState(getCurrentFullName());
   const [displayRole, setDisplayRole] = useState(getCurrentRole());
+  const [displayPlan, setDisplayPlan] = useState<"Free" | "Pro">("Free");
 
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-
-  useEffect(() => {
-    setDisplayName(getCurrentFullName());
-    setDisplayRole(getCurrentRole());
-  }, [location.pathname]);
 
   const avatarText = useMemo(() => {
     return getInitials(displayName);
@@ -149,8 +145,37 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
 
   const roleText = useMemo(() => {
     if (isCurrentAdmin) return "Administrator";
-    return "Student · Pro";
-  }, [isCurrentAdmin]);
+    return `User · ${displayPlan}`;
+  }, [isCurrentAdmin, displayPlan]);
+
+  useEffect(() => {
+    setDisplayName(getCurrentFullName());
+    setDisplayRole(getCurrentRole());
+
+    const fetchCurrentPlan = async () => {
+      if (isAdmin) {
+        setDisplayPlan("Pro");
+        return;
+      }
+
+      try {
+        const res = await subscriptionApi.getCurrentSubscription();
+
+        const code = res.data?.plan?.code?.toUpperCase();
+        const status = res.data?.status?.toUpperCase();
+
+        const isActivePro =
+          code === "PRO" && (status === "ACTIVE" || status === "VALID");
+
+        setDisplayPlan(isActivePro ? "Pro" : "Free");
+      } catch (error) {
+        console.warn("Load current plan failed, fallback to Free:", error);
+        setDisplayPlan("Free");
+      }
+    };
+
+    fetchCurrentPlan();
+  }, [location.pathname, isAdmin]);
 
   const studentLinks = [
     { to: "/app/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -247,14 +272,11 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
                 key={link.to}
                 to={link.to}
                 end={link.to === "/admin"}
-                className={`
-                  flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group
-                  ${
-                    active
-                      ? "bg-blue-600 text-white font-medium hover:bg-blue-700"
-                      : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
-                  }
-                `}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group ${
+                  active
+                    ? "bg-blue-600 text-white font-medium hover:bg-blue-700"
+                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
+                }`}
                 title={!isSidebarOpen ? link.label : undefined}
               >
                 <link.icon
@@ -320,7 +342,7 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
           <GlobalDocumentSearch />
 
           <div className="ml-auto flex items-center gap-3">
-            {!isAdmin && (
+            {!isCurrentAdmin && displayPlan === "Free" && (
               <NavLink
                 to="/app/subscription/upgrade"
                 className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold rounded-xl hover:opacity-90 transition-opacity"

@@ -100,7 +100,7 @@ export default function Chatbot3D() {
     controls.enableZoom = false;
     controls.enablePan = false;
     controls.autoRotate = true;
-    controls.autoRotateSpeed = 1.2;
+    controls.autoRotateSpeed = 4;
     controls.target.set(0, -0.5, 0);
 
     const handleResize = () => {

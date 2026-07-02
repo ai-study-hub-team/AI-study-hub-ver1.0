@@ -1,7 +1,6 @@
 import {
   ArrowUp,
   BookOpen,
-  ChevronRight,
   Copy,
   FileText,
   Globe,
@@ -146,7 +145,6 @@ export function AIChatPage() {
     ? documents
     : documents.slice(0, MATERIAL_LIMIT);
 
-  const hiddenMaterialCount = Math.max(documents.length - MATERIAL_LIMIT, 0);
   const isEmpty = messages.length === 0;
 
   useEffect(() => {
@@ -345,17 +343,6 @@ export function AIChatPage() {
 
     if (!userId) {
       toast.error("Please login again.");
-      return;
-    }
-
-    if (selectedDocumentIds.length === 0) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: "Please select at least one material first.",
-        },
-      ]);
       return;
     }
 
@@ -583,6 +570,10 @@ export function AIChatPage() {
               {showMorePrompts ? "View Less" : "View More"}
             </button>
 
+            <p className="text-xs text-slate-400 -mt-8">
+              You can ask general questions without selecting materials.
+            </p>
+
             <div className="h-24" />
 
             <div className="fixed bottom-6 left-[260px] right-0 z-30 flex justify-center">
@@ -698,7 +689,8 @@ export function AIChatPage() {
                 </h2>
 
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  Select materials to use for the chat.
+                  Optional. If no material is selected, AI will answer as a
+                  general tutor.
                 </p>
               </div>
 
@@ -710,7 +702,14 @@ export function AIChatPage() {
               </button>
             </div>
 
-            <div className="px-6 py-2 flex justify-end">
+            <div className="px-6 py-2 flex justify-end gap-2">
+              <button
+                onClick={() => setSelectedDocumentIds([])}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-xl transition"
+              >
+                Clear
+              </button>
+
               <button
                 onClick={() =>
                   setSelectedDocumentIds(
@@ -807,16 +806,15 @@ export function AIChatPage() {
                   className="border border-dashed border-blue-300 rounded-xl flex flex-col items-center justify-center p-4 gap-2 bg-blue-50/40 hover:bg-blue-50 dark:bg-blue-950/20 transition text-center min-h-[160px]"
                 >
                   <span className="text-sm font-bold text-blue-600">
-                    {showAllMaterials
-                      ? "Thu gọn"
-                      : `Xem thêm`}
+                    {showAllMaterials ? "Thu gọn" : "Xem thêm"}
                   </span>
                 </button>
               )}
 
               {documents.length === 0 && (
                 <div className="col-span-3 flex items-center justify-center rounded-xl border border-dashed border-slate-300 p-8 text-sm text-slate-500">
-                  No uploaded materials found.
+                  No uploaded materials found. You can still chat without
+                  materials.
                 </div>
               )}
             </div>
@@ -931,7 +929,11 @@ function ChatInput({
               handleSubmit();
             }
           }}
-          placeholder="Ask your AI tutor anything..."
+          placeholder={
+            selectedCount > 0
+              ? "Ask about your selected materials..."
+              : "Ask your AI tutor anything..."
+          }
           rows={1}
           className="w-full resize-none outline-none bg-transparent text-sm placeholder:text-slate-400 dark:text-white py-1"
         />
