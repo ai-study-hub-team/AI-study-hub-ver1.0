@@ -1,7 +1,7 @@
 package com.aistudyhub.backend.controller;
 
-import com.aistudyhub.backend.dto.request.ShareFolderRequest;
-import com.aistudyhub.backend.dto.response.ShareDocumentResponse;
+import com.aistudyhub.backend.dto.request.ShareRequest;
+import com.aistudyhub.backend.dto.response.ShareResultResponse;
 import com.aistudyhub.backend.dto.response.SharedUserResponse;
 import com.aistudyhub.backend.service.FolderShareService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -23,9 +23,9 @@ public class FolderShareController {
     private final FolderShareService folderShareService;
 
     @PostMapping
-    public ResponseEntity<ShareDocumentResponse> shareFolder(
+    public ResponseEntity<ShareResultResponse> shareFolder(
             @PathVariable Long folderId,
-            @Valid @RequestBody ShareFolderRequest request
+            @Valid @RequestBody ShareRequest request
     ) {
         return ResponseEntity.ok(folderShareService.shareFolder(folderId, request));
     }
@@ -37,13 +37,14 @@ public class FolderShareController {
         return ResponseEntity.ok(folderShareService.getFolderShares(folderId));
     }
 
-    @PatchMapping("/{shareId}/revoke")
+    @DeleteMapping("/{targetUserId}")
     public ResponseEntity<Void> revokeFolderShare(
             @PathVariable Long folderId,
-            @PathVariable Long shareId
+            @PathVariable Long targetUserId
     ) {
-        folderShareService.revokeFolderShare(folderId, shareId);
+        folderShareService.revokeFolderShare(folderId, targetUserId);
         return ResponseEntity.noContent().build();
     }
 }
+
 

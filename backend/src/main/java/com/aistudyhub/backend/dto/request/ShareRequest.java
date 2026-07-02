@@ -1,4 +1,3 @@
-
 package com.aistudyhub.backend.dto.request;
 
 import jakarta.validation.constraints.Email;
@@ -12,7 +11,7 @@ import java.util.List;
 
 @Getter
 @Setter
-public class ShareFolderRequest {
+public class ShareRequest {
 
     @NotEmpty(message = "emails must not be empty")
     private List<@NotBlank(message = "email must not be blank")

@@ -7,6 +7,7 @@ import com.aistudyhub.backend.entity.Folder;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.enums.UserRole;
 import com.aistudyhub.backend.exception.ForbiddenException;
+import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.DocumentShareRepository;
 import com.aistudyhub.backend.repository.FolderShareRepository;
@@ -155,10 +156,22 @@ public class DocumentAccessService {
 
     private Document getActiveDocumentOrThrow(Long documentId) {
         Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + documentId));
+                .orElseThrow(() -> new NotFoundException("Document not found"));
 
         if (document.getStatus() != DocumentStatus.ACTIVE) {
-            throw new RuntimeException("Document not found with id: " + documentId);
+            throw new NotFoundException("Document not found");
+        }
+
+        return document;
+    }
+
+    @Transactional(readOnly = true)
+    public Document getOwnedActiveDocument(Long documentId) {
+        User currentUser = currentUserService.getCurrentUser();
+        Document document = getActiveDocumentOrThrow(documentId);
+
+        if (!isOwner(currentUser, document)) {
+            throw new ForbiddenException("Only document owner can perform this action");
         }
 
         return document;

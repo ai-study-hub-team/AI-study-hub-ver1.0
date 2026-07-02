@@ -10,11 +10,12 @@ import java.time.LocalDateTime;
 @Setter
 @Builder
 public class SharedUserResponse {
+    private Long shareId;
     private Long userId;
     private String fullName;
     private String email;
     private String permission;
     private String status;
-    private LocalDateTime createdAt;
+    private LocalDateTime sharedAt;
     private LocalDateTime expiresAt;
 }
