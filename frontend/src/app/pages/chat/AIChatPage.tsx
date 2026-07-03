@@ -18,6 +18,12 @@ import {
   ThumbsUp,
   Volume2,
   X,
+  Clock,
+  CheckCircle2,
+AlertCircle,
+Tag,
+Info,
+FolderOpen,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -72,6 +78,52 @@ const getStoredUserName = () => {
   } catch {
     return "User";
   }
+};
+
+const formatChatHistoryTime = (value?: string) => {
+  if (!value) return "Không rõ thời gian";
+
+  // Fix format có microseconds: 2026-07-03T13:11:54.365049
+  const normalizedValue = value.replace(
+    /\.(\d{3})\d+/,
+    ".$1",
+  );
+
+  const date = new Date(normalizedValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Không rõ thời gian";
+  }
+
+  const now = new Date();
+
+  const isToday = date.toDateString() === now.toDateString();
+
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+
+  const isYesterday = date.toDateString() === yesterday.toDateString();
+
+  const time = date.toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  if (isToday) {
+    return `Hôm nay, ${time}`;
+  }
+
+  if (isYesterday) {
+    return `Hôm qua, ${time}`;
+  }
+
+  const day = date.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+
+  return `${day}, ${time}`;
 };
 
 const quickPrompts = [
@@ -497,11 +549,12 @@ export function AIChatPage() {
                             {session.title || session.sessionTitle || "New Chat"}
                           </p>
 
-                          <p className="text-[11px] text-slate-400 truncate">
-                            {session.createdAt ||
-                              session.createdDate ||
-                              sessionId}
-                          </p>
+                          <p className="text-[11px] text-slate-400 truncate flex items-center gap-1 mt-0.5">
+  <Clock className="w-3 h-3 shrink-0" />
+  <span>
+    {formatChatHistoryTime(session.createdAt || session.createdDate)}
+  </span>
+</p>
                         </button>
                       );
                     })
@@ -680,156 +733,233 @@ export function AIChatPage() {
       </div>
 
       {isOpenMaterials && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-[9999] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-4xl h-[80vh] shadow-2xl flex flex-col overflow-hidden border border-slate-100 dark:border-slate-800">
-            <div className="flex items-center justify-between px-6 pt-5 pb-3">
-              <div>
-                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
-                  Select Materials
-                </h2>
+  <div className="fixed inset-0 bg-slate-900/45 backdrop-blur-[4px] z-[9999] flex items-center justify-center p-4">
+    <div className="bg-white dark:bg-slate-900 rounded-[2rem] w-full max-w-6xl h-[86vh] shadow-2xl flex flex-col overflow-hidden border border-slate-100 dark:border-slate-800">
+      <div className="flex items-start justify-between px-8 pt-7 pb-4">
+        <div>
+          <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
+            Select Materials
+          </h2>
 
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  Optional. If no material is selected, AI will answer as a
-                  general tutor.
-                </p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Optional. If no material is selected, AI will answer as a general
+            tutor.
+          </p>
+        </div>
+
+        <button
+          onClick={() => setIsOpenMaterials(false)}
+          className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="px-8 pb-5 flex justify-end gap-3">
+        <button
+          onClick={() => setSelectedDocumentIds([])}
+          className="px-4 py-2 text-sm font-bold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition"
+        >
+          Clear
+        </button>
+
+        <button
+          onClick={() =>
+            setSelectedDocumentIds(
+              documents
+                .filter(
+                  (doc) =>
+                    !doc.processStatus || doc.processStatus === "PROCESSED",
+                )
+                .map((doc) => doc.id),
+            )
+          }
+          className="px-4 py-2 text-sm font-bold text-blue-600 border border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-xl transition flex items-center gap-2"
+        >
+          <CheckCircle2 className="w-4 h-4" />
+          Select All
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-8 pb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 content-start">
+          <button
+            onClick={() => navigate("/app/upload")}
+            className="min-h-[230px] border-2 border-dashed border-blue-400 rounded-3xl flex flex-col items-center justify-center p-5 gap-4 bg-blue-50/30 hover:bg-blue-50 dark:bg-blue-950/10 dark:hover:bg-blue-950/20 transition group text-center"
+          >
+            <div className="relative">
+              <div className="w-24 h-20 rounded-3xl bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900/40 dark:to-indigo-900/40 flex items-center justify-center">
+                <FolderOpen className="w-12 h-12 text-blue-500" />
               </div>
 
-              <button
-                onClick={() => setIsOpenMaterials(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-white dark:bg-slate-900 shadow-xl border border-blue-100 dark:border-blue-900 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+                <Plus className="w-8 h-8" />
+              </div>
             </div>
 
-            <div className="px-6 py-2 flex justify-end gap-2">
-              <button
-                onClick={() => setSelectedDocumentIds([])}
-                className="px-3 py-1.5 text-xs font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-xl transition"
-              >
-                Clear
-              </button>
+            <div className="mt-5">
+              <p className="text-base font-extrabold text-blue-600">
+                Upload New Material
+              </p>
 
-              <button
-                onClick={() =>
-                  setSelectedDocumentIds(
-                    documents
-                      .filter(
-                        (doc) =>
-                          !doc.processStatus || doc.processStatus === "PROCESSED",
-                      )
-                      .map((doc) => doc.id),
-                  )
-                }
-                className="px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 hover:bg-blue-50/50 rounded-xl transition"
-              >
-                Select All
-              </button>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                PDF, DOCX, PPTX up to 50MB
+              </p>
             </div>
+          </button>
 
-            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-4 gap-4 content-start">
-              <button
-                onClick={() => navigate("/app/upload")}
-                className="border-2 border-dashed border-blue-400 rounded-xl flex flex-col items-center justify-center p-4 gap-3 bg-white hover:bg-blue-50/50 dark:bg-slate-900 dark:hover:bg-blue-950/20 transition group text-center min-h-[160px]"
+          {visibleMaterials.map((doc) => {
+            const isSelected = selectedDocumentIds.includes(doc.id);
+
+            const docName =
+              doc.title || doc.name || doc.fileName || "Untitled";
+
+            const isProcessed =
+              !doc.processStatus || doc.processStatus === "PROCESSED";
+
+            const isFailed =
+              doc.processStatus === "FAILED" || doc.status === "FAILED";
+
+            return (
+              <div
+                key={doc.id}
+                onClick={() => {
+                  if (!isProcessed) {
+                    toast.error(
+                      "This material is not processed yet. Please wait until AI Status is PROCESSED.",
+                    );
+                    return;
+                  }
+
+                  toggleDocument(doc.id);
+                }}
+                className={`relative min-h-[230px] rounded-3xl border p-4 shadow-sm hover:shadow-lg transition-all overflow-hidden ${
+                  isProcessed
+                    ? "cursor-pointer"
+                    : "cursor-not-allowed opacity-60"
+                } ${
+                  isSelected
+                    ? "border-blue-500 bg-blue-50/60 dark:bg-blue-950/30 ring-2 ring-blue-100 dark:ring-blue-900/40"
+                    : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                }`}
               >
-                <div className="w-12 h-12 rounded-full border border-blue-400 flex items-center justify-center text-blue-500">
-                  <Plus className="w-6 h-6 stroke-[2.5]" />
+                <div
+                  className={`absolute top-4 right-4 w-6 h-6 rounded-lg border flex items-center justify-center ${
+                    isSelected
+                      ? "bg-blue-600 border-blue-600 text-white"
+                      : "bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                  }`}
+                >
+                  {isSelected && <CheckCircle2 className="w-4 h-4" />}
                 </div>
 
-                <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
-                  Upload New Material
-                </span>
-              </button>
-
-              {visibleMaterials.map((doc) => {
-                const isSelected = selectedDocumentIds.includes(doc.id);
-                const docName =
-                  doc.title || doc.name || doc.fileName || "Untitled";
-                const isProcessed =
-                  !doc.processStatus || doc.processStatus === "PROCESSED";
-
-                return (
-                  <div
-                    key={doc.id}
-                    onClick={() => {
-                      if (!isProcessed) {
-                        toast.error(
-                          "This material is not processed yet. Please wait until AI Status is PROCESSED.",
-                        );
-                        return;
-                      }
-
-                      toggleDocument(doc.id);
-                    }}
-                    className={`min-h-[160px] border rounded-xl flex flex-col overflow-hidden shadow-sm hover:shadow transition ${
-                      isProcessed
-                        ? "cursor-pointer"
-                        : "cursor-not-allowed opacity-60"
-                    } ${
-                      isSelected
-                        ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
-                        : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
-                    }`}
-                  >
-                    <div className="flex-1 p-4 bg-slate-50/40 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800">
-                      <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 tracking-tight line-clamp-2 uppercase">
-                        {docName}
-                      </div>
-
-                      <p className="mt-2 text-[10px] text-slate-400 dark:text-slate-500 leading-normal">
-                        ID: {doc.id}
-                        <br />
-                        Category:{" "}
-                        {doc.categoryName || doc.category || "No category"}
-                        <br />
-                        Status: {doc.processStatus || doc.status || "Unknown"}
-                      </p>
-                    </div>
-
-                    <div className="h-10 px-3 flex items-center gap-2 bg-white dark:bg-slate-900">
-                      <span className="text-blue-500 text-sm">
-                        {isSelected ? "✅" : "📝"}
-                      </span>
-
-                      <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate flex-1">
-                        {docName}
-                      </span>
+                <div className="h-24 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center mb-4 overflow-hidden">
+                  <div className="w-[78%] h-[70%] rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm p-3">
+                    <div className="w-10 h-2 rounded-full bg-blue-400 mb-3" />
+                    <div className="space-y-2">
+                      <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 w-full" />
+                      <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 w-5/6" />
+                      <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 w-2/3" />
                     </div>
                   </div>
-                );
-              })}
-
-              {documents.length > MATERIAL_LIMIT && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllMaterials(!showAllMaterials)}
-                  className="border border-dashed border-blue-300 rounded-xl flex flex-col items-center justify-center p-4 gap-2 bg-blue-50/40 hover:bg-blue-50 dark:bg-blue-950/20 transition text-center min-h-[160px]"
-                >
-                  <span className="text-sm font-bold text-blue-600">
-                    {showAllMaterials ? "Thu gọn" : "Xem thêm"}
-                  </span>
-                </button>
-              )}
-
-              {documents.length === 0 && (
-                <div className="col-span-3 flex items-center justify-center rounded-xl border border-dashed border-slate-300 p-8 text-sm text-slate-500">
-                  No uploaded materials found. You can still chat without
-                  materials.
                 </div>
-              )}
-            </div>
 
-            <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end bg-white dark:bg-slate-900">
-              <button
-                onClick={() => setIsOpenMaterials(false)}
-                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 px-6 rounded-xl transition shadow-sm active:scale-95"
-              >
-                Confirm Selection
-              </button>
+                <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 line-clamp-2 min-h-[40px]">
+                  {docName}
+                </h3>
+
+                <div className="mt-3 space-y-2 text-xs text-slate-500 dark:text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    <span>ID: {doc.id}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4" />
+                    <span>
+                      Category: {doc.categoryName || doc.category || "No category"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  {isFailed ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-300 text-xs font-bold">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      Failed
+                    </span>
+                  ) : isProcessed ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 text-xs font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Processed
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-300 text-xs font-bold">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      Processing
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {documents.length > MATERIAL_LIMIT && (
+            <button
+              type="button"
+              onClick={() => setShowAllMaterials(!showAllMaterials)}
+              className="min-h-[230px] rounded-3xl border-2 border-dashed border-blue-300 bg-blue-50/30 dark:bg-blue-950/10 hover:bg-blue-50 dark:hover:bg-blue-950/20 flex flex-col items-center justify-center gap-4 transition"
+            >
+              <div className="w-24 h-20 rounded-3xl bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 flex items-center justify-center">
+                <FolderOpen className="w-12 h-12 text-blue-500" />
+              </div>
+
+              <div className="text-center">
+                <p className="text-lg font-extrabold text-blue-600">
+                  {showAllMaterials ? "Thu gọn" : "Xem thêm"}
+                </p>
+
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  See all materials
+                </p>
+              </div>
+            </button>
+          )}
+
+          {documents.length === 0 && (
+            <div className="lg:col-span-3 sm:col-span-2 min-h-[230px] rounded-3xl border border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+              No uploaded materials found. You can still chat without materials.
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
+
+      <div className="px-8 py-5 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900">
+        <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
+          <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 flex items-center justify-center">
+            <Info className="w-4 h-4" />
+          </div>
+
+          <p>
+            <span className="font-extrabold text-blue-600">
+              {selectedDocumentIds.length} materials selected
+            </span>
+            <span className="mx-2">•</span>
+            You can select multiple materials to improve answer accuracy.
+          </p>
+        </div>
+
+        <button
+          onClick={() => setIsOpenMaterials(false)}
+          className="inline-flex items-center justify-center gap-2 px-7 py-3 rounded-2xl bg-blue-600 text-white text-sm font-extrabold hover:bg-blue-700 shadow-xl shadow-blue-500/20 transition active:scale-95"
+        >
+          <Sparkles className="w-4 h-4" />
+          Confirm Selection
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }

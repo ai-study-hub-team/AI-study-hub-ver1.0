@@ -405,14 +405,14 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
       </div>
 
       {!isAdmin && (
-        <div className="fixed bottom-6 right-6 z-[9999]">
-          <div className="relative w-[320px] h-[240px]">
-            <div className="absolute bottom-0 right-0 w-[170px] h-[170px]">
-              <Chatbot3D />
-            </div>
-          </div>
-        </div>
-      )}
+  <div className="fixed bottom-3 right-3 z-[9999]">
+    <div className="relative w-[140px] h-[110px]">
+      <div className="absolute bottom-0 right-0 w-[85px] h-[85px]">
+        <Chatbot3D />
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
