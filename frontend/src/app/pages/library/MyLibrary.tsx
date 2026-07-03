@@ -36,6 +36,7 @@ import { getCurrentUserId } from "../../services/apiClient";
 import type { AiStatus } from "../../constants/documentStatus";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
+import { FolderShareModal } from "./components/FolderShareModal";
 
 interface LibraryDocument {
   id: number;
@@ -211,6 +212,7 @@ function FolderCard({
   onEdit,
   onDelete,
   onMove,
+  onShare,
 }: {
   folder: LibraryFolder;
   isActive: boolean;
@@ -218,6 +220,7 @@ function FolderCard({
   onEdit: (folder: LibraryFolder) => void;
   onDelete: (folderId: number) => void;
   onMove: (folder: LibraryFolder) => void;
+  onShare: (folder: LibraryFolder) => void;
 }) {
   return (
     <motion.div
@@ -248,6 +251,19 @@ function FolderCard({
       </div>
 
       <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onShare(folder);
+          }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-950/30 dark:hover:text-indigo-300"
+          title="Share folder"
+          aria-label="Share folder"
+        >
+          <Share2 className="h-4 w-4" />
+        </button>
+
         <button
           type="button"
           onClick={(event) => {
@@ -469,6 +485,7 @@ export function MyLibrary() {
   const [movingDocument, setMovingDocument] = useState<LibraryDocument | null>(
     null,
   );
+  const [sharingFolder, setSharingFolder] = useState<LibraryFolder | null>(null);
   const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>("root");
 
   const mapLibraryDocument = (
@@ -1283,7 +1300,7 @@ export function MyLibrary() {
         </div>
 
         {rootFolders.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {rootFolders.map((folder) => (
               <FolderCard
                 key={folder.id}
@@ -1293,6 +1310,7 @@ export function MyLibrary() {
                 onEdit={handleOpenEditFolder}
                 onDelete={setDeleteFolderId}
                 onMove={handleOpenMoveFolder}
+                onShare={setSharingFolder}
               />
             ))}
           </div>
@@ -1551,6 +1569,13 @@ export function MyLibrary() {
           </div>
         )}
       </section>
+
+      {sharingFolder && (
+        <FolderShareModal
+          folder={sharingFolder}
+          onClose={() => setSharingFolder(null)}
+        />
+      )}
 
       {movingDocument && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

@@ -188,7 +188,9 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
     { to: "/app/categories", icon: Tags, label: "Categories" },
     { to: "/app/upload", icon: UploadCloud, label: "Upload" },
     { to: "/app/trash", icon: Trash2, label: "Trash" },
-    { to: "/app/shares", icon: Share2, label: "Shares" },
+    { to: "/app/my-shared-documents", icon: Share2, label: "My Shared Documents" },
+    { to: "/app/shared-with-me", icon: Share2, label: "Shared With Me" },
+    { to: "/app/shares", icon: Share2, label: "Shared Upload" },
     { to: "/app/chat", icon: MessageSquare, label: "AI Chat" },
     { to: "/app/summary", icon: FileSearch, label: "AI Summary" },
     { to: "/app/quiz", icon: Puzzle, label: "Quiz Generator" },
@@ -412,8 +414,8 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
 
       {!isAdmin && (
         <div className="fixed bottom-6 right-6 z-[9999]">
-          <div className="relative w-[320px] h-[240px]">
-            <div className="absolute bottom-0 right-0 w-[170px] h-[170px]">
+          <div className="relative w-[140px] h-[110px]">
+            <div className="absolute bottom-0 right-0 w-[85px] h-[85px]">
               <Chatbot3D />
             </div>
           </div>

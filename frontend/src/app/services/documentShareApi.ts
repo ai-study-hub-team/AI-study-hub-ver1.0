@@ -1,40 +1,33 @@
 import { apiClient } from "./apiClient";
 
-export type SharePermission = "VIEW" | "EDIT" | "COMMENT" | string;
+export type SharePermission = "VIEW" | "DOWNLOAD";
 
 export interface ShareDocumentRequest {
   emails: string[];
   permission: SharePermission;
-  expiresAt?: string;
+  expiresAt?: string | null;
 }
 
 export interface ShareDocumentResponse {
   message: string;
   sharedEmails: string[];
-  notRegisteredEmails: string[];
   alreadySharedEmails: string[];
-}
+  notFoundEmails: string[];
 
-export interface SharedUserResponse {
-  userId: number;
-  fullName: string;
-  email: string;
-  permission: string;
-  status: string;
-  createdAt: string;
-  expiresAt?: string;
+  // Backward-compatible alias for older backend builds, if any.
+  notRegisteredEmails?: string[];
 }
 
 export interface DocumentShareResponse {
-  id?: number;
-  shareId?: number;
-  userId?: number;
-  email?: string;
-  fullName?: string;
-  permission?: string;
-  status?: string;
+  shareId: number;
+  userId: number;
+  fullName: string;
+  email: string;
+  permission: SharePermission | string;
+  status: string;
+  sharedAt?: string;
   createdAt?: string;
-  expiresAt?: string;
+  expiresAt?: string | null;
 }
 
 export const documentShareApi = {
@@ -49,24 +42,18 @@ export const documentShareApi = {
       data,
     ),
 
-  getSharedUsers: (documentId: number) =>
-    apiClient.get<SharedUserResponse[]>(
-      `/api/documents/${documentId}/shares/users`,
+  revokeDocumentShare: (documentId: number, targetUserId: number) =>
+    apiClient.delete<void>(
+      `/api/documents/${documentId}/shares/${targetUserId}`,
     ),
+
+  // Legacy method names kept so existing imports do not break.
+  getSharedUsers: (documentId: number) =>
+    documentShareApi.getDocumentShares(documentId),
 
   shareDocumentToUsers: (documentId: number, data: ShareDocumentRequest) =>
-    apiClient.post<ShareDocumentResponse>(
-      `/api/documents/${documentId}/shares/users`,
-      data,
-    ),
-
-  revokeShareByShareId: (documentId: number, shareId: number) =>
-    apiClient.patch<void>(
-      `/api/documents/${documentId}/shares/${shareId}/revoke`,
-    ),
+    documentShareApi.shareDocument(documentId, data),
 
   deleteSharedUser: (documentId: number, userId: number) =>
-    apiClient.delete<void>(
-      `/api/documents/${documentId}/shares/users/${userId}`,
-    ),
+    documentShareApi.revokeDocumentShare(documentId, userId),
 };

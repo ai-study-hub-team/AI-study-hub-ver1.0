@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import type { SharePermission } from "./documentShareApi";
 
 export interface FolderResponse {
   id: number;
@@ -20,6 +21,31 @@ export interface FolderRequest {
   parentFolderId?: number | null;
 }
 
+export interface ShareFolderRequest {
+  emails: string[];
+  permission: SharePermission;
+  expiresAt?: string | null;
+}
+
+export interface ShareFolderResponse {
+  message: string;
+  sharedEmails: string[];
+  alreadySharedEmails: string[];
+  notFoundEmails: string[];
+}
+
+export interface FolderShareResponse {
+  shareId: number;
+  userId: number;
+  fullName: string;
+  email: string;
+  permission: SharePermission | string;
+  status: string;
+  sharedAt?: string;
+  createdAt?: string;
+  expiresAt?: string | null;
+}
+
 export const folderApi = {
   getFolders: (userId: number) => {
     return apiClient.get<FolderResponse[]>("/api/folders", {
@@ -31,6 +57,14 @@ export const folderApi = {
     return apiClient.get<FolderResponse>(`/api/folders/${id}`, {
       params: { userId },
     });
+  },
+
+  getFolderDocuments: (folderId: number) => {
+    return apiClient.get(`/api/folders/${folderId}/documents`);
+  },
+
+  getSharedFolderDocuments: (folderId: number) => {
+    return apiClient.get(`/api/shared-with-me/folders/${folderId}/documents`);
   },
 
   createFolder: (data: FolderRequest) => {
@@ -45,5 +79,24 @@ export const folderApi = {
     return apiClient.delete(`/api/folders/${id}`, {
       params: { userId },
     });
+  },
+
+  shareFolder: (folderId: number, data: ShareFolderRequest) => {
+    return apiClient.post<ShareFolderResponse>(
+      `/api/folders/${folderId}/shares`,
+      data,
+    );
+  },
+
+  getFolderShares: (folderId: number) => {
+    return apiClient.get<FolderShareResponse[]>(
+      `/api/folders/${folderId}/shares`,
+    );
+  },
+
+  revokeFolderShare: (folderId: number, targetUserId: number) => {
+    return apiClient.delete<void>(
+      `/api/folders/${folderId}/shares/${targetUserId}`,
+    );
   },
 };

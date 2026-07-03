@@ -32,6 +32,7 @@ import type { DocumentListItemResponse } from "../../types/documents/types";
 import type { AiStatus } from "../../constants/documentStatus";
 import { useTheme } from "../../../layouts/ThemeProvider";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
+import { FolderShareModal } from "../library/components/FolderShareModal";
 
 type ListResponse<T> = T[] | { content?: T[] };
 
@@ -504,6 +505,7 @@ export function FolderDocumentsPage() {
 
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [movingFolder, setMovingFolder] = useState<FolderResponse | null>(null);
+  const [sharingFolder, setSharingFolder] = useState<FolderResponse | null>(null);
   const [moveFolderTargetId, setMoveFolderTargetId] = useState<string>("root");
 
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
@@ -1088,6 +1090,17 @@ export function FolderDocumentsPage() {
           {folder && (
             <button
               type="button"
+              onClick={() => setSharingFolder(folder)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <Share2 className="h-4 w-4" />
+              Share Folder
+            </button>
+          )}
+
+          {folder && (
+            <button
+              type="button"
               onClick={() => openMoveFolderModal(folder)}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
@@ -1188,6 +1201,19 @@ export function FolderDocumentsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSharingFolder(item);
+                    }}
+                    className="rounded-lg p-2 text-indigo-500 opacity-100 transition hover:bg-indigo-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-indigo-950/30"
+                    title="Share folder"
+                    aria-label="Share folder"
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </button>
+
                   <button
                     type="button"
                     onClick={(event) => {
@@ -1340,6 +1366,13 @@ export function FolderDocumentsPage() {
           <EmptyDocuments onUpload={goToUploadWithCurrentFolder} />
         )}
       </section>
+
+      {sharingFolder && (
+        <FolderShareModal
+          folder={sharingFolder}
+          onClose={() => setSharingFolder(null)}
+        />
+      )}
 
       {movingFolder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

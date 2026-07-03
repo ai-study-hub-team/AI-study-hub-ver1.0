@@ -37,7 +37,10 @@ import { PricingPage } from "./pages/subscription/PricingPage";
 import { SubscriptionDashboard } from "./pages/subscription/SubscriptionDashboard";
 import { UpgradePlanPage } from "./pages/subscription/UpgradePlanPage";
 
+import { MySharedDocumentsPage } from "./pages/shares/MySharedDocumentsPage";
 import { DocumentSharesPage } from "./pages/shares/DocumentSharesPage";
+import { SharedWithMePage } from "./pages/shares/SharedWithMePage";
+import { SharedFolderDocumentsPage } from "./pages/shares/SharedFolderDocumentsPage";
 import { PublicDocumentPage } from "./pages/public/PublicDocumentPage";
 import { PublicSharedUploadPage } from "./pages/public/PublicSharedUploadPage";
 
@@ -98,10 +101,21 @@ export const router = createBrowserRouter([
             element: <DocumentPreviewPage />,
           },
           { path: "library/favorites", element: <FavoriteDocumentsPage /> },
-
+          {
+            path: "my-shared-documents",
+            element: <MySharedDocumentsPage />,
+          },
           {
             path: "shares",
             element: <DocumentSharesPage />,
+          },
+          {
+            path: "shared-with-me",
+            element: <SharedWithMePage />,
+          },
+          {
+            path: "shared/folders/:folderId",
+            element: <SharedFolderDocumentsPage />,
           },
 
           { path: "folders", element: <FoldersPage /> },

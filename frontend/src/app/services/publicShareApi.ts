@@ -56,6 +56,16 @@ export const publicShareApi = {
   getPublicDocument: (token: string) =>
     apiClient.get<PublicDocumentResponse>(`/api/public/documents/${token}`),
 
+  getPublicDocumentFile: (token: string) =>
+    apiClient.get(`/api/public/documents/${token}/file`, {
+      responseType: "blob",
+    }),
+
+  downloadPublicDocument: (token: string) =>
+    apiClient.get(`/api/public/documents/${token}/download`, {
+      responseType: "blob",
+    }),
+
   getPublicDocumentShareLink: (token: string) =>
     apiClient.get<PublicDocumentShareLinkResponse>(
       `/api/public/document-share-links/${token}`,

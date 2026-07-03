@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PptxViewer, RECOMMENDED_ZIP_LIMITS } from "@aiden0z/pptx-renderer";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import {
   Bot,
   ChevronDown,
@@ -15,6 +15,8 @@ import {
   Plus,
   Save,
   Send,
+  Share2,
+  ShieldCheck,
   Sparkles,
   StickyNote,
   Trash2,
@@ -41,6 +43,27 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 const isPublicHttpUrl = (url: string | undefined) =>
   Boolean(url && /^https?:\/\//i.test(url));
+
+const getSharedDocumentFileUrl = (documentData: any) => {
+  const value =
+    documentData?.fileUrl ||
+    documentData?.url ||
+    documentData?.path ||
+    documentData?.filePath ||
+    documentData?.storagePath;
+
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+};
+
+const getSharedDocumentContentType = (documentData: any) => {
+  const value =
+    documentData?.mimeType ||
+    documentData?.contentType ||
+    documentData?.fileType ||
+    documentData?.type;
+
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+};
 
 const escapeRegExp = (value: string) => {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -265,12 +288,102 @@ type QuickPrompt = {
   label: string;
 };
 
+
+type SharePermission = "VIEW" | "DOWNLOAD";
+
+type SharedDocumentUser = {
+  shareId: number;
+  userId: number;
+  fullName?: string;
+  email: string;
+  permission: SharePermission | string;
+  status: string;
+  sharedAt?: string;
+  createdAt?: string;
+  expiresAt?: string | null;
+};
+
+type ShareDocumentResponse = {
+  message?: string;
+  sharedEmails?: string[];
+  alreadySharedEmails?: string[];
+  notFoundEmails?: string[];
+  notRegisteredEmails?: string[];
+};
+
+type PreviewRouteState = {
+  fromSharedFolder?: boolean;
+  fromSharedDocument?: boolean;
+  folderId?: number;
+  permission?: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  sharedDocument?: any;
+};
+
+const splitEmails = (value: string) => {
+  return value
+    .split(/[\s,;]+/)
+    .map((email) => email.trim())
+    .filter(Boolean);
+};
+
+const formatDateTimeForApi = (value: string) => {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return value.length === 16 ? `${value}:00` : value;
+};
+
+const formatDateTimeLabel = (value?: string | null) => {
+  if (!value) return "No expiration";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString("en-US", {
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const getShareResponseEmails = (data: ShareDocumentResponse) => {
+  return {
+    sharedEmails: data.sharedEmails ?? [],
+    alreadySharedEmails: data.alreadySharedEmails ?? [],
+    notFoundEmails: data.notFoundEmails ?? data.notRegisteredEmails ?? [],
+  };
+};
+
+const getErrorMessage = (error: any, fallback: string) => {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallback
+  );
+};
+
 export function DocumentPreviewPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
 
   const keyword = searchParams.get("keyword") || "";
+  const routeState = (location.state ?? {}) as PreviewRouteState;
+  const isSharedAccess =
+    routeState.fromSharedFolder === true || routeState.fromSharedDocument === true;
+  const canDownloadCurrentDocument =
+    !isSharedAccess || routeState.permission === "DOWNLOAD";
 
   const pptxContainerRef = useRef<HTMLDivElement | null>(null);
   const [pptxBuffer, setPptxBuffer] = useState<ArrayBuffer | null>(null);
@@ -282,6 +395,14 @@ export function DocumentPreviewPage() {
   const [excelHtml, setExcelHtml] = useState("");
   const [docxHtml, setDocxHtml] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [canManageShare, setCanManageShare] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareEmails, setShareEmails] = useState("");
+  const [sharePermission, setSharePermission] = useState<SharePermission>("VIEW");
+  const [shareExpiresAt, setShareExpiresAt] = useState("");
+  const [sharedUsers, setSharedUsers] = useState<SharedDocumentUser[]>([]);
+  const [isSharedUsersLoading, setIsSharedUsersLoading] = useState(false);
+  const [isShareSubmitting, setIsShareSubmitting] = useState(false);
 
   const [pdfPageCount, setPdfPageCount] = useState(0);
   const [pdfScale, setPdfScale] = useState(1.15);
@@ -305,6 +426,84 @@ export function DocumentPreviewPage() {
   const highlightedDocxHtml = useMemo(() => {
     return highlightHtml(docxHtml, keyword);
   }, [docxHtml, keyword]);
+
+  const loadSharedUsers = async () => {
+    if (!documentId) return;
+
+    try {
+      setIsSharedUsersLoading(true);
+      const response = await apiClient.get<SharedDocumentUser[]>(
+        `/api/documents/${documentId}/shares`,
+      );
+      setSharedUsers(response.data ?? []);
+    } catch (error) {
+      console.error("Cannot load shared users:", error);
+      toast.error("Cannot load shared users.");
+    } finally {
+      setIsSharedUsersLoading(false);
+    }
+  };
+
+  const handleSubmitDocumentShare = async () => {
+    const emails = splitEmails(shareEmails);
+
+    if (emails.length === 0) {
+      toast.error("Please enter at least one email.");
+      return;
+    }
+
+    try {
+      setIsShareSubmitting(true);
+      const response = await apiClient.post<ShareDocumentResponse>(
+        `/api/documents/${documentId}/shares`,
+        {
+          emails,
+          permission: sharePermission,
+          expiresAt: formatDateTimeForApi(shareExpiresAt),
+        },
+      );
+
+      const { sharedEmails, alreadySharedEmails, notFoundEmails } =
+        getShareResponseEmails(response.data ?? {});
+
+      if (sharedEmails.length > 0) {
+        toast.success(`Shared successfully: ${sharedEmails.join(", ")}`);
+      }
+
+      if (alreadySharedEmails.length > 0) {
+        toast.info(`Already shared: ${alreadySharedEmails.join(", ")}`);
+      }
+
+      if (notFoundEmails.length > 0) {
+        toast.warning(`Email not registered: ${notFoundEmails.join(", ")}`);
+      }
+
+      if (sharedEmails.length === 0 && alreadySharedEmails.length === 0) {
+        toast.success(response.data?.message || "Share request completed.");
+      }
+
+      setShareEmails("");
+      setSharePermission("VIEW");
+      setShareExpiresAt("");
+      await loadSharedUsers();
+    } catch (error) {
+      console.error("Cannot share document:", error);
+      toast.error("Cannot share document.");
+    } finally {
+      setIsShareSubmitting(false);
+    }
+  };
+
+  const handleRevokeDocumentShare = async (targetUserId: number) => {
+    try {
+      await apiClient.delete(`/api/documents/${documentId}/shares/${targetUserId}`);
+      toast.success("Share revoked.");
+      await loadSharedUsers();
+    } catch (error) {
+      console.error("Cannot revoke document share:", error);
+      toast.error("Cannot revoke share.");
+    }
+  };
 
   const loadNotes = async () => {
     if (!documentId) return;
@@ -387,40 +586,96 @@ export function DocumentPreviewPage() {
       try {
         setIsLoading(true);
 
-        const detailResponse = await documentApi.getDocumentById(documentId);
-        const documentData = detailResponse.data;
+        let documentData: any = routeState.sharedDocument ?? {};
 
-        if (!isMyDocument(documentData, currentUserId)) {
-          toast.error("You do not have permission to view this document.");
-          navigate("/app/library");
-          return;
+        if (!isSharedAccess) {
+          const detailResponse = await documentApi.getDocumentById(documentId);
+          documentData = detailResponse.data ?? {};
+        } else if (!documentData || Object.keys(documentData).length === 0) {
+          try {
+            const detailResponse = await documentApi.getDocumentById(documentId);
+            documentData = detailResponse.data ?? {};
+          } catch (detailError: any) {
+            console.warn("Cannot load shared document detail, using shared metadata:", detailError);
+            documentData = routeState.sharedDocument ?? {};
+          }
         }
 
-        await loadNotes();
+        const isOwner = !isSharedAccess && isMyDocument(documentData, currentUserId);
+        setCanManageShare(isOwner);
 
-        const fileResponse = await documentApi.getDocumentFile(documentId);
+        if (isOwner) {
+          await loadSharedUsers();
+          await loadNotes();
+        } else {
+          setSharedUsers([]);
+          setNotes([]);
+        }
+
+        const sharedFileUrl = getSharedDocumentFileUrl(documentData);
+        const sharedPreviewEndpoints = [
+          routeState.folderId
+            ? `/api/shared-with-me/folders/${routeState.folderId}/documents/${documentId}/file`
+            : "",
+          `/api/shared-with-me/documents/${documentId}/file`,
+          sharedFileUrl && !isPublicHttpUrl(sharedFileUrl) ? sharedFileUrl : "",
+        ].filter(Boolean);
+
+        let fileResponse: any;
+        let fileError: any;
+
+        if (!isSharedAccess) {
+          fileResponse = await documentApi.getDocumentFile(documentId);
+        } else {
+          for (const endpoint of sharedPreviewEndpoints) {
+            try {
+              fileResponse = await apiClient.get(endpoint, { responseType: "blob" });
+              break;
+            } catch (error) {
+              fileError = error;
+            }
+          }
+
+          if (!fileResponse) {
+            try {
+              fileResponse = await documentApi.getDocumentFile(documentId);
+            } catch (error) {
+              fileError = error;
+            }
+          }
+
+          if (!fileResponse && isPublicHttpUrl(sharedFileUrl)) {
+            try {
+              fileResponse = await apiClient.get(sharedFileUrl, { responseType: "blob" });
+            } catch (error) {
+              fileError = error;
+            }
+          }
+
+          if (!fileResponse) throw fileError;
+        }
 
         const contentTypeHeader = fileResponse.headers["content-type"];
         const contentType =
           typeof contentTypeHeader === "string"
             ? contentTypeHeader
-            : documentData.fileType || "application/octet-stream";
+            : getSharedDocumentContentType(documentData) || "application/octet-stream";
 
         const blob = new Blob([fileResponse.data], {
           type: contentType,
         });
 
+        const previewFileName =
+          documentData.title ||
+          documentData.name ||
+          documentData.originalName ||
+          documentData.fileName ||
+          `Document-${documentId}`;
+
         const isDocx =
           contentType ===
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-          documentData.originalName?.toLowerCase().endsWith(".docx") ||
-          documentData.fileName?.toLowerCase().endsWith(".docx");
-
-        const previewFileName =
-          documentData.title ||
-          documentData.originalName ||
-          documentData.fileName ||
-          "Document";
+          previewFileName.toLowerCase().endsWith(".docx");
 
         const isExcel = isExcelDocument(contentType, previewFileName);
         const isPptx = isPptxDocument(contentType, previewFileName);
@@ -465,9 +720,26 @@ export function DocumentPreviewPage() {
         setFileType(contentType);
         setPdfPageCount(0);
         setFileName(previewFileName);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Cannot preview document:", error);
-        toast.error("Cannot preview document.");
+
+        if (error?.response?.status === 403) {
+          toast.error(
+            isSharedAccess
+              ? "You no longer have access to this shared document."
+              : "You do not have permission to view this document.",
+          );
+          navigate(isSharedAccess ? "/app/shared-with-me" : "/app/library");
+          return;
+        }
+
+        if (error?.response?.status === 404) {
+          toast.error("Document not found.");
+          navigate(isSharedAccess ? "/app/shared-with-me" : "/app/library");
+          return;
+        }
+
+        toast.error(getErrorMessage(error, "Cannot preview document."));
       } finally {
         setIsLoading(false);
       }
@@ -480,7 +752,7 @@ export function DocumentPreviewPage() {
         window.URL.revokeObjectURL(currentBlobUrl);
       }
     };
-  }, [documentId, navigate]);
+  }, [currentUserId, documentId, isSharedAccess, navigate]);
 
   const resetNoteForm = () => {
     setNoteTitle("");
@@ -536,7 +808,6 @@ export function DocumentPreviewPage() {
     setEditingNoteId(note.id);
     setNoteTitle(note.title);
     setNoteContent(note.content);
-    setActivePanel("notes");
   };
 
   const handleDeleteNote = async () => {
@@ -564,6 +835,11 @@ export function DocumentPreviewPage() {
   };
 
   const handleDownload = async () => {
+    if (!canDownloadCurrentDocument) {
+      toast.error("You only have view permission for this shared document.");
+      return;
+    }
+
     try {
       const response = await documentApi.downloadDocument(documentId);
       const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
@@ -576,9 +852,15 @@ export function DocumentPreviewPage() {
       link.remove();
 
       window.URL.revokeObjectURL(blobUrl);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Cannot download document:", error);
-      toast.error("Cannot download document.");
+
+      if (error?.response?.status === 403) {
+        toast.error("You do not have permission to download this document.");
+        return;
+      }
+
+      toast.error(getErrorMessage(error, "Cannot download document."));
     }
   };
 
@@ -626,28 +908,28 @@ export function DocumentPreviewPage() {
     try {
       const lowerPrompt = cleanPrompt.toLowerCase();
       const wantsFlashcards =
-        lowerPrompt.includes("flashcard") || lowerPrompt.includes("thẻ nhớ");
+        lowerPrompt.includes("flashcard") || lowerPrompt.includes("flashcards");
       const wantsFillBlank =
         lowerPrompt.includes("gap") ||
         lowerPrompt.includes("blank") ||
-        lowerPrompt.includes("điền") ||
-        lowerPrompt.includes("khuyết");
+        lowerPrompt.includes("fill") ||
+        lowerPrompt.includes("missing");
       const wantsQuiz =
         lowerPrompt.includes("quiz") ||
         lowerPrompt.includes("test") ||
-        lowerPrompt.includes("câu hỏi") ||
+        lowerPrompt.includes("question") ||
         wantsFlashcards ||
         wantsFillBlank;
       const wantsDetailed =
         lowerPrompt.includes("detail") ||
         lowerPrompt.includes("detailed") ||
         lowerPrompt.includes("explain") ||
-        lowerPrompt.includes("giải thích") ||
-        lowerPrompt.includes("khó");
+        lowerPrompt.includes("explain") ||
+        lowerPrompt.includes("hard");
       const wantsBullet =
         lowerPrompt.includes("bullet") ||
-        lowerPrompt.includes("ý chính") ||
-        lowerPrompt.includes("gạch đầu dòng");
+        lowerPrompt.includes("main points") ||
+        lowerPrompt.includes("key points");
 
       if (wantsQuiz) {
         const response = await generateQuizApi({
@@ -942,6 +1224,171 @@ export function DocumentPreviewPage() {
     );
   };
 
+  const renderShareModal = () => {
+    if (!isShareModalOpen) return null;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 backdrop-blur-sm">
+        <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+          <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+            <div>
+              <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <Share2 className="h-5 w-5" />
+              </div>
+              <h2 className="text-lg font-extrabold text-slate-950">
+                Share document
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Share this document to registered users by email.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsShareModalOpen(false)}
+              className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="grid max-h-[calc(90vh-96px)] gap-0 overflow-auto md:grid-cols-[minmax(0,1fr)_minmax(280px,0.85fr)]">
+            <div className="border-b border-slate-200 p-6 md:border-b-0 md:border-r">
+              <label className="text-xs font-extrabold uppercase tracking-widest text-slate-500">
+                Emails
+              </label>
+              <textarea
+                value={shareEmails}
+                onChange={(event) => setShareEmails(event.target.value)}
+                placeholder="receiver@example.com, student@example.com"
+                rows={5}
+                className="mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-900 outline-none focus:border-blue-500"
+              />
+              <p className="mt-2 text-xs font-semibold text-slate-400">
+                You can separate emails by comma, space, semicolon, or new line.
+              </p>
+
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-extrabold uppercase tracking-widest text-slate-500">
+                    Permission
+                  </label>
+                  <select
+                    value={sharePermission}
+                    onChange={(event) =>
+                      setSharePermission(event.target.value as SharePermission)
+                    }
+                    className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                  >
+                    <option value="VIEW">View only</option>
+                    <option value="DOWNLOAD">Allow download</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-extrabold uppercase tracking-widest text-slate-500">
+                    Expires at
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={shareExpiresAt}
+                    onChange={(event) => setShareExpiresAt(event.target.value)}
+                    className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={isShareSubmitting}
+                onClick={handleSubmitDocumentShare}
+                className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-extrabold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Share2 className="h-4 w-4" />
+                {isShareSubmitting ? "Sharing..." : "Share document"}
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-950">
+                    Shared users
+                  </h3>
+                  <p className="mt-1 text-xs font-semibold text-slate-400">
+                    Owner can revoke each active share.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadSharedUsers}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {isSharedUsersLoading ? (
+                <p className="text-sm font-semibold text-slate-500">
+                  Loading shared users...
+                </p>
+              ) : sharedUsers.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center">
+                  <ShieldCheck className="mx-auto mb-3 h-8 w-8 text-slate-400" />
+                  <p className="text-sm font-bold text-slate-700">
+                    This document has not been shared yet.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {sharedUsers.map((user) => (
+                    <div
+                      key={`${user.shareId}-${user.userId}`}
+                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-extrabold text-slate-950">
+                            {user.fullName || user.email}
+                          </p>
+                          <p className="mt-1 truncate text-xs font-semibold text-slate-500">
+                            {user.email}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRevokeDocumentShare(user.userId)}
+                          className="rounded-xl bg-red-50 px-3 py-2 text-xs font-extrabold text-red-600 hover:bg-red-100"
+                        >
+                          Revoke
+                        </button>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">
+                          {user.permission === "DOWNLOAD"
+                            ? "Allow download"
+                            : "View only"}
+                        </span>
+                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                          {user.status || "ACTIVE"}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
+                          {formatDateTimeLabel(user.expiresAt)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const quickPrompts: QuickPrompt[] = [
     {
       icon: <Sparkles className="h-4 w-4 text-blue-500" />,
@@ -1178,7 +1625,7 @@ export function DocumentPreviewPage() {
                         <p className="mt-1 text-xs text-slate-400">
                           {new Date(
                             note.updatedAt || note.createdAt,
-                          ).toLocaleString("vi-VN", {
+                          ).toLocaleString("en-US", {
                             hour12: false,
                             year: "numeric",
                             month: "2-digit",
@@ -1332,6 +1779,23 @@ export function DocumentPreviewPage() {
           ))}
         </div>
       </div>
+
+      {canManageShare && (
+        <button
+          type="button"
+          onClick={() => {
+            setIsShareModalOpen(true);
+            loadSharedUsers();
+          }}
+          className="fixed right-5 top-24 z-40 flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-extrabold text-white shadow-xl shadow-blue-200 hover:bg-blue-700"
+          title="Share document"
+        >
+          <Share2 className="h-4 w-4" />
+          Share
+        </button>
+      )}
+
+      {renderShareModal()}
 
       {chatMode === "collapsed" && (
         <button

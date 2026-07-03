@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 import {
   CheckCircle2,
   ClipboardCopy,
@@ -73,7 +74,7 @@ const formatDateTime = (value?: string | null) => {
     return value;
   }
 
-  return date.toLocaleString("vi-VN", {
+  return date.toLocaleString("en-US", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -100,6 +101,68 @@ const formatFileSize = (value?: number | null) => {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 };
 
+const getFileTypeLabel = (
+  fileType?: string | null,
+  fileName?: string | null,
+) => {
+  const value = `${fileType ?? ""} ${fileName ?? ""}`.toLowerCase().trim();
+
+  if (!value) return "UNKNOWN";
+  if (value.includes("pdf")) return "PDF";
+
+  if (
+    value.includes("wordprocessingml") ||
+    value.includes("msword") ||
+    value.includes("word") ||
+    value.includes(".docx") ||
+    value.includes(".doc")
+  ) {
+    return "DOCX";
+  }
+
+  if (
+    value.includes("presentationml") ||
+    value.includes("powerpoint") ||
+    value.includes("presentation") ||
+    value.includes(".pptx") ||
+    value.includes(".ppt")
+  ) {
+    return "PPTX";
+  }
+
+  if (
+    value.includes("spreadsheetml") ||
+    value.includes("excel") ||
+    value.includes("spreadsheet") ||
+    value.includes(".xlsx") ||
+    value.includes(".xls") ||
+    value.includes(".csv")
+  ) {
+    return "EXCEL";
+  }
+
+  if (value.includes("image")) return "IMAGE";
+  if (value.includes("audio")) return "AUDIO";
+  if (value.includes("video")) return "VIDEO";
+  if (value.includes("text/plain") || value.includes(".txt")) return "TXT";
+
+  const extension = value.match(/\.([a-z0-9]+)(?:\s|$)/)?.[1];
+  if (extension) return extension.toUpperCase();
+
+  return value.toUpperCase();
+};
+
+const getSubmissionDocumentId = (submission: SharedDocumentSubmissionResponse) => {
+  const value =
+    (submission as any).approvedDocumentId ??
+    (submission as any).documentId ??
+    (submission as any).uploadedDocumentId ??
+    (submission as any).fileId;
+
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+};
+
 const getFolderOptionLabel = (folder: FolderResponse) => {
   if (folder.parentFolderName) {
     return `${folder.parentFolderName} / ${folder.name}`;
@@ -109,12 +172,29 @@ const getFolderOptionLabel = (folder: FolderResponse) => {
 };
 
 const statusLabel: Record<string, string> = {
-  ACTIVE: "Đang hoạt động",
-  DISABLED: "Đã tắt",
-  EXPIRED: "Đã hết hạn",
-  PENDING_REVIEW: "Chờ duyệt",
-  APPROVED: "Đã chấp nhận",
-  REJECTED: "Đã từ chối",
+  ACTIVE: "Active",
+  DISABLED: "Disabled",
+  EXPIRED: "Expired",
+  PENDING_REVIEW: "Pending review",
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
+};
+
+const getShareLinkStatus = (status?: string | null) =>
+  String(status ?? "").trim().toUpperCase();
+
+const isActiveShareLink = (status?: string | null) =>
+  getShareLinkStatus(status) === "ACTIVE";
+
+const getShareLinkId = (link: DocumentShareLinkResponse) => {
+  const value =
+    (link as any).id ??
+    (link as any).linkId ??
+    (link as any).shareLinkId ??
+    (link as any).documentShareLinkId;
+
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
 };
 
 const getSubmissionStatusClass = (status?: string | null) => {
@@ -148,6 +228,8 @@ const getSubmittedDate = (submission: SharedDocumentSubmissionResponse) => {
 };
 
 export function DocumentSharesPage() {
+  const navigate = useNavigate();
+
   const [activeTab, setActiveTab] = useState<ActiveTab>("links");
 
   const [links, setLinks] = useState<DocumentShareLinkResponse[]>([]);
@@ -167,6 +249,7 @@ export function DocumentSharesPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [disablingLinkId, setDisablingLinkId] = useState<number | null>(null);
 
   const [workingSubmissionId, setWorkingSubmissionId] = useState<number | null>(
     null,
@@ -349,16 +432,24 @@ export function DocumentSharesPage() {
     }
   };
 
-  const handleDisable = async (id: number) => {
+  const handleDisable = async (link: DocumentShareLinkResponse) => {
     const userId = getSafeUserId();
+    const linkId = getShareLinkId(link);
 
     if (!userId) {
       toast.error("Please login again.");
       return;
     }
 
+    if (!linkId) {
+      toast.error("Cannot identify this shared upload link.");
+      return;
+    }
+
     try {
-      await documentShareLinkApi.disableDocumentShareLink(id, userId);
+      setDisablingLinkId(linkId);
+
+      await documentShareLinkApi.disableDocumentShareLink(linkId, userId);
       toast.success("Shared upload link disabled.");
       await loadData();
     } catch (error: any) {
@@ -369,7 +460,27 @@ export function DocumentSharesPage() {
           error?.response?.data?.error ||
           "Cannot disable link.",
       );
+    } finally {
+      setDisablingLinkId(null);
     }
+  };
+
+  const handleViewSubmission = async (submission: SharedDocumentSubmissionResponse) => {
+    const documentId = getSubmissionDocumentId(submission);
+
+    if (!documentId) {
+      await handleViewSubmissionDetail(submission);
+      toast.info("This submission has no approved document yet. Opened detail instead.");
+      return;
+    }
+
+    navigate(`/app/library/${documentId}/preview`, {
+      state: {
+        fromSharedUpload: true,
+        submissionId: submission.id,
+        documentId,
+      },
+    });
   };
 
   const handleViewSubmissionDetail = async (
@@ -722,7 +833,7 @@ export function DocumentSharesPage() {
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {links.length > 0 ? (
                 links.map((link) => (
-                  <div key={link.id} className="p-5">
+                  <div key={getShareLinkId(link) ?? link.shareUrl ?? link.token ?? link.title} className="p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -731,7 +842,7 @@ export function DocumentSharesPage() {
                           </h3>
 
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                            {statusLabel[link.status] || link.status}
+                            {statusLabel[getShareLinkStatus(link.status)] || link.status}
                           </span>
                         </div>
 
@@ -770,14 +881,21 @@ export function DocumentSharesPage() {
                           Copy
                         </button>
 
-                        {link.status === "ACTIVE" && (
+                        {isActiveShareLink(link.status) && (
                           <button
                             type="button"
-                            onClick={() => handleDisable(link.id)}
-                            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white hover:bg-red-700"
+                            onClick={() => handleDisable(link)}
+                            disabled={disablingLinkId === getShareLinkId(link)}
+                            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            <ShieldOff className="h-4 w-4" />
-                            Disable
+                            {disablingLinkId === getShareLinkId(link) ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <ShieldOff className="h-4 w-4" />
+                            )}
+                            {disablingLinkId === getShareLinkId(link)
+                              ? "Disabling..."
+                              : "Disable"}
                           </button>
                         )}
                       </div>
@@ -857,11 +975,12 @@ export function DocumentSharesPage() {
 
                         <p>
                           Type:{" "}
-                          {submission.fileType ||
-                            detectDocumentType(
+                          <span className="font-bold text-slate-600 dark:text-slate-300">
+                            {getFileTypeLabel(
                               submission.fileType,
                               submission.originalFileName,
                             )}
+                          </span>
                         </p>
 
                         <p>Size: {formatFileSize(submission.fileSize)}</p>
@@ -892,6 +1011,15 @@ export function DocumentSharesPage() {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleViewSubmission(submission)}
+                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700"
+                      >
+                        <Eye className="h-4 w-4" />
+                        View
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => handleViewSubmissionDetail(submission)}
@@ -1017,11 +1145,10 @@ export function DocumentSharesPage() {
                     File type
                   </p>
                   <p className="mt-1 font-bold text-slate-900 dark:text-white">
-                    {selectedSubmission.fileType ||
-                      detectDocumentType(
-                        selectedSubmission.fileType,
-                        selectedSubmission.originalFileName,
-                      )}
+                    {getFileTypeLabel(
+                      selectedSubmission.fileType,
+                      selectedSubmission.originalFileName,
+                    )}
                   </p>
                 </div>
 

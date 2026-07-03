@@ -100,23 +100,8 @@ const isPptxDocument = (contentType: string, name: string) => {
   );
 };
 
-const fetchPublicFile = async (fileUrl?: string) => {
-  const resolvedUrl = resolveFileUrl(fileUrl);
-
-  if (!resolvedUrl) {
-    throw new Error("No public fileUrl found.");
-  }
-
-  const response = await fetch(resolvedUrl);
-
-  if (!response.ok) {
-    throw new Error(`Cannot load public file: ${response.status}`);
-  }
-
-  return {
-    blob: await response.blob(),
-    contentType: response.headers.get("content-type") || "",
-  };
+const getContentTypeFromBlob = (blob: Blob) => {
+  return blob.type || "application/octet-stream";
 };
 
 export function PublicDocumentPage() {
@@ -219,14 +204,13 @@ export function PublicDocumentPage() {
 
         setFileName(previewFileName);
 
-        const fileResponse = await fetchPublicFile(data.fileUrl);
+        const fileResponse = await publicShareApi.getPublicDocumentFile(token);
 
+        const responseBlob = fileResponse.data as Blob;
         const contentType =
-          fileResponse.contentType ||
-          data.contentType ||
-          "application/octet-stream";
+          responseBlob.type || data.contentType || getContentTypeFromBlob(responseBlob);
 
-        const blob = new Blob([fileResponse.blob], {
+        const blob = new Blob([responseBlob], {
           type: contentType,
         });
 
@@ -277,15 +261,23 @@ export function PublicDocumentPage() {
     };
   }, [token]);
 
-  const handleDownload = () => {
-    if (!fileUrl) return;
+  const handleDownload = async () => {
+    if (!token || !documentData?.allowDownload) return;
 
-    const link = window.document.createElement("a");
-    link.href = fileUrl;
-    link.download = fileName || title || "Document";
-    window.document.body.appendChild(link);
-    link.click();
-    link.remove();
+    try {
+      const response = await publicShareApi.downloadPublicDocument(token);
+      const blobUrl = window.URL.createObjectURL(response.data);
+      const link = window.document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName || title || "Document";
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("Cannot download public document:", error);
+      toast.error("Download is not allowed or the link is no longer valid.");
+    }
   };
 
   const renderPreview = () => {

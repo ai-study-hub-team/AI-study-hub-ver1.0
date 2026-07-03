@@ -6,6 +6,7 @@ import {
   MoveRight,
   Pencil,
   Search,
+  Share2,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -14,6 +15,7 @@ import { useNavigate } from "react-router";
 import { folderApi, type FolderResponse } from "../../services/folderApi";
 import { documentApi } from "../../services/documentApi";
 import { getCurrentUserId } from "../../services/apiClient";
+import { FolderShareModal } from "../library/components/FolderShareModal";
 
 type ListResponse<T> = T[] | { content?: T[] };
 
@@ -64,8 +66,11 @@ export function FoldersPage() {
   const [editDescription, setEditDescription] = useState("");
 
   const [moveFolder, setMoveFolder] = useState<FolderResponse | null>(null);
-  const [moveTargetFolderId, setMoveTargetFolderId] =
-    useState<string>("root");
+  const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>("root");
+
+  const [sharingFolder, setSharingFolder] = useState<FolderResponse | null>(
+    null,
+  );
 
   const loadFolders = async () => {
     try {
@@ -80,9 +85,7 @@ export function FoldersPage() {
 
       const data = normalizeList<FolderResponse>(
         response.data as ListResponse<FolderResponse>,
-      ).filter((folder) => {
-        return Number(folder.userId) === userId;
-      });
+      ).filter((folder) => Number(folder.userId) === userId);
 
       setFolders(data);
     } catch (error: any) {
@@ -332,7 +335,6 @@ export function FoldersPage() {
 
     try {
       await moveFolderContentToRoot(id, userId);
-
       await folderApi.deleteFolder(id, userId);
 
       toast.success("Folder deleted. Documents and subfolders moved to Root.");
@@ -350,9 +352,10 @@ export function FoldersPage() {
   };
 
   const deletingFolder =
-    deleteId !== null
-      ? folders.find((folder) => folder.id === deleteId)
-      : null;
+    deleteId !== null ? folders.find((folder) => folder.id === deleteId) : null;
+
+  const actionButtonBase =
+    "rounded-lg p-2 opacity-100 transition md:opacity-0 md:group-hover:opacity-100";
 
   return (
     <div className="space-y-6">
@@ -390,6 +393,7 @@ export function FoldersPage() {
         </div>
 
         <button
+          type="button"
           onClick={handleCreate}
           className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-700"
         >
@@ -467,15 +471,29 @@ export function FoldersPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSharingFolder(folder);
+                      }}
+                      className={`${actionButtonBase} text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-950/30`}
+                      title="Share folder"
+                      aria-label="Share folder"
+                    >
+                      <Share2 className="h-4 w-4" />
+                    </button>
+
                     <button
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
                         openMoveModal(folder);
                       }}
-                      className="rounded-lg p-2 text-emerald-500 opacity-100 transition hover:bg-emerald-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-emerald-950/30"
+                      className={`${actionButtonBase} text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/30`}
                       title="Move folder"
+                      aria-label="Move folder"
                     >
                       <MoveRight className="h-4 w-4" />
                     </button>
@@ -486,8 +504,9 @@ export function FoldersPage() {
                         event.stopPropagation();
                         openEditModal(folder.id);
                       }}
-                      className="rounded-lg p-2 text-blue-500 opacity-100 transition hover:bg-blue-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-blue-950/30"
+                      className={`${actionButtonBase} text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/30`}
                       title="Edit folder"
+                      aria-label="Edit folder"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
@@ -498,8 +517,9 @@ export function FoldersPage() {
                         event.stopPropagation();
                         setDeleteId(folder.id);
                       }}
-                      className="rounded-lg p-2 text-red-500 opacity-100 transition hover:bg-red-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-red-950/30"
+                      className={`${actionButtonBase} text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30`}
                       title="Delete folder"
+                      aria-label="Delete folder"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -526,6 +546,13 @@ export function FoldersPage() {
           </div>
         )}
       </section>
+
+      {sharingFolder && (
+        <FolderShareModal
+          folder={sharingFolder}
+          onClose={() => setSharingFolder(null)}
+        />
+      )}
 
       {moveFolder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -689,3 +716,5 @@ export function FoldersPage() {
     </div>
   );
 }
+
+export default FoldersPage;
