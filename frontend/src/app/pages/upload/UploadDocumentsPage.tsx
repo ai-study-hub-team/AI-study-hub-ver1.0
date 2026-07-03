@@ -236,28 +236,11 @@ export function UploadDocumentsPage() {
     }
 
     if (step === 1) {
-      if (folders.length === 0) {
-        toast.error("Please create a folder before uploading documents.");
-        navigate("/app/folders");
-        return;
-      }
-
       setStep(2);
       return;
     }
 
     if (step === 2) {
-      if (folders.length === 0) {
-        toast.error("Please create a folder before uploading documents.");
-        navigate("/app/folders");
-        return;
-      }
-
-      if (!details.folderId) {
-        toast.error("Please select a folder.");
-        return;
-      }
-
       const userId = getCurrentUserId();
 
       if (!userId) {
@@ -283,7 +266,7 @@ export function UploadDocumentsPage() {
             description: noteContent,
             documentType: file.type,
             visibility: "PRIVATE",
-            folderId: Number(details.folderId),
+            ...(details.folderId ? { folderId: Number(details.folderId) } : { folderId: null }),
             ...(details.categoryId
               ? { categoryId: Number(details.categoryId) }
               : {}),
@@ -380,19 +363,19 @@ export function UploadDocumentsPage() {
                   </h2>
 
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Select a folder. Category is optional and only used as a
+                    Choose a folder or keep the document in Root. Category is optional and only used as a
                     label.
                   </p>
                 </div>
 
                 {folders.length === 0 && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
-                    <h3 className="font-bold text-amber-900 dark:text-amber-200">
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-500/30 dark:bg-blue-500/10">
+                    <h3 className="font-bold text-blue-900 dark:text-blue-200">
                       No folders yet
                     </h3>
 
-                    <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
-                      You must create a folder before uploading documents.
+                    <p className="mt-1 text-sm text-blue-700 dark:text-blue-300">
+                      You can still upload to Root, or create a folder first.
                     </p>
 
                     <button
@@ -439,7 +422,7 @@ export function UploadDocumentsPage() {
 
                   <label className="block space-y-1.5">
                     <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                      Folder <span className="text-red-500">*</span>
+                      Folder <span className="font-medium text-slate-400">optional</span>
                     </span>
 
                     <select
@@ -452,7 +435,7 @@ export function UploadDocumentsPage() {
                       }
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                     >
-                      <option value="">Select folder</option>
+                      <option value="">Root / No folder</option>
 
                       {sortedFolders.map((folder) => (
                         <option key={folder.id} value={folder.id}>

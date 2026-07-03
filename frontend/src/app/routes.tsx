@@ -39,6 +39,7 @@ import { UpgradePlanPage } from "./pages/subscription/UpgradePlanPage";
 
 import { DocumentSharesPage } from "./pages/shares/DocumentSharesPage";
 import { PublicDocumentPage } from "./pages/public/PublicDocumentPage";
+import { PublicSharedUploadPage } from "./pages/public/PublicSharedUploadPage";
 
 import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { UserManagement } from "./pages/admin/UserManagement";
@@ -71,6 +72,10 @@ export const router = createBrowserRouter([
       {
         path: "share/:token",
         element: <PublicDocumentPage />,
+      },
+      {
+        path: "shared-upload/:token",
+        element: <PublicSharedUploadPage />,
       },
 
       {

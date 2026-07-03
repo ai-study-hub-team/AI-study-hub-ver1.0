@@ -15,13 +15,12 @@ export interface SharedWithMeItem {
   ownerEmail: string;
   permission: SharedPermission;
   sharedAt: string;
-  expiresAt?: string;
+  expiresAt?: string | null;
   status: SharedStatus;
 }
 
 export const sharedWithMeApi = {
-  getSharedItems: () =>
-    apiClient.get<SharedWithMeItem[]>("/api/shared"),
+  getSharedItems: () => apiClient.get<SharedWithMeItem[]>("/api/shared"),
 
   getSharedFolders: () =>
     apiClient.get<SharedWithMeItem[]>("/api/shared/folders"),

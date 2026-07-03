@@ -1,18 +1,15 @@
 import {
   Library,
-  Search,
   Grid,
   List,
   Folder,
   FolderPlus,
+  MoveRight,
   FileText,
-  ChevronDown,
   ChevronRight,
   File,
   FileVideo,
   Presentation,
-  SlidersHorizontal,
-  SortDesc,
   Star,
   RotateCcw,
   Trash2,
@@ -207,19 +204,20 @@ function CategoryCard({
   );
 }
 
-
 function FolderCard({
   folder,
   isActive,
   onClick,
   onEdit,
   onDelete,
+  onMove,
 }: {
   folder: LibraryFolder;
   isActive: boolean;
   onClick: () => void;
   onEdit: (folder: LibraryFolder) => void;
   onDelete: (folderId: number) => void;
+  onMove: (folder: LibraryFolder) => void;
 }) {
   return (
     <motion.div
@@ -250,6 +248,18 @@ function FolderCard({
       </div>
 
       <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onMove(folder);
+          }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300"
+          title="Move folder"
+        >
+          <MoveRight className="h-4 w-4" />
+        </button>
+
         <button
           type="button"
           onClick={(event) => {
@@ -290,6 +300,7 @@ function DocumentRow({
   sharingDocumentId,
   onViewFile,
   onEdit,
+  onMove,
 }: {
   document: LibraryDocument;
   onToggleFavorite: (documentId: number) => void | Promise<void>;
@@ -300,12 +311,13 @@ function DocumentRow({
   sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
   onEdit: (document: LibraryDocument) => void;
+  onMove: (document: LibraryDocument) => void;
 }) {
   const FileIcon = getFileIcon(document);
   const extension = getFileExtension(document);
 
   return (
-    <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_260px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70">
+    <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_300px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
           <FileIcon className="h-5 w-5" />
@@ -325,7 +337,7 @@ function DocumentRow({
       </span>
 
       <span className="inline-flex w-fit rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
-        {document.folderName || "No Folder"}
+        {document.folderName || "Root"}
       </span>
 
       <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
@@ -345,7 +357,7 @@ function DocumentRow({
       >
         {document.aiStatus}
       </span>
-      <div className="flex min-w-[260px] items-center justify-end gap-1">
+      <div className="flex min-w-[300px] items-center justify-end gap-1">
         <button
           onClick={() => onToggleFavorite(document.id)}
           className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
@@ -372,6 +384,14 @@ function DocumentRow({
           title="Rename"
         >
           <Pencil className="h-4 w-4" />
+        </button>
+
+        <button
+          onClick={() => onMove(document)}
+          className={actionIconButtonClass}
+          title="Move"
+        >
+          <Folder className="h-4 w-4" />
         </button>
 
         <button
@@ -424,12 +444,9 @@ export function MyLibrary() {
   const [allCategories, setAllCategories] = useState<CategoryResponse[]>([]);
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
-  const [uploadStatusFilter, setUploadStatusFilter] = useState<string>("ALL");
-  const [aiStatusFilter, setAiStatusFilter] = useState<AiStatus | "ALL">("ALL");
-  const [showUploadStatusMenu, setShowUploadStatusMenu] = useState(false);
-  const [showAiStatusMenu, setShowAiStatusMenu] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
+    null,
+  );
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [editDocument, setEditDocument] = useState<LibraryDocument | null>(
     null,
@@ -440,12 +457,20 @@ export function MyLibrary() {
   const [editCategoryName, setEditCategoryName] = useState("");
   const [editCategoryDescription, setEditCategoryDescription] = useState("");
   const [deleteCategoryId, setDeleteCategoryId] = useState<number | null>(null);
-  const { createAndCopyPublicLink, loadingDocumentId } =
-    useCreatePublicLink();
-  const [editingFolder, setEditingFolder] = useState<LibraryFolder | null>(null);
+  const { createAndCopyPublicLink, loadingDocumentId } = useCreatePublicLink();
+  const [editingFolder, setEditingFolder] = useState<LibraryFolder | null>(
+    null,
+  );
   const [editFolderName, setEditFolderName] = useState("");
   const [editFolderDescription, setEditFolderDescription] = useState("");
   const [deleteFolderId, setDeleteFolderId] = useState<number | null>(null);
+  const [movingFolder, setMovingFolder] = useState<LibraryFolder | null>(null);
+  const [moveFolderTargetId, setMoveFolderTargetId] = useState<string>("root");
+  const [movingDocument, setMovingDocument] = useState<LibraryDocument | null>(
+    null,
+  );
+  const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>("root");
+
   const mapLibraryDocument = (
     document: any,
     favoriteMap: Record<number, boolean> = {},
@@ -455,9 +480,9 @@ export function MyLibrary() {
     categoryName:
       document.categoryName || document.category?.name || "Uncategorized",
     folderId: document.folderId ?? document.folder?.id ?? null,
-    folderName: document.folderName || document.folder?.name || "No Folder",
+    folderName: document.folderName || document.folder?.name || "Root",
     name: document.title || document.originalName || document.fileName,
-    folder: document.folderName || document.folder?.name || "No Folder",
+    folder: document.folderName || document.folder?.name || "Root",
     date: formatDocumentDate(document.createdAt),
     createdAt: document.createdAt,
     type: document.type || document.fileType,
@@ -532,19 +557,11 @@ export function MyLibrary() {
           return;
         }
 
-        const keyword = searchQuery.trim();
-
         const [documentResponse, favoriteResponse] = await Promise.all([
-          keyword
-            ? documentApi.searchDocuments({
-                keyword,
-                page: 0,
-                size: 100,
-              })
-            : documentApi.getDocuments({
-                page: 0,
-                size: 100,
-              }),
+          documentApi.getDocuments({
+            page: 0,
+            size: 100,
+          }),
           favoriteApi.getFavorites(0, 100),
         ]);
 
@@ -577,12 +594,8 @@ export function MyLibrary() {
       }
     };
 
-    const timeoutId = window.setTimeout(() => {
-      loadDocuments();
-    }, 300);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [searchQuery]);
+    loadDocuments();
+  }, []);
 
   const toggleFavorite = async (documentId: number) => {
     const currentDocument = documents.find(
@@ -673,6 +686,76 @@ export function MyLibrary() {
     setEditName(document.name);
   };
 
+  const handleOpenMoveDocument = (document: LibraryDocument) => {
+    setMovingDocument(document);
+    setMoveTargetFolderId(
+      document.folderId === null || document.folderId === undefined
+        ? "root"
+        : String(document.folderId),
+    );
+  };
+
+  const handleMoveDocument = async () => {
+    if (!movingDocument) return;
+
+    const rawUserId = getCurrentUserId();
+    const userId = Number(rawUserId);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      toast.error("Please log in again to move this document.");
+      return;
+    }
+
+    const folderId =
+      moveTargetFolderId === "root" ? null : Number(moveTargetFolderId);
+
+    if (folderId !== null && !Number.isInteger(folderId)) {
+      toast.error("Invalid folder selected.");
+      return;
+    }
+
+    const targetFolder = folders.find(
+      (folder) => Number(folder.id) === Number(folderId),
+    );
+
+    try {
+      await documentApi.moveDocumentToFolder(movingDocument.id, {
+        userId,
+        folderId,
+      });
+
+      setDocuments((current) =>
+        current.map((document) =>
+          document.id === movingDocument.id
+            ? {
+                ...document,
+                folderId,
+                folderName: targetFolder?.name || "Root",
+                folder: targetFolder?.name || "Root",
+              }
+            : document,
+        ),
+      );
+
+      toast.success(
+        folderId === null
+          ? "Document moved to Root."
+          : `Document moved to ${targetFolder?.name || "folder"}.`,
+      );
+
+      setMovingDocument(null);
+      setMoveTargetFolderId("root");
+      await loadFolders();
+    } catch (error: any) {
+      console.error("Cannot move document:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot move document.",
+      );
+    }
+  };
+
   const handleUpdateDocumentName = async () => {
     if (!editDocument) return;
 
@@ -754,6 +837,7 @@ export function MyLibrary() {
 
     try {
       await categoryApi.deleteCategory(deleteCategoryId);
+
       toast.success("Category deleted.");
       setDeleteCategoryId(null);
       await loadCategories();
@@ -771,6 +855,64 @@ export function MyLibrary() {
     setEditingFolder(folder);
     setEditFolderName(folder.name);
     setEditFolderDescription(folder.description ?? "");
+  };
+
+  const handleOpenMoveFolder = (folder: LibraryFolder) => {
+    setMovingFolder(folder);
+    setMoveFolderTargetId(
+      folder.parentFolderId === null || folder.parentFolderId === undefined
+        ? "root"
+        : String(folder.parentFolderId),
+    );
+  };
+
+  const handleMoveFolder = async () => {
+    if (!movingFolder) return;
+
+    const rawUserId = getCurrentUserId();
+    const userId = Number(rawUserId);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      toast.error("Please log in again to move this folder.");
+      return;
+    }
+
+    const parentFolderId =
+      moveFolderTargetId === "root" ? null : Number(moveFolderTargetId);
+
+    if (
+      parentFolderId !== null &&
+      Number(parentFolderId) === Number(movingFolder.id)
+    ) {
+      toast.error("Cannot move folder into itself.");
+      return;
+    }
+
+    try {
+      await folderApi.updateFolder(movingFolder.id, {
+        name: movingFolder.name,
+        description: movingFolder.description ?? "",
+        userId,
+        parentFolderId,
+      });
+
+      toast.success(
+        parentFolderId === null
+          ? "Folder moved to Root."
+          : "Folder moved successfully.",
+      );
+
+      setMovingFolder(null);
+      setMoveFolderTargetId("root");
+      await loadFolders();
+    } catch (error: any) {
+      console.error("Cannot move folder:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot move folder.",
+      );
+    }
   };
 
   const handleUpdateFolder = async () => {
@@ -804,6 +946,36 @@ export function MyLibrary() {
     }
   };
 
+  const moveFolderContentToRoot = async (folderId: number, userId: number) => {
+    const documentsInFolder = documents.filter(
+      (document) => Number(document.folderId) === Number(folderId),
+    );
+
+    await Promise.all(
+      documentsInFolder.map((document) =>
+        documentApi.moveDocumentToFolder(document.id, {
+          userId,
+          folderId: null,
+        }),
+      ),
+    );
+
+    const childFolders = folders.filter(
+      (folder) => Number(folder.parentFolderId) === Number(folderId),
+    );
+
+    await Promise.all(
+      childFolders.map((folder) =>
+        folderApi.updateFolder(folder.id, {
+          name: folder.name,
+          description: folder.description ?? "",
+          userId,
+          parentFolderId: null,
+        }),
+      ),
+    );
+  };
+
   const handleDeleteFolder = async () => {
     if (!deleteFolderId) return;
 
@@ -816,19 +988,6 @@ export function MyLibrary() {
       return;
     }
 
-    const documentCount = Math.max(
-      folder.documentCount ?? 0,
-      documents.filter(
-        (document) => Number(document.folderId) === Number(deleteFolderId),
-      ).length,
-    );
-    const childFolderCount = folder.childFolderCount ?? 0;
-
-    if (documentCount > 0 || childFolderCount > 0) {
-      toast.error("Cannot delete folder that contains documents or subfolders.");
-      return;
-    }
-
     const rawUserId = getCurrentUserId();
     const userId = Number(rawUserId);
 
@@ -838,8 +997,23 @@ export function MyLibrary() {
     }
 
     try {
+      await moveFolderContentToRoot(deleteFolderId, userId);
       await folderApi.deleteFolder(deleteFolderId, userId);
-      toast.success("Folder deleted.");
+
+      setDocuments((current) =>
+        current.map((document) =>
+          Number(document.folderId) === Number(deleteFolderId)
+            ? {
+                ...document,
+                folderId: null,
+                folderName: "Root",
+                folder: "Root",
+              }
+            : document,
+        ),
+      );
+
+      toast.success("Folder deleted. Documents and subfolders moved to Root.");
       setDeleteFolderId(null);
       await loadFolders();
     } catch (error: any) {
@@ -912,7 +1086,12 @@ export function MyLibrary() {
 
   const deletingFolderChildCount = deletingFolder?.childFolderCount ?? 0;
 
-  const selectedFolder = folders.find((folder) => folder.id === selectedFolderId);
+  const selectedFolder = folders.find(
+    (folder) => folder.id === selectedFolderId,
+  );
+  const selectedCategory = categories.find(
+    (category) => Number(category.id) === Number(selectedCategoryId),
+  );
 
   const rootFolders = useMemo(() => {
     return folders.filter((folder) => folder.parentFolderId === null);
@@ -921,21 +1100,30 @@ export function MyLibrary() {
   const filteredDocuments = useMemo(() => {
     let result = [...documents];
 
-    if (selectedFolderId !== null) {
+    if (selectedCategoryId !== null) {
+      if (selectedCategoryId === 0) {
+        result = result.filter(
+          (document) =>
+            document.categoryId === null ||
+            document.categoryId === undefined ||
+            !allCategories.some(
+              (category) => Number(category.id) === Number(document.categoryId),
+            ),
+        );
+      } else {
+        result = result.filter(
+          (document) =>
+            Number(document.categoryId) === Number(selectedCategoryId),
+        );
+      }
+    } else if (selectedFolderId !== null) {
       result = result.filter(
         (document) => Number(document.folderId) === Number(selectedFolderId),
       );
-    }
-
-    if (uploadStatusFilter !== "ALL") {
+    } else {
       result = result.filter(
-        (document) => document.documentStatus === uploadStatusFilter,
-      );
-    }
-
-    if (aiStatusFilter !== "ALL") {
-      result = result.filter(
-        (document) => document.aiStatus === aiStatusFilter,
+        (document) =>
+          document.folderId === null || document.folderId === undefined,
       );
     }
 
@@ -943,13 +1131,11 @@ export function MyLibrary() {
       const firstTime = new Date(a.createdAt).getTime();
       const secondTime = new Date(b.createdAt).getTime();
 
-      return sortOrder === "newest"
-        ? secondTime - firstTime
-        : firstTime - secondTime;
+      return secondTime - firstTime;
     });
 
     return result;
-  }, [documents, selectedFolderId, uploadStatusFilter, aiStatusFilter, sortOrder]);
+  }, [documents, selectedCategoryId, selectedFolderId, allCategories]);
 
   return (
     <div className="space-y-8">
@@ -1094,7 +1280,6 @@ export function MyLibrary() {
               Organize your documents into folders
             </p>
           </div>
-
         </div>
 
         {rootFolders.length > 0 ? (
@@ -1107,6 +1292,7 @@ export function MyLibrary() {
                 onClick={() => navigate(`/app/folders/${folder.id}`)}
                 onEdit={handleOpenEditFolder}
                 onDelete={setDeleteFolderId}
+                onMove={handleOpenMoveFolder}
               />
             ))}
           </div>
@@ -1134,7 +1320,11 @@ export function MyLibrary() {
                   key={category.id}
                   category={category}
                   onClick={() => {
-                    if (isNoCategory) return;
+                    if (isNoCategory) {
+                      setSelectedCategoryId(0);
+                      setSelectedFolderId(null);
+                      return;
+                    }
 
                     navigate(`/app/categories/${category.id}`, {
                       state: { from: "/app/library" },
@@ -1160,6 +1350,14 @@ export function MyLibrary() {
             Documents
           </h2>
           <div className="flex items-center gap-3">
+            {selectedCategory && (
+              <button
+                onClick={() => setSelectedCategoryId(null)}
+                className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700 hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-300"
+              >
+                {selectedCategory.name} ×
+              </button>
+            )}
             {selectedFolder && (
               <button
                 onClick={() => setSelectedFolderId(null)}
@@ -1173,93 +1371,6 @@ export function MyLibrary() {
             </p>
           </div>
         </div>
-        {/* Search */}
-        <div className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center">
-          <div className="relative min-w-0 flex-1">
-            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search document name..."
-              className="h-12 w-full rounded-xl border border-slate-100 bg-slate-50 pl-11 pr-4 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-500/10 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-800 dark:focus:bg-slate-900"
-            />
-          </div>
-          <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-            <div className="relative">
-              <button
-                onClick={() => setShowUploadStatusMenu(!showUploadStatusMenu)}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 transition-colors hover:border-blue-200 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-              >
-                <SlidersHorizontal className="h-4 w-4" />
-                {uploadStatusFilter === "ALL"
-                  ? "Document Status"
-                  : uploadStatusFilter}
-                <ChevronDown className="h-4 w-4" />
-              </button>
-
-              {showUploadStatusMenu && (
-                <div className="absolute right-0 z-50 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                  {["ALL", "ACTIVE", "DELETED"].map((status) => (
-                    <button
-                      key={status}
-                      onClick={() => {
-                        setUploadStatusFilter(status);
-                        setShowUploadStatusMenu(false);
-                      }}
-                      className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      {status === "ALL" ? "All Documents" : status}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="relative">
-              <button
-                onClick={() => setShowAiStatusMenu(!showAiStatusMenu)}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 transition-colors hover:border-blue-200 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-              >
-                <SlidersHorizontal className="h-4 w-4" />
-                {aiStatusFilter === "ALL" ? "AI Status" : aiStatusFilter}
-                <ChevronDown className="h-4 w-4" />
-              </button>
-
-              {showAiStatusMenu && (
-                <div className="absolute right-0 z-50 mt-2 w-44 rounded-xl border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                  {["ALL", "UPLOADED", "PROCESSING", "PROCESSED", "FAILED"].map(
-                    (status) => (
-                      <button
-                        key={status}
-                        onClick={() => {
-                          setAiStatusFilter(status as AiStatus | "ALL");
-                          setShowAiStatusMenu(false);
-                        }}
-                        className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-                      >
-                        {status === "ALL" ? "All AI" : status}
-                      </button>
-                    ),
-                  )}
-                </div>
-              )}
-            </div>
-            <button
-              onClick={() =>
-                setSortOrder((current) =>
-                  current === "newest" ? "oldest" : "newest",
-                )
-              }
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 transition-colors hover:border-blue-200 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-800 dark:hover:text-blue-300"
-            >
-              <SortDesc className="h-4 w-4" />
-              {sortOrder === "newest" ? "Newest first" : "Oldest first"}
-              <ChevronDown className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
         {view === "grid" ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {filteredDocuments.map((document) => {
@@ -1305,6 +1416,14 @@ export function MyLibrary() {
                         title="Rename"
                       >
                         <Pencil className="h-4 w-4" />
+                      </button>
+
+                      <button
+                        onClick={() => handleOpenMoveDocument(document)}
+                        className={actionIconButtonClass}
+                        title="Move"
+                      >
+                        <Folder className="h-4 w-4" />
                       </button>
 
                       <button
@@ -1367,7 +1486,7 @@ export function MyLibrary() {
                       </span>
 
                       <span className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
-                        {document.folderName || "No Folder"}
+                        {document.folderName || "Root"}
                       </span>
                     </div>
 
@@ -1385,8 +1504,8 @@ export function MyLibrary() {
           </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="min-w-[1460px]">
-              <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_260px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60">
+            <div className="min-w-[1500px]">
+              <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_300px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60">
                 <div>Document Name</div>
                 <div>Category</div>
                 <div>Folder</div>
@@ -1410,12 +1529,13 @@ export function MyLibrary() {
                     sharingDocumentId={loadingDocumentId}
                     onViewFile={handleViewFile}
                     onEdit={handleOpenEdit}
+                    onMove={handleOpenMoveDocument}
                   />
                 ))
               ) : (
                 <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
                   <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 dark:bg-slate-800">
-                    <Search className="h-6 w-6" />
+                    <FileText className="h-6 w-6" />
                   </div>
 
                   <h3 className="font-bold text-slate-900 dark:text-slate-100">
@@ -1423,7 +1543,7 @@ export function MyLibrary() {
                   </h3>
 
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Try a different search term.
+                    No files match the current category or folder.
                   </p>
                 </div>
               )}
@@ -1432,6 +1552,60 @@ export function MyLibrary() {
         )}
       </section>
 
+      {movingDocument && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Move Document
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Choose a folder or move this document back to Root.
+            </p>
+
+            <div className="mt-5">
+              <label className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                Destination
+              </label>
+
+              <select
+                value={moveTargetFolderId}
+                onChange={(event) => setMoveTargetFolderId(event.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-800"
+              >
+                <option value="root">Root</option>
+
+                {folders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setMovingDocument(null);
+                  setMoveTargetFolderId("root");
+                }}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleMoveDocument}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+              >
+                Move
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleteId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -1519,6 +1693,77 @@ export function MyLibrary() {
         </div>
       )}
 
+      {movingFolder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                Move Folder
+              </h2>
+
+              <button
+                onClick={() => {
+                  setMovingFolder(null);
+                  setMoveFolderTargetId("root");
+                }}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Move "{movingFolder.name}" into another folder or back to Root.
+            </p>
+
+            <div className="mt-5">
+              <label className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                Destination
+              </label>
+
+              <select
+                value={moveFolderTargetId}
+                onChange={(event) => setMoveFolderTargetId(event.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-800"
+              >
+                <option value="root">Root</option>
+
+                {folders
+                  .filter(
+                    (folder) => Number(folder.id) !== Number(movingFolder.id),
+                  )
+                  .map((folder) => (
+                    <option key={folder.id} value={folder.id}>
+                      {folder.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setMovingFolder(null);
+                  setMoveFolderTargetId("root");
+                }}
+                className="rounded-xl px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleMoveFolder}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+              >
+                <MoveRight className="h-4 w-4" />
+                Move
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editingFolder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
@@ -1592,17 +1837,18 @@ export function MyLibrary() {
             </h2>
 
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Are you sure you want to delete this folder? This action cannot
-              be undone.
+              Are you sure you want to delete this folder? Documents and
+              subfolders inside it will be moved to Root.
             </p>
 
-            {(deletingFolderDocumentCount > 0 || deletingFolderChildCount > 0) && (
-              <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-300">
+            {(deletingFolderDocumentCount > 0 ||
+              deletingFolderChildCount > 0) && (
+              <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
                 This folder contains {deletingFolderDocumentCount}{" "}
-                {deletingFolderDocumentCount === 1 ? "document" : "documents"}
-                {" "}and {deletingFolderChildCount}{" "}
+                {deletingFolderDocumentCount === 1 ? "document" : "documents"}{" "}
+                and {deletingFolderChildCount}{" "}
                 {deletingFolderChildCount === 1 ? "subfolder" : "subfolders"}.
-                Please move or delete them first.
+                They will be moved to Root after deleting this folder.
               </p>
             )}
 
@@ -1618,10 +1864,7 @@ export function MyLibrary() {
               <button
                 type="button"
                 onClick={handleDeleteFolder}
-                disabled={
-                  deletingFolderDocumentCount > 0 || deletingFolderChildCount > 0
-                }
-                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300 dark:disabled:bg-red-900"
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
               >
                 Delete
               </button>
@@ -1711,7 +1954,8 @@ export function MyLibrary() {
               <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-300">
                 This category contains {deletingCategoryItemCount}{" "}
                 {deletingCategoryItemCount === 1 ? "document" : "documents"}.
-                Please move or delete those documents first.
+                Please move those documents to another category or Uncategorized
+                before deleting this category.
               </p>
             )}
 

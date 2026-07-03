@@ -14,10 +14,10 @@ export interface PublicDocumentResponse {
 }
 
 export interface PublicDocumentShareLinkResponse {
-  title: string;
-  description: string;
+  title: string | null;
+  description: string | null;
   allowUpload: boolean;
-  reason: string;
+  reason: string | null;
   expiresAt?: string;
 }
 
@@ -73,19 +73,18 @@ export const publicShareApi = {
     const formData = new FormData();
     formData.append("file", file);
 
+    if (title) formData.append("title", title);
+    if (description) formData.append("description", description);
+    if (uploaderName) formData.append("uploaderName", uploaderName);
+    if (uploaderEmail) formData.append("uploaderEmail", uploaderEmail);
+    if (uploaderUserId !== undefined) {
+      formData.append("uploaderUserId", String(uploaderUserId));
+    }
+
     return apiClient.post<PublicDocumentSubmissionResponse>(
       `/api/public/document-share-links/${token}/submissions`,
       formData,
       {
-        params: {
-          ...(title ? { title } : {}),
-          ...(description ? { description } : {}),
-          ...(uploaderName ? { uploaderName } : {}),
-          ...(uploaderEmail ? { uploaderEmail } : {}),
-          ...(uploaderUserId !== undefined
-            ? { uploaderUserId }
-            : {}),
-        },
         headers: {
           "Content-Type": "multipart/form-data",
         },

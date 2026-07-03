@@ -6,17 +6,17 @@ export interface DocumentShareLinkResponse {
   id: number;
   ownerUserId: number;
   title: string;
-  description: string;
+  description?: string | null;
   status: DocumentShareLinkStatus;
-  expiresAt?: string;
-  maxUploads: number;
-  currentUploads: number;
-  defaultFolderId?: number;
-  defaultFolderName?: string;
-  token: string;
-  shareUrl: string;
-  createdAt: string;
-  updatedAt: string;
+  expiresAt?: string | null;
+  maxUploads?: number | null;
+  currentUploads?: number | null;
+  defaultFolderId?: number | null;
+  defaultFolderName?: string | null;
+  token?: string | null;
+  shareUrl?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CreateDocumentShareLinkRequest {

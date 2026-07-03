@@ -10,6 +10,7 @@ import {
   FolderPlus,
   Grid3X3,
   List,
+  MoveRight,
   Pencil,
   RotateCcw,
   Save,
@@ -36,6 +37,7 @@ type ListResponse<T> = T[] | { content?: T[] };
 
 interface LibraryDocument {
   id: number;
+  folderId: number | null;
   categoryId: number;
   name: string;
   category: string;
@@ -49,6 +51,7 @@ interface LibraryDocument {
 }
 
 type DocumentApiItem = DocumentListItemResponse & {
+  folderId?: number | null;
   title?: string;
   originalName?: string;
   fileName?: string;
@@ -143,6 +146,7 @@ function DocumentRow({
   sharingDocumentId,
   onViewFile,
   onEdit,
+  onMove,
 }: {
   document: LibraryDocument;
   onToggleFavorite: (documentId: number) => void;
@@ -153,6 +157,7 @@ function DocumentRow({
   sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
   onEdit: (document: LibraryDocument) => void;
+  onMove: (document: LibraryDocument) => void;
 }) {
   return (
     <div
@@ -230,6 +235,15 @@ function DocumentRow({
 
         <button
           type="button"
+          onClick={() => onMove(document)}
+          className={actionIconButtonClass}
+          title="Move"
+        >
+          <Folder className="h-4 w-4" />
+        </button>
+
+        <button
+          type="button"
           onClick={() => onDownload(document.id, document.name)}
           className={actionIconButtonClass}
           title="Download"
@@ -284,6 +298,7 @@ function DocumentCard({
   sharingDocumentId,
   onViewFile,
   onEdit,
+  onMove,
 }: {
   document: LibraryDocument;
   onToggleFavorite: (documentId: number) => void;
@@ -294,6 +309,7 @@ function DocumentCard({
   sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
   onEdit: (document: LibraryDocument) => void;
+  onMove: (document: LibraryDocument) => void;
 }) {
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
@@ -386,6 +402,15 @@ function DocumentCard({
 
         <button
           type="button"
+          onClick={() => onMove(document)}
+          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+          title="Move"
+        >
+          <Folder className="h-4 w-4" />
+        </button>
+
+        <button
+          type="button"
           onClick={() => onDownload(document.id, document.name)}
           className={actionIconButtonClass}
           title="Download"
@@ -430,11 +455,7 @@ function DocumentCard({
   );
 }
 
-function EmptyDocuments({
-  onUpload,
-}: {
-  onUpload: () => void;
-}) {
+function EmptyDocuments({ onUpload }: { onUpload: () => void }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
@@ -482,14 +503,21 @@ export function FolderDocumentsPage() {
   const [editDescription, setEditDescription] = useState("");
 
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [movingFolder, setMovingFolder] = useState<FolderResponse | null>(null);
+  const [moveFolderTargetId, setMoveFolderTargetId] = useState<string>("root");
 
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [deleteDocumentId, setDeleteDocumentId] = useState<number | null>(null);
   const [editingDocument, setEditingDocument] =
     useState<LibraryDocument | null>(null);
   const [editTitle, setEditTitle] = useState("");
-  const { createAndCopyPublicLink, loadingDocumentId } =
-    useCreatePublicLink();
+  const [movingDocument, setMovingDocument] = useState<LibraryDocument | null>(
+    null,
+  );
+  const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>(
+    String(currentFolderId),
+  );
+  const { createAndCopyPublicLink, loadingDocumentId } = useCreatePublicLink();
 
   const goToUploadWithCurrentFolder = () => {
     navigate(`/app/upload?folderId=${currentFolderId}`);
@@ -512,17 +540,21 @@ export function FolderDocumentsPage() {
     try {
       setIsLoading(true);
 
-const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
-  await Promise.all([
-    folderApi.getFolderById(currentFolderId, userId),
-    folderApi.getFolders(userId),
-    categoryApi.getCategories(),
-    documentApi.getDocuments({
-      page: 0,
-      size: 1000,
-      folderId: currentFolderId,
-    }),
-  ]);
+      const [
+        folderResponse,
+        foldersResponse,
+        categoriesResponse,
+        documentsResponse,
+      ] = await Promise.all([
+        folderApi.getFolderById(currentFolderId, userId),
+        folderApi.getFolders(userId),
+        categoryApi.getCategories(),
+        documentApi.getDocuments({
+          page: 0,
+          size: 1000,
+          folderId: currentFolderId,
+        }),
+      ]);
 
       const currentFolder = folderResponse.data;
 
@@ -552,6 +584,7 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
       setDocuments(
         rawDocuments.map((document) => ({
           id: document.id,
+          folderId: document.folderId ?? currentFolderId,
           categoryId: document.categoryId,
           name:
             document.title ||
@@ -618,6 +651,14 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
       );
     });
   }, [documents, search]);
+
+  const moveFolderDestinations = useMemo(() => {
+    if (!movingFolder) return folders;
+
+    return folders.filter(
+      (item) => Number(item.id) !== Number(movingFolder.id),
+    );
+  }, [folders, movingFolder]);
 
   const handleCreateSubfolder = async () => {
     if (!name.trim()) {
@@ -719,19 +760,113 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
     }
   };
 
+  const openMoveFolderModal = (selectedFolder: FolderResponse) => {
+    setMovingFolder(selectedFolder);
+    setMoveFolderTargetId(
+      selectedFolder.parentFolderId === null ||
+        selectedFolder.parentFolderId === undefined
+        ? "root"
+        : String(selectedFolder.parentFolderId),
+    );
+  };
+
+  const handleMoveFolder = async () => {
+    if (!movingFolder) return;
+
+    const userId = getSafeUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
+    const parentFolderId =
+      moveFolderTargetId === "root" ? null : Number(moveFolderTargetId);
+
+    if (parentFolderId !== null && parentFolderId === movingFolder.id) {
+      toast.error("Cannot move folder into itself.");
+      return;
+    }
+
+    try {
+      await folderApi.updateFolder(movingFolder.id, {
+        name: movingFolder.name,
+        description: movingFolder.description ?? "",
+        userId,
+        parentFolderId,
+      });
+
+      toast.success(
+        parentFolderId === null
+          ? "Folder moved to Root."
+          : "Folder moved successfully.",
+      );
+
+      const movedCurrentFolder = movingFolder.id === currentFolderId;
+
+      setMovingFolder(null);
+      setMoveFolderTargetId("root");
+
+      if (movedCurrentFolder && parentFolderId === null) {
+        await loadData();
+        return;
+      }
+
+      await loadData();
+    } catch (error: any) {
+      console.error(error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot move folder.",
+      );
+    }
+  };
+
+  const moveFolderContentToRoot = async (folderId: number, userId: number) => {
+    const documentsResponse = await documentApi.getDocuments({
+      folderId,
+      page: 0,
+      size: 1000,
+    });
+
+    const documentsInFolder = filterMyDocuments(
+      normalizeList<DocumentApiItem>(
+        documentsResponse.data as ListResponse<DocumentApiItem>,
+      ),
+      userId,
+    );
+
+    await Promise.all(
+      documentsInFolder.map((document) =>
+        documentApi.moveDocumentToFolder(document.id, {
+          userId,
+          folderId: null,
+        }),
+      ),
+    );
+
+    const childFolders = folders.filter(
+      (item) => Number(item.parentFolderId) === Number(folderId),
+    );
+
+    await Promise.all(
+      childFolders.map((childFolder) =>
+        folderApi.updateFolder(childFolder.id, {
+          name: childFolder.name,
+          description: childFolder.description ?? "",
+          userId,
+          parentFolderId: null,
+        }),
+      ),
+    );
+  };
+
   const handleDeleteFolder = async (id: number): Promise<boolean> => {
     const selectedFolder = folders.find((item) => item.id === id);
 
     if (!selectedFolder) {
       toast.error("Folder not found.");
-      return false;
-    }
-
-    if (
-      (selectedFolder.documentCount ?? 0) > 0 ||
-      (selectedFolder.childFolderCount ?? 0) > 0
-    ) {
-      toast.error("Cannot delete folder that contains documents or subfolders.");
       return false;
     }
 
@@ -743,9 +878,16 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
     }
 
     try {
+      await moveFolderContentToRoot(id, userId);
       await folderApi.deleteFolder(id, userId);
 
-      toast.success("Folder deleted.");
+      toast.success("Folder deleted. Documents and subfolders moved to Root.");
+
+      if (id === currentFolderId) {
+        navigate("/app/folders");
+        return true;
+      }
+
       await loadData();
       return true;
     } catch (error: any) {
@@ -769,9 +911,7 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
     );
   };
 
-  const handleDeleteDocument = async (
-    documentId: number,
-  ): Promise<boolean> => {
+  const handleDeleteDocument = async (documentId: number): Promise<boolean> => {
     try {
       await documentApi.deleteDocument(documentId);
 
@@ -826,6 +966,53 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
     setEditTitle(document.name);
   };
 
+  const handleOpenMoveDocument = (document: LibraryDocument) => {
+    setMovingDocument(document);
+    setMoveTargetFolderId(
+      document.folderId === null || document.folderId === undefined
+        ? "root"
+        : String(document.folderId),
+    );
+  };
+
+  const handleMoveDocument = async () => {
+    if (!movingDocument) return;
+
+    const userId = getSafeUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
+    const targetFolderId =
+      moveTargetFolderId === "root" ? null : Number(moveTargetFolderId);
+
+    try {
+      await documentApi.moveDocumentToFolder(movingDocument.id, {
+        userId,
+        folderId: targetFolderId,
+      });
+
+      toast.success(
+        targetFolderId === null
+          ? "Document moved to Root."
+          : "Document moved to folder.",
+      );
+
+      setMovingDocument(null);
+      setMoveTargetFolderId(String(currentFolderId));
+      await loadData();
+    } catch (error: any) {
+      console.error("Cannot move document:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot move document.",
+      );
+    }
+  };
+
   const handleUpdateDocumentName = async () => {
     if (!editingDocument) return;
 
@@ -850,10 +1037,6 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
 
   const deletingFolder =
     deleteId !== null ? folders.find((item) => item.id === deleteId) : null;
-
-  const cannotDelete =
-    (deletingFolder?.documentCount ?? 0) > 0 ||
-    (deletingFolder?.childFolderCount ?? 0) > 0;
 
   if (isLoading) {
     return (
@@ -901,14 +1084,27 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={goToUploadWithCurrentFolder}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-700"
-        >
-          <UploadCloud className="h-4 w-4" />
-          Upload Document
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {folder && (
+            <button
+              type="button"
+              onClick={() => openMoveFolderModal(folder)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <MoveRight className="h-4 w-4" />
+              Move Folder
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={goToUploadWithCurrentFolder}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-700"
+          >
+            <UploadCloud className="h-4 w-4" />
+            Upload Document
+          </button>
+        </div>
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -992,6 +1188,18 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openMoveFolderModal(item);
+                    }}
+                    className="rounded-lg p-2 text-emerald-500 opacity-100 transition hover:bg-emerald-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-emerald-950/30"
+                    title="Move folder"
+                  >
+                    <MoveRight className="h-4 w-4" />
+                  </button>
+
                   <button
                     type="button"
                     onClick={(event) => {
@@ -1095,6 +1303,7 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
                     sharingDocumentId={loadingDocumentId}
                     onViewFile={handleViewFile}
                     onEdit={handleOpenEditDocument}
+                    onMove={handleOpenMoveDocument}
                   />
                 ))
               ) : (
@@ -1123,6 +1332,7 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
                 sharingDocumentId={loadingDocumentId}
                 onViewFile={handleViewFile}
                 onEdit={handleOpenEditDocument}
+                onMove={handleOpenMoveDocument}
               />
             ))}
           </div>
@@ -1130,6 +1340,61 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
           <EmptyDocuments onUpload={goToUploadWithCurrentFolder} />
         )}
       </section>
+
+      {movingFolder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Move Folder
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Move "{movingFolder.name}" into another folder or back to Root.
+            </p>
+
+            <div className="mt-5">
+              <label className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                Destination
+              </label>
+
+              <select
+                value={moveFolderTargetId}
+                onChange={(event) => setMoveFolderTargetId(event.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-800"
+              >
+                <option value="root">Root</option>
+
+                {moveFolderDestinations.map((folderItem) => (
+                  <option key={folderItem.id} value={folderItem.id}>
+                    {folderItem.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setMovingFolder(null);
+                  setMoveFolderTargetId("root");
+                }}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleMoveFolder}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+              >
+                Move
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -1187,22 +1452,25 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
             </h2>
 
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Are you sure you want to delete this folder?
+              Are you sure you want to delete this folder? Documents and
+              subfolders inside it will be moved to Root.
             </p>
 
-            {cannotDelete && (
-              <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-300">
-                This folder contains {deletingFolder?.documentCount ?? 0}{" "}
-                {(deletingFolder?.documentCount ?? 0) === 1
-                  ? "document"
-                  : "documents"}{" "}
-                and {deletingFolder?.childFolderCount ?? 0}{" "}
-                {(deletingFolder?.childFolderCount ?? 0) === 1
-                  ? "subfolder"
-                  : "subfolders"}
-                . Please move or delete them first.
-              </p>
-            )}
+            {deletingFolder &&
+              ((deletingFolder.documentCount ?? 0) > 0 ||
+                (deletingFolder.childFolderCount ?? 0) > 0) && (
+                <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                  This folder contains {deletingFolder.documentCount ?? 0}{" "}
+                  {(deletingFolder.documentCount ?? 0) === 1
+                    ? "document"
+                    : "documents"}{" "}
+                  and {deletingFolder.childFolderCount ?? 0}{" "}
+                  {(deletingFolder.childFolderCount ?? 0) === 1
+                    ? "subfolder"
+                    : "subfolders"}
+                  . They will be moved to Root after deleting this folder.
+                </p>
+              )}
 
             <div className="mt-6 flex justify-end gap-3">
               <button
@@ -1224,7 +1492,6 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
                     setDeleteId(null);
                   }
                 }}
-                disabled={cannotDelete}
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300 dark:disabled:bg-red-900"
               >
                 Delete
@@ -1269,6 +1536,61 @@ const [folderResponse, foldersResponse, categoriesResponse, documentsResponse] =
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {movingDocument && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Move Document
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Choose a folder or move this document back to Root.
+            </p>
+
+            <div className="mt-5">
+              <label className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                Destination
+              </label>
+
+              <select
+                value={moveTargetFolderId}
+                onChange={(event) => setMoveTargetFolderId(event.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-800"
+              >
+                <option value="root">Root</option>
+
+                {folders.map((folderItem) => (
+                  <option key={folderItem.id} value={folderItem.id}>
+                    {folderItem.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setMovingDocument(null);
+                  setMoveTargetFolderId(String(currentFolderId));
+                }}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleMoveDocument}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+              >
+                Move
               </button>
             </div>
           </div>
