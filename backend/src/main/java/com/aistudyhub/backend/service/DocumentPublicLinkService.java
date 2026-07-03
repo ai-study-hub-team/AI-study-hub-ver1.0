@@ -18,6 +18,7 @@ import com.aistudyhub.backend.repository.DocumentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.core.io.Resource;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
@@ -35,6 +36,15 @@ public class DocumentPublicLinkService {
     private final DocumentPublicLinkRepository documentPublicLinkRepository;
     private final CurrentUserService currentUserService;
     private final ResendProperties resendProperties;
+    private final FileStorageService fileStorageService;
+
+    public record PublicDocumentFile(
+            Resource resource,
+            String fileName,
+            String originalName,
+            String contentType
+    ) {
+    }
 
     @Transactional
     public PublicLinkResponse createOrUpdatePublicLink(
@@ -97,6 +107,61 @@ public class DocumentPublicLinkService {
 
     @Transactional
     public PublicDocumentResponse getPublicDocumentByToken(String token) {
+        DocumentPublicLink publicLink = getValidPublicLink(token);
+
+        Long currentViewCount = publicLink.getViewCount() != null ? publicLink.getViewCount() : 0L;
+        publicLink.setViewCount(currentViewCount + 1);
+        documentPublicLinkRepository.save(publicLink);
+
+        Document document = publicLink.getDocument();
+
+        return PublicDocumentResponse.builder()
+                .documentId(document.getId())
+                .title(document.getTitle())
+                .description(document.getDescription())
+                .fileUrl(buildPublicFileUrl(publicLink.getToken()))
+                .allowDownload(Boolean.TRUE.equals(publicLink.getAllowDownload()))
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public PublicDocumentFile getPublicDocumentFile(
+            String token,
+            boolean requireDownloadPermission
+    ) {
+        DocumentPublicLink publicLink = getValidPublicLink(token);
+
+        if (requireDownloadPermission && !Boolean.TRUE.equals(publicLink.getAllowDownload())) {
+            throw new ForbiddenException("Download is not allowed for this public link");
+        }
+
+        Document document = publicLink.getDocument();
+        CloudFile cloudFile = document.getCloudFile();
+
+        if (cloudFile == null || cloudFile.getFileName() == null || cloudFile.getFileName().isBlank()) {
+            throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
+        }
+
+        Resource resource;
+        try {
+            resource = fileStorageService.loadFileAsResource(cloudFile.getFileName());
+        } catch (RuntimeException ex) {
+            throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
+        }
+
+        String contentType = cloudFile.getFileType() != null && !cloudFile.getFileType().isBlank()
+                ? cloudFile.getFileType()
+                : fileStorageService.getMimeTypeFromFileName(cloudFile.getFileName());
+
+        return new PublicDocumentFile(
+                resource,
+                cloudFile.getFileName(),
+                cloudFile.getOriginalName(),
+                contentType
+        );
+    }
+
+    private DocumentPublicLink getValidPublicLink(String token) {
         if (token == null || token.isBlank()) {
             throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
         }
@@ -119,21 +184,12 @@ public class DocumentPublicLinkService {
             throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
         }
 
-        Long currentViewCount = publicLink.getViewCount() != null ? publicLink.getViewCount() : 0L;
-        publicLink.setViewCount(currentViewCount + 1);
-        documentPublicLinkRepository.save(publicLink);
-
-        CloudFile cloudFile = document.getCloudFile();
-
-        return PublicDocumentResponse.builder()
-                .documentId(document.getId())
-                .title(document.getTitle())
-                .description(document.getDescription())
-                .fileUrl(cloudFile != null ? cloudFile.getFileUrl() : null)
-                .allowDownload(Boolean.TRUE.equals(publicLink.getAllowDownload()))
-                .build();
+        return publicLink;
     }
 
+    private String buildPublicFileUrl(String token) {
+        return "/api/public/documents/" + token + "/file";
+    }
 
     private Document getActiveDocument(Long documentId) {
         Document document = documentRepository.findById(documentId)
