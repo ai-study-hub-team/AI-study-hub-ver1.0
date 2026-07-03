@@ -4,8 +4,8 @@ server:
 application:
   security:
     jwt:
-      secret-key: VGhpcy1pcy1hLXZlcnktbG9uZy1zZWNyZXQta2V5LWZvci1qd3QtYXV0aC1hcHBsaWNhdGlvbg==
-      access-token-expiration: 900000
+      secret-key: ${JWT_SECRET}
+      access-token-expiration: 7200000
       refresh-token-expiration: 604800000
 
 resend:
