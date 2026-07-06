@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { DragEvent } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
   ArrowLeft,
@@ -108,6 +109,31 @@ const getSafeUserId = (): number | null => {
   return userId;
 };
 
+const isDescendantFolder = (
+  folders: FolderResponse[],
+  sourceFolderId: number,
+  targetFolderId: number,
+) => {
+  let current = folders.find(
+    (folder) => Number(folder.id) === Number(targetFolderId),
+  );
+
+  while (
+    current?.parentFolderId !== null &&
+    current?.parentFolderId !== undefined
+  ) {
+    if (Number(current.parentFolderId) === Number(sourceFolderId)) {
+      return true;
+    }
+
+    current = folders.find(
+      (folder) => Number(folder.id) === Number(current?.parentFolderId),
+    );
+  }
+
+  return false;
+};
+
 const statusBadgeClass: Record<AiStatus, string> = {
   UPLOADED:
     "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:ring-blue-800",
@@ -128,13 +154,60 @@ const actionIconButtonClass =
 const deleteIconButtonClass =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
 
-const getFileExtension = (document: LibraryDocument) => {
-  const extensionFromName = document.name.split(".").pop()?.toUpperCase();
-  const extensionFromType = document.type.split("/").pop()?.toUpperCase();
+const fileTypeLabels: Record<string, string> = {
+  "application/pdf": "PDF",
+  "application/msword": "DOC",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+  "application/vnd.ms-powerpoint": "PPT",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX",
+  "application/vnd.ms-excel": "XLS",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
+  "text/plain": "TXT",
+  "text/csv": "CSV",
+  "image/jpeg": "JPG",
+  "image/jpg": "JPG",
+  "image/png": "PNG",
+  "image/gif": "GIF",
+  "video/mp4": "MP4",
+  "audio/mpeg": "MP3",
+};
 
-  return extensionFromName && extensionFromName !== document.name.toUpperCase()
+const getReadableFileType = (value?: string | null) => {
+  const rawValue = String(value ?? "").trim();
+
+  if (!rawValue) return "FILE";
+
+  const normalizedValue = rawValue.toLowerCase();
+  const mappedType = fileTypeLabels[normalizedValue];
+
+  if (mappedType) return mappedType;
+  if (normalizedValue.includes("wordprocessingml.document")) return "DOCX";
+  if (normalizedValue.includes("presentationml.presentation")) return "PPTX";
+  if (normalizedValue.includes("spreadsheetml.sheet")) return "XLSX";
+  if (normalizedValue.includes("msword")) return "DOC";
+  if (normalizedValue.includes("powerpoint")) return "PPT";
+  if (normalizedValue.includes("excel")) return "XLS";
+  if (normalizedValue.includes("pdf")) return "PDF";
+
+  const lastDotSegment = rawValue.split(/[?#]/)[0].split(".").pop();
+  if (lastDotSegment && lastDotSegment !== rawValue && /^[a-z0-9]{1,8}$/i.test(lastDotSegment)) {
+    return lastDotSegment.toUpperCase();
+  }
+
+  const slashSegment = normalizedValue.split("/").pop();
+  if (slashSegment && /^[a-z0-9.+-]{1,12}$/i.test(slashSegment)) {
+    return slashSegment.replace(/^x-/, "").toUpperCase();
+  }
+
+  return "FILE";
+};
+
+const getFileExtension = (document: LibraryDocument) => {
+  const extensionFromName = getReadableFileType(document.name);
+
+  return extensionFromName !== "FILE"
     ? extensionFromName
-    : extensionFromType || "FILE";
+    : getReadableFileType(document.type);
 };
 
 function DocumentRow({
@@ -505,8 +578,14 @@ export function FolderDocumentsPage() {
 
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [movingFolder, setMovingFolder] = useState<FolderResponse | null>(null);
-  const [sharingFolder, setSharingFolder] = useState<FolderResponse | null>(null);
+  const [sharingFolder, setSharingFolder] = useState<FolderResponse | null>(
+    null,
+  );
   const [moveFolderTargetId, setMoveFolderTargetId] = useState<string>("root");
+  const [draggingFolderId, setDraggingFolderId] = useState<number | null>(null);
+  const [draggingDocumentId, setDraggingDocumentId] = useState<number | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<number | null>(null);
+  const [isDragOverCurrentFolder, setIsDragOverCurrentFolder] = useState(false);
 
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [deleteDocumentId, setDeleteDocumentId] = useState<number | null>(null);
@@ -658,7 +737,9 @@ export function FolderDocumentsPage() {
     if (!movingFolder) return folders;
 
     return folders.filter(
-      (item) => Number(item.id) !== Number(movingFolder.id),
+      (item) =>
+        Number(item.id) !== Number(movingFolder.id) &&
+        !isDescendantFolder(folders, movingFolder.id, item.id),
     );
   }, [folders, movingFolder]);
 
@@ -790,6 +871,14 @@ export function FolderDocumentsPage() {
       return;
     }
 
+    if (
+      parentFolderId !== null &&
+      isDescendantFolder(folders, movingFolder.id, parentFolderId)
+    ) {
+      toast.error("Cannot move a folder into its subfolder.");
+      return;
+    }
+
     try {
       await folderApi.updateFolder(movingFolder.id, {
         name: movingFolder.name,
@@ -822,6 +911,83 @@ export function FolderDocumentsPage() {
           error?.response?.data?.error ||
           "Cannot move folder.",
       );
+    }
+  };
+
+  const handleDropFolder = async (
+    draggedFolderId: number,
+    targetFolderId: number | null,
+  ) => {
+    const userId = getSafeUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
+    const draggedFolder = folders.find(
+      (item) => Number(item.id) === Number(draggedFolderId),
+    );
+
+    if (!draggedFolder) {
+      toast.error("Folder not found.");
+      return;
+    }
+
+    if (
+      targetFolderId !== null &&
+      Number(targetFolderId) === draggedFolder.id
+    ) {
+      toast.error("Cannot move folder into itself.");
+      return;
+    }
+
+    if (
+      targetFolderId !== null &&
+      isDescendantFolder(folders, draggedFolder.id, targetFolderId)
+    ) {
+      toast.error("Cannot move a folder into its subfolder.");
+      return;
+    }
+
+    const normalizedTargetFolderId =
+      targetFolderId === null ? null : Number(targetFolderId);
+
+    if ((draggedFolder.parentFolderId ?? null) === normalizedTargetFolderId) {
+      setDraggingFolderId(null);
+      setDraggingDocumentId(null);
+      setDragOverFolderId(null);
+      setIsDragOverCurrentFolder(false);
+      return;
+    }
+
+    try {
+      await folderApi.updateFolder(draggedFolder.id, {
+        name: draggedFolder.name,
+        description: draggedFolder.description ?? "",
+        userId,
+        parentFolderId: normalizedTargetFolderId,
+      });
+
+      toast.success(
+        normalizedTargetFolderId === null
+          ? "Folder moved to Root."
+          : "Folder moved successfully.",
+      );
+
+      await loadData();
+    } catch (error: any) {
+      console.error(error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot move folder.",
+      );
+    } finally {
+      setDraggingFolderId(null);
+      setDraggingDocumentId(null);
+      setDragOverFolderId(null);
+      setIsDragOverCurrentFolder(false);
     }
   };
 
@@ -1015,6 +1181,101 @@ export function FolderDocumentsPage() {
     }
   };
 
+  const handleDropDocument = async (
+    draggedDocumentId: number,
+    targetFolderId: number | null,
+  ) => {
+    const userId = getSafeUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
+    const draggedDocument = documents.find(
+      (item) => Number(item.id) === Number(draggedDocumentId),
+    );
+
+    if (!draggedDocument) {
+      toast.error("Document not found.");
+      setDraggingDocumentId(null);
+      setIsDragOverCurrentFolder(false);
+      return;
+    }
+
+    const normalizedTargetFolderId =
+      targetFolderId === null ? null : Number(targetFolderId);
+
+    if ((draggedDocument.folderId ?? null) === normalizedTargetFolderId) {
+      setDraggingDocumentId(null);
+      setIsDragOverCurrentFolder(false);
+      return;
+    }
+
+    try {
+      await documentApi.moveDocumentToFolder(draggedDocument.id, {
+        userId,
+        folderId: normalizedTargetFolderId,
+      });
+
+      toast.success(
+        normalizedTargetFolderId === null
+          ? "Document moved to Root."
+          : "Document moved to folder.",
+      );
+
+      await loadData();
+    } catch (error: any) {
+      console.error("Cannot move document:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot move document.",
+      );
+    } finally {
+      setDraggingDocumentId(null);
+      setIsDragOverCurrentFolder(false);
+    }
+  };
+
+  const handleDocumentDragStart = (
+    event: DragEvent<HTMLDivElement>,
+    document: LibraryDocument,
+  ) => {
+    event.stopPropagation();
+    setDraggingDocumentId(document.id);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-document-id", String(document.id));
+    event.dataTransfer.setData("text/plain", String(document.id));
+  };
+
+  const handleDropOnFolderCard = async (
+    event: DragEvent<HTMLDivElement>,
+    targetFolderId: number,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const droppedDocumentId = Number(
+      event.dataTransfer.getData("application/x-document-id") || draggingDocumentId,
+    );
+
+    if (Number.isInteger(droppedDocumentId) && droppedDocumentId > 0) {
+      await handleDropDocument(droppedDocumentId, targetFolderId);
+      return;
+    }
+
+    const droppedFolderId = Number(
+      event.dataTransfer.getData("application/x-folder-id") ||
+        event.dataTransfer.getData("text/plain") ||
+        draggingFolderId,
+    );
+
+    if (!Number.isInteger(droppedFolderId) || droppedFolderId <= 0) return;
+
+    await handleDropFolder(droppedFolderId, targetFolderId);
+  };
+
   const handleUpdateDocumentName = async () => {
     if (!editingDocument) return;
 
@@ -1160,18 +1421,95 @@ export function FolderDocumentsPage() {
         </div>
       </section>
 
-      <section>
-        <h2 className="mb-4 text-2xl font-extrabold text-slate-950 dark:text-white">
-          Subfolders
-        </h2>
+      <section
+        onDragOver={(event) => {
+          event.preventDefault();
+
+          if (draggingFolderId || draggingDocumentId) {
+            setIsDragOverCurrentFolder(true);
+          }
+        }}
+        onDragLeave={() => setIsDragOverCurrentFolder(false)}
+        onDrop={async (event) => {
+          event.preventDefault();
+
+          const droppedDocumentId = Number(
+            event.dataTransfer.getData("application/x-document-id") ||
+              draggingDocumentId,
+          );
+
+          if (Number.isInteger(droppedDocumentId) && droppedDocumentId > 0) {
+            await handleDropDocument(droppedDocumentId, currentFolderId);
+            return;
+          }
+
+          const draggedId = Number(
+            event.dataTransfer.getData("application/x-folder-id") ||
+              event.dataTransfer.getData("text/plain") ||
+              draggingFolderId,
+          );
+
+          if (!Number.isInteger(draggedId)) return;
+
+          await handleDropFolder(draggedId, currentFolderId);
+        }}
+      >
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-2xl font-extrabold text-slate-950 dark:text-white">
+            Subfolders
+          </h2>
+
+          <div
+            className={`rounded-2xl border border-dashed px-4 py-3 text-sm font-bold transition ${
+              isDragOverCurrentFolder
+                ? "border-blue-400 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-950/30 dark:text-blue-300"
+                : "border-slate-300 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
+            }`}
+          >
+            Drop here to move folder or document into this folder
+          </div>
+        </div>
 
         {subfolders.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {subfolders.map((item) => (
               <div
                 key={item.id}
+                draggable
+                onDragStart={(event) => {
+                  event.stopPropagation();
+                  setDraggingFolderId(item.id);
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("application/x-folder-id", String(item.id));
+                  event.dataTransfer.setData("text/plain", String(item.id));
+                }}
+                onDragEnd={() => {
+                  setDraggingFolderId(null);
+                  setDraggingDocumentId(null);
+                  setDragOverFolderId(null);
+                  setIsDragOverCurrentFolder(false);
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+
+                  if (draggingDocumentId || (draggingFolderId && draggingFolderId !== item.id)) {
+                    setDragOverFolderId(item.id);
+                  }
+                }}
+                onDragLeave={(event) => {
+                  event.stopPropagation();
+                  setDragOverFolderId((current) =>
+                    current === item.id ? null : current,
+                  );
+                }}
+                onDrop={(event) => handleDropOnFolderCard(event, item.id)}
                 onClick={() => navigate(`/app/folders/${item.id}`)}
-                className="group flex cursor-pointer items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
+                className={`group flex cursor-pointer items-center justify-between rounded-2xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-900 ${
+                  dragOverFolderId === item.id
+                    ? "border-blue-400 ring-2 ring-blue-200 dark:border-blue-500 dark:ring-blue-900/60"
+                    : "border-slate-200 dark:border-slate-700"
+                }`}
               >
                 <div className="flex min-w-0 items-center gap-4">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
@@ -1318,19 +1656,28 @@ export function FolderDocumentsPage() {
 
               {filteredDocuments.length > 0 ? (
                 filteredDocuments.map((document) => (
-                  <DocumentRow
+                  <div
                     key={document.id}
-                    document={document}
-                    onToggleFavorite={toggleFavorite}
-                    onDelete={setDeleteDocumentId}
-                    onReprocess={handleReprocess}
-                    onDownload={handleDownload}
-                    onShare={createAndCopyPublicLink}
-                    sharingDocumentId={loadingDocumentId}
-                    onViewFile={handleViewFile}
-                    onEdit={handleOpenEditDocument}
-                    onMove={handleOpenMoveDocument}
-                  />
+                    draggable
+                    onDragStart={(event) => handleDocumentDragStart(event, document)}
+                    onDragEnd={() => {
+                      setDraggingDocumentId(null);
+                      setIsDragOverCurrentFolder(false);
+                    }}
+                  >
+                    <DocumentRow
+                      document={document}
+                      onToggleFavorite={toggleFavorite}
+                      onDelete={setDeleteDocumentId}
+                      onReprocess={handleReprocess}
+                      onDownload={handleDownload}
+                      onShare={createAndCopyPublicLink}
+                      sharingDocumentId={loadingDocumentId}
+                      onViewFile={handleViewFile}
+                      onEdit={handleOpenEditDocument}
+                      onMove={handleOpenMoveDocument}
+                    />
+                  </div>
                 ))
               ) : (
                 <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
@@ -1347,19 +1694,28 @@ export function FolderDocumentsPage() {
         ) : filteredDocuments.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {filteredDocuments.map((document) => (
-              <DocumentCard
+              <div
                 key={document.id}
-                document={document}
-                onToggleFavorite={toggleFavorite}
-                onDelete={setDeleteDocumentId}
-                onReprocess={handleReprocess}
-                onDownload={handleDownload}
-                onShare={createAndCopyPublicLink}
-                sharingDocumentId={loadingDocumentId}
-                onViewFile={handleViewFile}
-                onEdit={handleOpenEditDocument}
-                onMove={handleOpenMoveDocument}
-              />
+                draggable
+                onDragStart={(event) => handleDocumentDragStart(event, document)}
+                onDragEnd={() => {
+                  setDraggingDocumentId(null);
+                  setIsDragOverCurrentFolder(false);
+                }}
+              >
+                <DocumentCard
+                  document={document}
+                  onToggleFavorite={toggleFavorite}
+                  onDelete={setDeleteDocumentId}
+                  onReprocess={handleReprocess}
+                  onDownload={handleDownload}
+                  onShare={createAndCopyPublicLink}
+                  sharingDocumentId={loadingDocumentId}
+                  onViewFile={handleViewFile}
+                  onEdit={handleOpenEditDocument}
+                  onMove={handleOpenMoveDocument}
+                />
+              </div>
             ))}
           </div>
         ) : (

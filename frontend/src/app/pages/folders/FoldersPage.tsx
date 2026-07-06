@@ -51,6 +51,31 @@ const formatDate = (value?: string) => {
   });
 };
 
+const isDescendantFolder = (
+  folders: FolderResponse[],
+  sourceFolderId: number,
+  targetFolderId: number,
+) => {
+  let current = folders.find(
+    (folder) => Number(folder.id) === Number(targetFolderId),
+  );
+
+  while (
+    current?.parentFolderId !== null &&
+    current?.parentFolderId !== undefined
+  ) {
+    if (Number(current.parentFolderId) === Number(sourceFolderId)) {
+      return true;
+    }
+
+    current = folders.find(
+      (folder) => Number(folder.id) === Number(current?.parentFolderId),
+    );
+  }
+
+  return false;
+};
+
 export function FoldersPage() {
   const navigate = useNavigate();
 
@@ -67,6 +92,8 @@ export function FoldersPage() {
 
   const [moveFolder, setMoveFolder] = useState<FolderResponse | null>(null);
   const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>("root");
+  const [draggingFolderId, setDraggingFolderId] = useState<number | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<number | null>(null);
 
   const [sharingFolder, setSharingFolder] = useState<FolderResponse | null>(
     null,
@@ -121,7 +148,9 @@ export function FoldersPage() {
     if (!moveFolder) return folders;
 
     return folders.filter(
-      (folder) => Number(folder.id) !== Number(moveFolder.id),
+      (folder) =>
+        Number(folder.id) !== Number(moveFolder.id) &&
+        !isDescendantFolder(folders, moveFolder.id, folder.id),
     );
   }, [folders, moveFolder]);
 
@@ -257,6 +286,14 @@ export function FoldersPage() {
       return;
     }
 
+    if (
+      parentFolderId !== null &&
+      isDescendantFolder(folders, moveFolder.id, parentFolderId)
+    ) {
+      toast.error("Cannot move a folder into its subfolder.");
+      return;
+    }
+
     try {
       await folderApi.updateFolder(moveFolder.id, {
         name: moveFolder.name,
@@ -281,6 +318,79 @@ export function FoldersPage() {
           error?.response?.data?.error ||
           "Cannot move folder.",
       );
+    }
+  };
+
+  const handleDropFolder = async (
+    draggedFolderId: number,
+    targetFolderId: number | null,
+  ) => {
+    const userId = getSafeUserId();
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
+    const draggedFolder = folders.find(
+      (folder) => Number(folder.id) === Number(draggedFolderId),
+    );
+
+    if (!draggedFolder) {
+      toast.error("Folder not found.");
+      return;
+    }
+
+    if (
+      targetFolderId !== null &&
+      Number(targetFolderId) === draggedFolder.id
+    ) {
+      toast.error("Cannot move folder into itself.");
+      return;
+    }
+
+    if (
+      targetFolderId !== null &&
+      isDescendantFolder(folders, draggedFolder.id, targetFolderId)
+    ) {
+      toast.error("Cannot move a folder into its subfolder.");
+      return;
+    }
+
+    const normalizedTargetFolderId =
+      targetFolderId === null ? null : Number(targetFolderId);
+
+    if ((draggedFolder.parentFolderId ?? null) === normalizedTargetFolderId) {
+      setDraggingFolderId(null);
+      setDragOverFolderId(null);
+      return;
+    }
+
+    try {
+      await folderApi.updateFolder(draggedFolder.id, {
+        name: draggedFolder.name,
+        description: draggedFolder.description ?? "",
+        userId,
+        parentFolderId: normalizedTargetFolderId,
+      });
+
+      toast.success(
+        normalizedTargetFolderId === null
+          ? "Folder moved to Root."
+          : "Folder moved successfully.",
+      );
+
+      await loadFolders();
+    } catch (error: any) {
+      console.error(error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot move folder.",
+      );
+    } finally {
+      setDraggingFolderId(null);
+      setDragOverFolderId(null);
     }
   };
 
@@ -416,9 +526,11 @@ export function FoldersPage() {
       </section>
 
       <section>
-        <h2 className="mb-4 text-2xl font-extrabold text-slate-950 dark:text-white">
-          Your Folders
-        </h2>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-2xl font-extrabold text-slate-950 dark:text-white">
+            Your Folders
+          </h2>
+        </div>
 
         {rootFolders.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -431,12 +543,54 @@ export function FoldersPage() {
               return (
                 <div
                   key={folder.id}
+                  draggable
+                  onDragStart={(event) => {
+                    event.stopPropagation();
+                    setDraggingFolderId(folder.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", String(folder.id));
+                  }}
+                  onDragEnd={() => {
+                    setDraggingFolderId(null);
+                    setDragOverFolderId(null);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    if (draggingFolderId && draggingFolderId !== folder.id) {
+                      setDragOverFolderId(folder.id);
+                    }
+                  }}
+                  onDragLeave={(event) => {
+                    event.stopPropagation();
+                    setDragOverFolderId((current) =>
+                      current === folder.id ? null : current,
+                    );
+                  }}
+                  onDrop={async (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    const draggedId = Number(
+                      event.dataTransfer.getData("text/plain") ||
+                        draggingFolderId,
+                    );
+
+                    if (!Number.isInteger(draggedId)) return;
+
+                    await handleDropFolder(draggedId, folder.id);
+                  }}
                   onClick={() =>
                     navigate(`/app/folders/${folder.id}`, {
                       state: { from: "/app/folders" },
                     })
                   }
-                  className="group flex cursor-pointer items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
+                  className={`group flex cursor-pointer items-center justify-between rounded-2xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-900 ${
+                    dragOverFolderId === folder.id
+                      ? "border-blue-400 ring-2 ring-blue-200 dark:border-blue-500 dark:ring-blue-900/60"
+                      : "border-slate-200 dark:border-slate-700"
+                  }`}
                 >
                   <div className="flex min-w-0 items-center gap-4">
                     <div

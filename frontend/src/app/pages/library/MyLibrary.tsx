@@ -17,12 +17,14 @@ import {
   Share2,
   Upload,
   Eye,
+  MoreHorizontal,
   Pencil,
   Save,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { DragEvent, DragEventHandler, ReactNode } from "react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
@@ -77,6 +79,31 @@ interface LibraryFolder {
   updatedAt: string;
 }
 
+const isDescendantFolder = (
+  folders: LibraryFolder[],
+  sourceFolderId: number,
+  targetFolderId: number,
+) => {
+  let current = folders.find(
+    (folder) => Number(folder.id) === Number(targetFolderId),
+  );
+
+  while (
+    current?.parentFolderId !== null &&
+    current?.parentFolderId !== undefined
+  ) {
+    if (Number(current.parentFolderId) === Number(sourceFolderId)) {
+      return true;
+    }
+
+    current = folders.find(
+      (folder) => Number(folder.id) === Number(current?.parentFolderId),
+    );
+  }
+
+  return false;
+};
+
 const categoryColors = ["blue", "emerald", "purple", "amber"];
 const viewToggleButtonBase =
   "flex h-9 w-9 items-center justify-center rounded-lg transition-all";
@@ -116,12 +143,84 @@ const formatDocumentDate = (date: string | undefined) => {
   });
 };
 
+const formatDocumentDateTime = (date: string | undefined) => {
+  if (!date) return "Unknown";
+
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) return date;
+
+  return parsedDate.toLocaleString(undefined, {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const formatFileSize = (size: number | undefined) => {
+  const safeSize = Number(size ?? 0);
+
+  if (!Number.isFinite(safeSize) || safeSize <= 0) return "0 KB";
+  if (safeSize < 1024 * 1024) return `${(safeSize / 1024).toFixed(1)} KB`;
+
+  return `${(safeSize / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const fileTypeLabels: Record<string, string> = {
+  "application/pdf": "PDF",
+  "application/msword": "DOC",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+  "application/vnd.ms-powerpoint": "PPT",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX",
+  "application/vnd.ms-excel": "XLS",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
+  "text/plain": "TXT",
+  "text/csv": "CSV",
+  "image/jpeg": "JPG",
+  "image/jpg": "JPG",
+  "image/png": "PNG",
+  "image/gif": "GIF",
+  "video/mp4": "MP4",
+  "audio/mpeg": "MP3",
+};
+
+const getReadableFileType = (value?: string | null) => {
+  const rawValue = String(value ?? "").trim();
+
+  if (!rawValue) return "FILE";
+
+  const normalizedValue = rawValue.toLowerCase();
+  const mappedType = fileTypeLabels[normalizedValue];
+
+  if (mappedType) return mappedType;
+  if (normalizedValue.includes("wordprocessingml.document")) return "DOCX";
+  if (normalizedValue.includes("presentationml.presentation")) return "PPTX";
+  if (normalizedValue.includes("spreadsheetml.sheet")) return "XLSX";
+  if (normalizedValue.includes("msword")) return "DOC";
+  if (normalizedValue.includes("powerpoint")) return "PPT";
+  if (normalizedValue.includes("excel")) return "XLS";
+  if (normalizedValue.includes("pdf")) return "PDF";
+
+  const lastDotSegment = rawValue.split(/[?#]/)[0].split(".").pop();
+  if (lastDotSegment && lastDotSegment !== rawValue && /^[a-z0-9]{1,8}$/i.test(lastDotSegment)) {
+    return lastDotSegment.toUpperCase();
+  }
+
+  const slashSegment = normalizedValue.split("/").pop();
+  if (slashSegment && /^[a-z0-9.+-]{1,12}$/i.test(slashSegment)) {
+    return slashSegment.replace(/^x-/, "").toUpperCase();
+  }
+
+  return "FILE";
+};
+
 const getFileExtension = (document: LibraryDocument) => {
-  const extensionFromName = document.name.split(".").pop()?.toUpperCase();
-  const extensionFromType = document.type.split("/").pop()?.toUpperCase();
-  return extensionFromName && extensionFromName !== document.name.toUpperCase()
+  const extensionFromName = getReadableFileType(document.name);
+
+  return extensionFromName !== "FILE"
     ? extensionFromName
-    : extensionFromType || "FILE";
+    : getReadableFileType(document.type);
 };
 
 const getFileIcon = (document: LibraryDocument): LucideIcon => {
@@ -205,6 +304,180 @@ function CategoryCard({
   );
 }
 
+function RowActionMenu({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, right: 16 });
+
+  useEffect(() => {
+    if (!open) return;
+
+    const updateMenuPosition = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const gap = 8;
+      const viewportPadding = 16;
+      const maxMenuHeight = Math.min(384, window.innerHeight - viewportPadding * 2);
+      const menuTopWhenOpenDown = rect.bottom + gap;
+      const shouldOpenUp = menuTopWhenOpenDown + maxMenuHeight > window.innerHeight;
+      const top = shouldOpenUp
+        ? Math.max(viewportPadding, rect.top - maxMenuHeight - gap)
+        : menuTopWhenOpenDown;
+
+      setMenuPosition({
+        top,
+        right: Math.max(window.innerWidth - rect.right, viewportPadding),
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener("scroll", updateMenuPosition, true);
+    window.addEventListener("resize", updateMenuPosition);
+
+    return () => {
+      window.removeEventListener("scroll", updateMenuPosition, true);
+      window.removeEventListener("resize", updateMenuPosition);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const closeMenu = () => setOpen(false);
+    window.addEventListener("click", closeMenu);
+
+    return () => window.removeEventListener("click", closeMenu);
+  }, [open]);
+
+  return (
+    <div className="flex justify-center">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          setOpen((current) => !current);
+        }}
+        className={actionIconButtonClass}
+        title="More actions"
+        aria-label="More actions"
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </button>
+
+      {open && (
+        <div
+          className="fixed z-[9999] min-w-48 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+          style={{
+            top: menuPosition.top,
+            right: menuPosition.right,
+            maxHeight: "calc(100vh - 32px)",
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen(false);
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActionMenuItem({
+  icon: Icon,
+  label,
+  onClick,
+  danger = false,
+  disabled = false,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+        danger
+          ? "text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/30"
+          : "text-slate-600 hover:bg-slate-50 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-300"
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function DocumentInfoModal({
+  document,
+  onClose,
+}: {
+  document: LibraryDocument;
+  onClose: () => void;
+}) {
+  const infoItems = [
+    { label: "Title", value: document.name },
+    { label: "File type", value: getFileExtension(document) },
+    { label: "Category", value: document.categoryName || "Uncategorized" },
+    { label: "Folder", value: document.folderName || "Root" },
+    { label: "Date added", value: formatDocumentDateTime(document.createdAt) },
+    { label: "File size", value: formatFileSize(document.fileSize) },
+    { label: "Status", value: document.documentStatus || "Unknown" },
+    { label: "AI status", value: document.aiStatus || "Unknown" },
+    { label: "Favorite", value: document.fav ? "Yes" : "No" },
+    { label: "Document ID", value: String(document.id) },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="mb-7 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-extrabold text-slate-950 dark:text-white">
+              Document detail
+            </h2>
+            <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">
+              Information loaded from the library list. Click the document name/card to open preview.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-extrabold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          {infoItems.map((item) => (
+            <div
+              key={item.label}
+              className="rounded-3xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-950"
+            >
+              <p className="text-sm font-extrabold uppercase text-slate-400 dark:text-slate-500">
+                {item.label}
+              </p>
+              <p className="mt-3 break-words text-lg font-extrabold text-slate-900 dark:text-slate-100">
+                {item.value}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FolderCard({
   folder,
   isActive,
@@ -213,6 +486,12 @@ function FolderCard({
   onDelete,
   onMove,
   onShare,
+  isDragOver = false,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
 }: {
   folder: LibraryFolder;
   isActive: boolean;
@@ -221,15 +500,28 @@ function FolderCard({
   onDelete: (folderId: number) => void;
   onMove: (folder: LibraryFolder) => void;
   onShare: (folder: LibraryFolder) => void;
+  isDragOver?: boolean;
+  onDragStart?: DragEventHandler<HTMLDivElement>;
+  onDragEnd?: DragEventHandler<HTMLDivElement>;
+  onDragOver?: DragEventHandler<HTMLDivElement>;
+  onDragLeave?: DragEventHandler<HTMLDivElement>;
+  onDrop?: DragEventHandler<HTMLDivElement>;
 }) {
   return (
-    <motion.div
-      whileHover={{ y: -3 }}
+    <div
+      draggable
       onClick={onClick}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
       className={`group flex cursor-pointer items-center gap-4 rounded-2xl border p-4 text-left shadow-sm transition-colors ${
-        isActive
-          ? "border-blue-200 bg-blue-50/70 dark:border-blue-800 dark:bg-blue-950/30"
-          : "border-slate-100 bg-white hover:border-blue-100 hover:bg-blue-50/40 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20"
+        isDragOver
+          ? "border-blue-400 bg-blue-50/70 ring-2 ring-blue-200 dark:border-blue-500 dark:bg-blue-950/30 dark:ring-blue-900/60"
+          : isActive
+            ? "border-blue-200 bg-blue-50/70 dark:border-blue-800 dark:bg-blue-950/30"
+            : "border-slate-100 bg-white hover:border-blue-100 hover:bg-blue-50/40 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20"
       }`}
     >
       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-slate-800 dark:text-blue-300">
@@ -250,64 +542,136 @@ function FolderCard({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onShare(folder);
-          }}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-950/30 dark:hover:text-indigo-300"
-          title="Share folder"
-          aria-label="Share folder"
-        >
-          <Share2 className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onMove(folder);
-          }}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300"
-          title="Move folder"
-        >
-          <MoveRight className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onEdit(folder);
-          }}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30 dark:hover:text-blue-300"
-          title="Edit folder"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete(folder.id);
-          }}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-red-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
-          title="Delete folder"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-
+      <div className="flex shrink-0 items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+        <RowActionMenu>
+          <ActionMenuItem icon={Eye} label="Open folder" onClick={onClick} />
+          <ActionMenuItem icon={Share2} label="Share folder" onClick={() => onShare(folder)} />
+          <ActionMenuItem icon={MoveRight} label="Move folder" onClick={() => onMove(folder)} />
+          <ActionMenuItem icon={Pencil} label="Edit folder" onClick={() => onEdit(folder)} />
+          <ActionMenuItem
+            icon={Trash2}
+            label="Delete folder"
+            onClick={() => onDelete(folder.id)}
+            danger
+          />
+        </RowActionMenu>
         <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600" />
       </div>
-    </motion.div>
+    </div>
+  );
+}
+
+
+function FolderRow({
+  folder,
+  isActive,
+  isDragOver = false,
+  onOpen,
+  onEdit,
+  onDelete,
+  onMove,
+  onShare,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: {
+  folder: LibraryFolder;
+  isActive: boolean;
+  isDragOver?: boolean;
+  onOpen: () => void;
+  onEdit: (folder: LibraryFolder) => void;
+  onDelete: (folderId: number) => void;
+  onMove: (folder: LibraryFolder) => void;
+  onShare: (folder: LibraryFolder) => void;
+  onDragStart?: DragEventHandler<HTMLDivElement>;
+  onDragEnd?: DragEventHandler<HTMLDivElement>;
+  onDragOver?: DragEventHandler<HTMLDivElement>;
+  onDragLeave?: DragEventHandler<HTMLDivElement>;
+  onDrop?: DragEventHandler<HTMLDivElement>;
+}) {
+  return (
+    <div
+      draggable
+      onDoubleClick={onOpen}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={`grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_80px] items-center border-t px-4 py-4 transition-colors ${
+        isDragOver
+          ? "border-blue-200 bg-blue-50/80 ring-2 ring-inset ring-blue-200 dark:border-blue-800 dark:bg-blue-950/30 dark:ring-blue-900/60"
+          : isActive
+            ? "border-blue-100 bg-blue-50/50 dark:border-blue-900/60 dark:bg-blue-950/20"
+            : "border-slate-100 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 items-center gap-3 text-left"
+      >
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
+          <Folder className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
+            {folder.name}
+          </p>
+          <p className="text-[11px] font-bold uppercase text-slate-400 dark:text-slate-500">
+            FOLDER
+          </p>
+        </div>
+      </button>
+
+      <span className="inline-flex w-fit rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+        Folder
+      </span>
+
+      <span className="inline-flex w-fit rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
+        {folder.parentFolderName || "Root"}
+      </span>
+
+      <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+        {formatDocumentDate(folder.createdAt) || "Unknown"}
+      </p>
+
+      <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+        —
+      </p>
+
+      <span className="inline-flex w-fit rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-extrabold text-blue-700 ring-1 ring-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:ring-blue-800">
+        {folder.documentCount} docs
+      </span>
+
+      <span className="inline-flex w-fit rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-extrabold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
+        {folder.childFolderCount} folders
+      </span>
+
+      <div className="flex items-center justify-center">
+        <RowActionMenu>
+          <ActionMenuItem icon={Eye} label="Open folder" onClick={onOpen} />
+          <ActionMenuItem icon={Share2} label="Share folder" onClick={() => onShare(folder)} />
+          <ActionMenuItem icon={MoveRight} label="Move folder" onClick={() => onMove(folder)} />
+          <ActionMenuItem icon={Pencil} label="Edit folder" onClick={() => onEdit(folder)} />
+          <ActionMenuItem
+            icon={Trash2}
+            label="Delete folder"
+            onClick={() => onDelete(folder.id)}
+            danger
+          />
+        </RowActionMenu>
+      </div>
+    </div>
   );
 }
 
 function DocumentRow({
   document,
+  onDragStart,
+  onDragEnd,
   onToggleFavorite,
   onDelete,
   onReprocess,
@@ -315,10 +679,13 @@ function DocumentRow({
   onShare,
   sharingDocumentId,
   onViewFile,
+  onViewInfo,
   onEdit,
   onMove,
 }: {
   document: LibraryDocument;
+  onDragStart?: DragEventHandler<HTMLDivElement>;
+  onDragEnd?: DragEventHandler<HTMLDivElement>;
   onToggleFavorite: (documentId: number) => void | Promise<void>;
   onDelete: (documentId: number) => void;
   onReprocess: (documentId: number) => void;
@@ -326,6 +693,7 @@ function DocumentRow({
   onShare: (documentId: number) => void | Promise<void>;
   sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
+  onViewInfo: (document: LibraryDocument) => void;
   onEdit: (document: LibraryDocument) => void;
   onMove: (document: LibraryDocument) => void;
 }) {
@@ -333,8 +701,17 @@ function DocumentRow({
   const extension = getFileExtension(document);
 
   return (
-    <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_300px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70">
-      <div className="flex min-w-0 items-center gap-3">
+    <div
+      draggable
+      onDoubleClick={() => onViewFile(document.id)}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_80px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70">
+      <button
+        type="button"
+        onClick={() => onViewFile(document.id)}
+        className="flex min-w-0 items-center gap-3 text-left"
+      >
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
           <FileIcon className="h-5 w-5" />
         </div>
@@ -346,7 +723,7 @@ function DocumentRow({
             {extension}
           </p>
         </div>
-      </div>
+      </button>
 
       <span className="inline-flex w-fit rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         {document.categoryName || "Uncategorized"}
@@ -361,7 +738,7 @@ function DocumentRow({
       </p>
 
       <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-        {(document.fileSize / 1024).toFixed(1)} KB
+        {formatFileSize(document.fileSize)}
       </p>
 
       <span className="inline-flex w-fit rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800">
@@ -373,81 +750,31 @@ function DocumentRow({
       >
         {document.aiStatus}
       </span>
-      <div className="flex min-w-[300px] items-center justify-end gap-1">
-        <button
-          onClick={() => onToggleFavorite(document.id)}
-          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
-            document.fav
-              ? "text-amber-400"
-              : "text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-          }`}
-          title="Favorite"
-        >
-          <Star className={`h-4 w-4 ${document.fav ? "fill-amber-400" : ""}`} />
-        </button>
-
-        <button
-          onClick={() => onViewFile(document.id)}
-          className={actionIconButtonClass}
-          title="View file"
-        >
-          <Eye className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onEdit(document)}
-          className={actionIconButtonClass}
-          title="Rename"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onMove(document)}
-          className={actionIconButtonClass}
-          title="Move"
-        >
-          <Folder className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onDownload(document.id, document.name)}
-          className={actionIconButtonClass}
-          title="Download"
-        >
-          <Download className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onShare(document.id)}
-          disabled={sharingDocumentId === document.id}
-          className={actionIconButtonClass}
-          title="Share document"
-          aria-label="Share document"
-        >
-          <Share2
-            className={`h-4 w-4 ${
-              sharingDocumentId === document.id ? "animate-pulse" : ""
-            }`}
+      <div className="flex items-center justify-center">
+        <RowActionMenu>
+          <ActionMenuItem icon={Eye} label="View information" onClick={() => onViewInfo(document)} />
+          <ActionMenuItem
+            icon={Star}
+            label={document.fav ? "Remove favorite" : "Add favorite"}
+            onClick={() => onToggleFavorite(document.id)}
           />
-        </button>
-
-        <button
-          onClick={() => onReprocess(document.id)}
-          className={actionIconButtonClass}
-          title="Reprocess"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onDelete(document.id)}
-          className={deleteIconButtonClass}
-          title="Delete"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+          <ActionMenuItem icon={Pencil} label="Rename" onClick={() => onEdit(document)} />
+          <ActionMenuItem icon={Folder} label="Move" onClick={() => onMove(document)} />
+          <ActionMenuItem icon={Download} label="Download" onClick={() => onDownload(document.id, document.name)} />
+          <ActionMenuItem
+            icon={Share2}
+            label="Share document"
+            onClick={() => onShare(document.id)}
+            disabled={sharingDocumentId === document.id}
+          />
+          <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => onReprocess(document.id)} />
+          <ActionMenuItem
+            icon={Trash2}
+            label="Delete"
+            onClick={() => onDelete(document.id)}
+            danger
+          />
+        </RowActionMenu>
       </div>
     </div>
   );
@@ -468,6 +795,8 @@ export function MyLibrary() {
     null,
   );
   const [editName, setEditName] = useState("");
+  const [viewingDocumentInfo, setViewingDocumentInfo] =
+    useState<LibraryDocument | null>(null);
   const [editingCategory, setEditingCategory] =
     useState<CategoryResponse | null>(null);
   const [editCategoryName, setEditCategoryName] = useState("");
@@ -482,11 +811,22 @@ export function MyLibrary() {
   const [deleteFolderId, setDeleteFolderId] = useState<number | null>(null);
   const [movingFolder, setMovingFolder] = useState<LibraryFolder | null>(null);
   const [moveFolderTargetId, setMoveFolderTargetId] = useState<string>("root");
+  const [draggingFolderId, setDraggingFolderId] = useState<number | null>(null);
+  const [draggingDocumentId, setDraggingDocumentId] = useState<number | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<number | null>(null);
   const [movingDocument, setMovingDocument] = useState<LibraryDocument | null>(
     null,
   );
-  const [sharingFolder, setSharingFolder] = useState<LibraryFolder | null>(null);
+  const [sharingFolder, setSharingFolder] = useState<LibraryFolder | null>(
+    null,
+  );
   const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>("root");
+
+  const resetDragState = () => {
+    setDraggingFolderId(null);
+    setDraggingDocumentId(null);
+    setDragOverFolderId(null);
+  };
 
   const mapLibraryDocument = (
     document: any,
@@ -905,6 +1245,14 @@ export function MyLibrary() {
       return;
     }
 
+    if (
+      parentFolderId !== null &&
+      isDescendantFolder(folders, movingFolder.id, parentFolderId)
+    ) {
+      toast.error("Cannot move a folder into its subfolder.");
+      return;
+    }
+
     try {
       await folderApi.updateFolder(movingFolder.id, {
         name: movingFolder.name,
@@ -929,6 +1277,150 @@ export function MyLibrary() {
           error?.response?.data?.error ||
           "Cannot move folder.",
       );
+    }
+  };
+
+  const handleDropFolder = async (
+    draggedFolderId: number,
+    targetFolderId: number | null,
+  ) => {
+    const rawUserId = getCurrentUserId();
+    const userId = Number(rawUserId);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      toast.error("Please log in again to move this folder.");
+      return;
+    }
+
+    const draggedFolder = folders.find(
+      (folder) => Number(folder.id) === Number(draggedFolderId),
+    );
+
+    if (!draggedFolder) {
+      toast.error("Folder not found.");
+      return;
+    }
+
+    if (
+      targetFolderId !== null &&
+      Number(targetFolderId) === draggedFolder.id
+    ) {
+      toast.error("Cannot move folder into itself.");
+      return;
+    }
+
+    if (
+      targetFolderId !== null &&
+      isDescendantFolder(folders, draggedFolder.id, targetFolderId)
+    ) {
+      toast.error("Cannot move a folder into its subfolder.");
+      return;
+    }
+
+    const normalizedTargetFolderId =
+      targetFolderId === null ? null : Number(targetFolderId);
+
+    if ((draggedFolder.parentFolderId ?? null) === normalizedTargetFolderId) {
+      resetDragState();
+      return;
+    }
+
+    try {
+      await folderApi.updateFolder(draggedFolder.id, {
+        name: draggedFolder.name,
+        description: draggedFolder.description ?? "",
+        userId,
+        parentFolderId: normalizedTargetFolderId,
+      });
+
+      toast.success(
+        normalizedTargetFolderId === null
+          ? "Folder moved to Root."
+          : "Folder moved successfully.",
+      );
+
+      await loadFolders();
+    } catch (error: any) {
+      console.error("Cannot move folder:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot move folder.",
+      );
+    } finally {
+      resetDragState();
+    }
+  };
+
+  const handleDropDocument = async (
+    draggedDocumentId: number,
+    targetFolderId: number | null,
+  ) => {
+    const rawUserId = getCurrentUserId();
+    const userId = Number(rawUserId);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      toast.error("Please log in again to move this document.");
+      return;
+    }
+
+    const draggedDocument = documents.find(
+      (document) => Number(document.id) === Number(draggedDocumentId),
+    );
+
+    if (!draggedDocument) {
+      toast.error("Document not found.");
+      resetDragState();
+      return;
+    }
+
+    const normalizedTargetFolderId =
+      targetFolderId === null ? null : Number(targetFolderId);
+
+    if ((draggedDocument.folderId ?? null) === normalizedTargetFolderId) {
+      resetDragState();
+      return;
+    }
+
+    const targetFolder = folders.find(
+      (folder) => Number(folder.id) === Number(normalizedTargetFolderId),
+    );
+
+    try {
+      await documentApi.moveDocumentToFolder(draggedDocument.id, {
+        userId,
+        folderId: normalizedTargetFolderId,
+      });
+
+      setDocuments((current) =>
+        current.map((document) =>
+          document.id === draggedDocument.id
+            ? {
+                ...document,
+                folderId: normalizedTargetFolderId,
+                folderName: targetFolder?.name || "Root",
+                folder: targetFolder?.name || "Root",
+              }
+            : document,
+        ),
+      );
+
+      toast.success(
+        normalizedTargetFolderId === null
+          ? "Document moved to Root."
+          : `Document moved to ${targetFolder?.name || "folder"}.`,
+      );
+
+      await loadFolders();
+    } catch (error: any) {
+      console.error("Cannot move document:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot move document.",
+      );
+    } finally {
+      resetDragState();
     }
   };
 
@@ -1154,6 +1646,81 @@ export function MyLibrary() {
     return result;
   }, [documents, selectedCategoryId, selectedFolderId, allCategories]);
 
+  const visibleFolders = useMemo(() => {
+    if (selectedCategoryId !== null) return [];
+
+    if (selectedFolderId !== null) {
+      return folders.filter(
+        (folder) => Number(folder.parentFolderId) === Number(selectedFolderId),
+      );
+    }
+
+    return rootFolders;
+  }, [folders, rootFolders, selectedCategoryId, selectedFolderId]);
+
+  const visibleItemCount = visibleFolders.length + filteredDocuments.length;
+
+  const handleFolderDragStart = (
+    event: DragEvent<HTMLDivElement>,
+    folder: LibraryFolder,
+  ) => {
+    event.stopPropagation();
+    setDraggingFolderId(folder.id);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-folder-id", String(folder.id));
+    event.dataTransfer.setData("text/plain", String(folder.id));
+  };
+
+  const handleDocumentDragStart = (
+    event: DragEvent<HTMLDivElement>,
+    document: LibraryDocument,
+  ) => {
+    event.stopPropagation();
+    setDraggingDocumentId(document.id);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-document-id", String(document.id));
+    event.dataTransfer.setData("text/plain", String(document.id));
+  };
+
+  const handleFolderDragOver = (
+    event: DragEvent<HTMLDivElement>,
+    folder: LibraryFolder,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (draggingDocumentId || (draggingFolderId && draggingFolderId !== folder.id)) {
+      setDragOverFolderId(folder.id);
+    }
+  };
+
+  const handleDropOnFolder = async (
+    event: DragEvent<HTMLDivElement>,
+    folder: LibraryFolder,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const droppedDocumentId = Number(
+      event.dataTransfer.getData("application/x-document-id") || draggingDocumentId,
+    );
+
+    if (Number.isInteger(droppedDocumentId) && droppedDocumentId > 0) {
+      await handleDropDocument(droppedDocumentId, folder.id);
+      return;
+    }
+
+    const droppedFolderId = Number(
+      event.dataTransfer.getData("application/x-folder-id") ||
+        event.dataTransfer.getData("text/plain") ||
+        draggingFolderId,
+    );
+
+    if (!Number.isInteger(droppedFolderId) || droppedFolderId <= 0) return;
+
+    await handleDropFolder(droppedFolderId, folder.id);
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1286,44 +1853,9 @@ export function MyLibrary() {
           </p>
         </motion.button>
       </div>
-      {/* Folders Section */}
-      <section>
-        <div className="mb-6 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-              Folders
-            </h2>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-              Organize your documents into folders
-            </p>
-          </div>
-        </div>
-
-        {rootFolders.length > 0 ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {rootFolders.map((folder) => (
-              <FolderCard
-                key={folder.id}
-                folder={folder}
-                isActive={false}
-                onClick={() => navigate(`/app/folders/${folder.id}`)}
-                onEdit={handleOpenEditFolder}
-                onDelete={setDeleteFolderId}
-                onMove={handleOpenMoveFolder}
-                onShare={setSharingFolder}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-            No folders yet. Use the New Folder button above to add one.
-          </div>
-        )}
-      </section>
-
       {/* Categories Section */}
       <section>
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
             Categories
           </h2>
@@ -1361,12 +1893,19 @@ export function MyLibrary() {
           </div>
         )}
       </section>
-      {/* Documents Section */}
+
+      {/* Library Items Section */}
       <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-            Documents
-          </h2>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+              Library Items
+            </h2>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              Folders are shown before documents. Drag a document or folder onto a folder to move it.
+            </p>
+          </div>
+
           <div className="flex items-center gap-3">
             {selectedCategory && (
               <button
@@ -1385,171 +1924,179 @@ export function MyLibrary() {
               </button>
             )}
             <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-              {filteredDocuments.length} files
+              {visibleItemCount} items
             </p>
           </div>
         </div>
+
         {view === "grid" ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {filteredDocuments.map((document) => {
-              const FileIcon = getFileIcon(document);
+          visibleItemCount > 0 ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {visibleFolders.map((folder) => (
+                <FolderCard
+                  key={`folder-${folder.id}`}
+                  folder={folder}
+                  isActive={selectedFolderId === folder.id}
+                  onClick={() => navigate(`/app/folders/${folder.id}`)}
+                  onEdit={handleOpenEditFolder}
+                  onDelete={setDeleteFolderId}
+                  onMove={handleOpenMoveFolder}
+                  onShare={setSharingFolder}
+                  isDragOver={dragOverFolderId === folder.id}
+                  onDragStart={(event) => handleFolderDragStart(event, folder)}
+                  onDragEnd={resetDragState}
+                  onDragOver={(event) => handleFolderDragOver(event, folder)}
+                  onDragLeave={(event) => {
+                    event.stopPropagation();
+                    setDragOverFolderId((current) =>
+                      current === folder.id ? null : current,
+                    );
+                  }}
+                  onDrop={(event) => handleDropOnFolder(event, folder)}
+                />
+              ))}
 
-              return (
-                <motion.div
-                  key={document.id}
-                  whileHover={{ y: -3 }}
-                  className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-                >
-                  <div className="mb-4 flex items-start justify-between gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
-                      <FileIcon className="h-5 w-5" />
+              {filteredDocuments.map((document) => {
+                const FileIcon = getFileIcon(document);
+
+                return (
+                  <motion.div
+                    key={`document-${document.id}`}
+                    draggable
+                    onDragStart={(event) =>
+                      handleDocumentDragStart(
+                        event as unknown as DragEvent<HTMLDivElement>,
+                        document,
+                      )
+                    }
+                    onDragEnd={resetDragState}
+                    onClick={() => handleViewFile(document.id)}
+                    whileHover={{ y: -3 }}
+                    className="cursor-pointer rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                  >
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
+                        <FileIcon className="h-5 w-5" />
+                      </div>
+
+                      <div className="flex shrink-0 items-center justify-end" onClick={(event) => event.stopPropagation()}>
+                        <RowActionMenu>
+                          <ActionMenuItem icon={Eye} label="View information" onClick={() => setViewingDocumentInfo(document)} />
+                          <ActionMenuItem
+                            icon={Star}
+                            label={document.fav ? "Remove favorite" : "Add favorite"}
+                            onClick={() => toggleFavorite(document.id)}
+                          />
+                          <ActionMenuItem icon={Pencil} label="Rename" onClick={() => handleOpenEdit(document)} />
+                          <ActionMenuItem icon={Folder} label="Move" onClick={() => handleOpenMoveDocument(document)} />
+                          <ActionMenuItem icon={Download} label="Download" onClick={() => handleDownload(document.id, document.name)} />
+                          <ActionMenuItem
+                            icon={Share2}
+                            label="Share document"
+                            onClick={() => createAndCopyPublicLink(document.id)}
+                            disabled={loadingDocumentId === document.id}
+                          />
+                          <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => handleReprocess(document.id)} />
+                          <ActionMenuItem icon={Trash2} label="Delete" onClick={() => setDeleteId(document.id)} danger />
+                        </RowActionMenu>
+                      </div>
                     </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-                      <button
-                        onClick={() => toggleFavorite(document.id)}
-                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
-                          document.fav
-                            ? "text-amber-400"
-                            : "text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                    <h3 className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
+                      {document.name}
+                    </h3>
+
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                      {getFileExtension(document)}
+                    </p>
+
+                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-800">
+                      <div className="flex min-w-0 flex-wrap gap-2">
+                        <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          {document.categoryName || "Uncategorized"}
+                        </span>
+
+                        <span className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
+                          {document.folderName || "Root"}
+                        </span>
+                      </div>
+
+                      <span
+                        className={`rounded-full px-2 py-1 text-[11px] font-extrabold ring-1 ${
+                          statusBadgeClass[document.aiStatus]
                         }`}
-                        title="Favorite"
                       >
-                        <Star
-                          className={`h-4 w-4 ${document.fav ? "fill-amber-400" : ""}`}
-                        />
-                      </button>
-
-                      <button
-                        onClick={() => handleViewFile(document.id)}
-                        className={actionIconButtonClass}
-                        title="View file"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
-
-                      <button
-                        onClick={() => handleOpenEdit(document)}
-                        className={actionIconButtonClass}
-                        title="Rename"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-
-                      <button
-                        onClick={() => handleOpenMoveDocument(document)}
-                        className={actionIconButtonClass}
-                        title="Move"
-                      >
-                        <Folder className="h-4 w-4" />
-                      </button>
-
-                      <button
-                        onClick={() =>
-                          handleDownload(document.id, document.name)
-                        }
-                        className={actionIconButtonClass}
-                        title="Download"
-                      >
-                        <Download className="h-4 w-4" />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => createAndCopyPublicLink(document.id)}
-                        disabled={loadingDocumentId === document.id}
-                        className={actionIconButtonClass}
-                        title="Share document"
-                        aria-label="Share document"
-                      >
-                        <Share2
-                          className={`h-4 w-4 ${
-                            loadingDocumentId === document.id
-                              ? "animate-pulse"
-                              : ""
-                          }`}
-                        />
-                      </button>
-
-                      <button
-                        onClick={() => handleReprocess(document.id)}
-                        className={actionIconButtonClass}
-                        title="Reprocess"
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                      </button>
-
-                      <button
-                        onClick={() => setDeleteId(document.id)}
-                        className={deleteIconButtonClass}
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <h3 className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
-                    {document.name}
-                  </h3>
-
-                  <p className="mt-1 text-xs font-semibold text-slate-500">
-                    {getFileExtension(document)}
-                  </p>
-
-                  <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-800">
-                    <div className="flex min-w-0 flex-wrap gap-2">
-                      <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                        {document.categoryName || "Uncategorized"}
-                      </span>
-
-                      <span className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
-                        {document.folderName || "Root"}
+                        {document.aiStatus}
                       </span>
                     </div>
-
-                    <span
-                      className={`rounded-full px-2 py-1 text-[11px] font-extrabold ring-1 ${
-                        statusBadgeClass[document.aiStatus]
-                      }`}
-                    >
-                      {document.aiStatus}
-                    </span>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+              No folders or documents found.
+            </div>
+          )
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="min-w-[1500px]">
-              <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_300px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60">
-                <div>Document Name</div>
-                <div>Category</div>
-                <div>Folder</div>
+            <div className="min-w-[1270px]">
+              <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_80px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60">
+                <div>Name</div>
+                <div>Type / Category</div>
+                <div>Location</div>
                 <div>Date Added</div>
                 <div>Size</div>
-                <div>Upload Status</div>
-                <div>AI Status</div>
-                <div className="text-right">Actions</div>
+                <div>Status</div>
+                <div>AI / Count</div>
+                <div className="text-center">Actions</div>
               </div>
 
-              {filteredDocuments.length > 0 ? (
-                filteredDocuments.map((document) => (
-                  <DocumentRow
-                    key={document.id}
-                    document={document}
-                    onToggleFavorite={toggleFavorite}
-                    onDelete={setDeleteId}
-                    onReprocess={handleReprocess}
-                    onDownload={handleDownload}
-                    onShare={createAndCopyPublicLink}
-                    sharingDocumentId={loadingDocumentId}
-                    onViewFile={handleViewFile}
-                    onEdit={handleOpenEdit}
-                    onMove={handleOpenMoveDocument}
-                  />
-                ))
+              {visibleItemCount > 0 ? (
+                <>
+                  {visibleFolders.map((folder) => (
+                    <FolderRow
+                      key={`folder-row-${folder.id}`}
+                      folder={folder}
+                      isActive={selectedFolderId === folder.id}
+                      isDragOver={dragOverFolderId === folder.id}
+                      onOpen={() => navigate(`/app/folders/${folder.id}`)}
+                      onEdit={handleOpenEditFolder}
+                      onDelete={setDeleteFolderId}
+                      onMove={handleOpenMoveFolder}
+                      onShare={setSharingFolder}
+                      onDragStart={(event) => handleFolderDragStart(event, folder)}
+                      onDragEnd={resetDragState}
+                      onDragOver={(event) => handleFolderDragOver(event, folder)}
+                      onDragLeave={(event) => {
+                        event.stopPropagation();
+                        setDragOverFolderId((current) =>
+                          current === folder.id ? null : current,
+                        );
+                      }}
+                      onDrop={(event) => handleDropOnFolder(event, folder)}
+                    />
+                  ))}
+
+                  {filteredDocuments.map((document) => (
+                    <DocumentRow
+                      key={`document-row-${document.id}`}
+                      document={document}
+                      onDragStart={(event) => handleDocumentDragStart(event, document)}
+                      onDragEnd={resetDragState}
+                      onToggleFavorite={toggleFavorite}
+                      onDelete={setDeleteId}
+                      onReprocess={handleReprocess}
+                      onDownload={handleDownload}
+                      onShare={createAndCopyPublicLink}
+                      sharingDocumentId={loadingDocumentId}
+                      onViewFile={handleViewFile}
+                      onViewInfo={setViewingDocumentInfo}
+                      onEdit={handleOpenEdit}
+                      onMove={handleOpenMoveDocument}
+                    />
+                  ))}
+                </>
               ) : (
                 <div className="border-t border-slate-100 px-4 py-16 text-center dark:border-slate-800">
                   <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 dark:bg-slate-800">
@@ -1557,11 +2104,11 @@ export function MyLibrary() {
                   </div>
 
                   <h3 className="font-bold text-slate-900 dark:text-slate-100">
-                    No documents found
+                    No items found
                   </h3>
 
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    No files match the current category or folder.
+                    No folders or files match the current filter.
                   </p>
                 </div>
               )}
@@ -1569,6 +2116,13 @@ export function MyLibrary() {
           </div>
         )}
       </section>
+
+      {viewingDocumentInfo && (
+        <DocumentInfoModal
+          document={viewingDocumentInfo}
+          onClose={() => setViewingDocumentInfo(null)}
+        />
+      )}
 
       {sharingFolder && (
         <FolderShareModal
@@ -1756,7 +2310,9 @@ export function MyLibrary() {
 
                 {folders
                   .filter(
-                    (folder) => Number(folder.id) !== Number(movingFolder.id),
+                    (folder) =>
+                      Number(folder.id) !== Number(movingFolder.id) &&
+                      !isDescendantFolder(folders, movingFolder.id, folder.id),
                   )
                   .map((folder) => (
                     <option key={folder.id} value={folder.id}>
