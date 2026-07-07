@@ -264,4 +264,28 @@ public class FileStorageService {
         Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
         return newFileName;
     }
+
+    /**
+     * Loads a shared-submission file from {@code uploads/shared-submissions/} as a Spring Resource.
+     * Used by the owner (User A) to view or download the file before approving/rejecting.
+     *
+     * @param storedFileName the UUID-based file name stored under shared-submissions/
+     * @return a readable Resource
+     * @throws RuntimeException if the file does not exist or cannot be read
+     */
+    public Resource loadSharedSubmissionFileAsResource(String storedFileName) {
+        try {
+            Path filePath = Paths.get(uploadDir, "shared-submissions")
+                    .resolve(storedFileName).normalize();
+            Resource resource = new UrlResource(filePath.toUri());
+            if (resource.exists() && resource.isReadable()) {
+                return resource;
+            } else {
+                throw new RuntimeException(
+                        "Shared submission file not found or not readable: " + storedFileName);
+            }
+        } catch (MalformedURLException e) {
+            throw new RuntimeException("Invalid shared submission file path: " + storedFileName, e);
+        }
+    }
 }

@@ -12,6 +12,10 @@ class ContextChunk(BaseModel):
     chunkText: str
     score: Optional[float] = None
     sourceLabel: Optional[str] = None
+    # Source-location metadata injected by Spring Boot from DocumentChunk entity
+    locatorType: Optional[str] = None    # "PAGE", "SLIDE", "UNKNOWN", or None
+    locatorStart: Optional[int] = None   # 1-based start page/slide; None for UNKNOWN
+    locatorEnd: Optional[int] = None     # 1-based end page/slide; None for UNKNOWN
 
 
 class HistoryMessage(BaseModel):

@@ -27,7 +27,10 @@ public class RestAuthenticationEntryPoint
         body.put("timestamp", LocalDateTime.now().toString());
         body.put("status", HttpStatus.UNAUTHORIZED.value());
         body.put("error", "Unauthorized");
-        body.put("message", "Invalid or expired token");
+        String message = (authException != null && authException.getMessage() != null) 
+                ? authException.getMessage() 
+                : "Invalid or expired token";
+        body.put("message", message);
         body.put("path", request.getRequestURI());
         response.setStatus(HttpStatus.UNAUTHORIZED.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
