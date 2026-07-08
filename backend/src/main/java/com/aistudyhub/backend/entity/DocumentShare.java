@@ -36,13 +36,41 @@ public class DocumentShare {
     @JoinColumn(name = "shared_with_user_id", nullable = false)
     private User sharedWith;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private DocumentSharePermission permission = DocumentSharePermission.VIEW;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private DocumentShareStatus status = DocumentShareStatus.ACTIVE;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(nullable = false)
+    private LocalDateTime updatedAt;
+
+    private LocalDateTime expiresAt;
+
     @PrePersist
     void prePersist() {
+        LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) {
-            createdAt = LocalDateTime.now();
+            createdAt = now;
         }
+        updatedAt = now;
+        if (permission == null) {
+            permission = DocumentSharePermission.VIEW;
+        }
+        if (status == null) {
+            status = DocumentShareStatus.ACTIVE;
+        }
+    }
+
+    @PreUpdate
+    void preUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 }

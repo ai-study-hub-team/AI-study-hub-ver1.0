@@ -38,6 +38,29 @@ public class DocumentChunk {
     @Column(name = "text_length", nullable = false)
     private Integer textLength;
 
+    /**
+     * Type of source location for this chunk.
+     * Values: "PAGE" (PDF), "SLIDE" (PPTX), "SECTION" (future), "UNKNOWN".
+     * Nullable because some file types do not provide reliable location info.
+     */
+    @Column(name = "locator_type", length = 30)
+    private String locatorType;
+
+    /**
+     * 1-based start location (page number for PDF, slide number for PPTX).
+     * Null when locatorType is UNKNOWN or the chunk spans the whole document.
+     */
+    @Column(name = "locator_start")
+    private Integer locatorStart;
+
+    /**
+     * 1-based end location (page number for PDF, slide number for PPTX).
+     * Null when locatorType is UNKNOWN.
+     * Equal to locatorStart when the chunk is contained in a single page/slide.
+     */
+    @Column(name = "locator_end")
+    private Integer locatorEnd;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

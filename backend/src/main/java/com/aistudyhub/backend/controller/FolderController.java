@@ -2,7 +2,9 @@ package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.request.FolderCreateRequest;
 import com.aistudyhub.backend.dto.request.FolderUpdateRequest;
+import com.aistudyhub.backend.dto.response.DocumentResponse;
 import com.aistudyhub.backend.dto.response.FolderResponse;
+import com.aistudyhub.backend.service.DocumentService;
 import com.aistudyhub.backend.service.FolderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ import java.util.List;
 public class FolderController {
 
     private final FolderService folderService;
+    private final DocumentService documentService;
 
     // POST /api/folders
     @PostMapping
@@ -71,5 +74,11 @@ public class FolderController {
             @RequestParam Long userId) {
         folderService.deleteFolder(id, userId);
         return ResponseEntity.noContent().build(); // 204 No Content
+    }
+
+    @GetMapping("/{id}/documents")
+    public ResponseEntity<List<DocumentResponse>> getDocumentsInFolder(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(documentService.getDocumentsInAccessibleFolder(id));
     }
 }

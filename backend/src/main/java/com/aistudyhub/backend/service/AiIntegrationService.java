@@ -218,7 +218,15 @@ public class AiIntegrationService {
             // already does it before upserting. Deleting here would wipe the newly saved embeddings.
 
             // Step 3: Insert new chunks
+            int chunkLogCount = 0;
             for (Map<String, Object> chunkData : chunksData) {
+                Integer locatorStart = (chunkData.get("locatorStart") instanceof Integer)
+                        ? (Integer) chunkData.get("locatorStart") : null;
+                Integer locatorEnd = (chunkData.get("locatorEnd") instanceof Integer)
+                        ? (Integer) chunkData.get("locatorEnd") : null;
+                String locatorType = (chunkData.get("locatorType") instanceof String)
+                        ? (String) chunkData.get("locatorType") : null;
+
                 DocumentChunk chunk = DocumentChunk.builder()
                         .document(document)
                         .chunkIndex((Integer) chunkData.get("chunkIndex"))
@@ -226,8 +234,18 @@ public class AiIntegrationService {
                         .charStart((Integer) chunkData.get("charStart"))
                         .charEnd((Integer) chunkData.get("charEnd"))
                         .textLength((Integer) chunkData.get("textLength"))
+                        .locatorType(locatorType)
+                        .locatorStart(locatorStart)
+                        .locatorEnd(locatorEnd)
                         .build();
                 documentChunkRepository.save(chunk);
+
+                // Log locator metadata for the first 5 chunks
+                if (chunkLogCount < 5) {
+                    log.info("[ChunkMetadata] docId={}, chunkIndex={}, locatorType={}, locatorStart={}, locatorEnd={}",
+                            documentId, chunk.getChunkIndex(), locatorType, locatorStart, locatorEnd);
+                    chunkLogCount++;
+                }
             }
             log.info("Saved {} chunks to DB for document ID: {}", chunksData.size(), documentId);
         });

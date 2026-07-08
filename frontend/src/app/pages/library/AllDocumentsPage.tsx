@@ -12,6 +12,7 @@ import {
   Eye,
   Pencil,
   Save,
+  Share2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -22,6 +23,8 @@ import { getCurrentUserId } from "../../services/apiClient";
 import type { AiStatus } from "../../constants/documentStatus";
 import { useTheme } from "../../../layouts/ThemeProvider";
 import { filterMyDocuments } from "../../utils/documentOwnership";
+import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
+import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
 
 interface LibraryDocument {
   id: number;
@@ -49,10 +52,10 @@ const statusBadgeClass: Record<AiStatus, string> = {
 };
 
 const documentListGridClass =
-  "grid grid-cols-[320px_150px_150px_120px_150px_150px_220px] items-center";
+  "grid grid-cols-[320px_150px_150px_120px_150px_150px_72px] items-center";
 
 const actionIconButtonClass =
-  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300";
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-300";
 
 const deleteIconButtonClass =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
@@ -85,6 +88,8 @@ function DocumentRow({
   onDelete,
   onReprocess,
   onDownload,
+  onShare,
+  sharingDocumentId,
   onViewFile,
   onEdit,
 }: {
@@ -93,6 +98,8 @@ function DocumentRow({
   onDelete: (documentId: number) => void;
   onReprocess: (documentId: number) => void;
   onDownload: (documentId: number, fileName: string) => void;
+  onShare: (documentId: number) => void | Promise<void>;
+  sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
   onEdit: (document: LibraryDocument) => void;
 }) {
@@ -137,57 +144,16 @@ function DocumentRow({
         {document.aiStatus}
       </span>
 
-      <div className="flex min-w-[220px] items-center justify-end gap-1">
-        <button
-          onClick={() => onToggleFavorite(document.id)}
-          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
-            document.fav
-              ? "text-amber-400"
-              : "text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-          }`}
-        >
-          <Star className={`h-4 w-4 ${document.fav ? "fill-amber-400" : ""}`} />
-        </button>
-
-        <button
-          onClick={() => onViewFile(document.id)}
-          className={actionIconButtonClass}
-          title="View file"
-        >
-          <Eye className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onEdit(document)}
-          className={actionIconButtonClass}
-          title="Rename"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onDownload(document.id, document.name)}
-          className={actionIconButtonClass}
-          title="Download"
-        >
-          <Download className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onReprocess(document.id)}
-          className={actionIconButtonClass}
-          title="Reprocess"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onDelete(document.id)}
-          className={deleteIconButtonClass}
-          title="Delete"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+      <div className="flex min-w-[72px] items-center justify-center">
+        <RowActionMenu>
+          <ActionMenuItem icon={Star} label={document.fav ? "Remove favorite" : "Add favorite"} onClick={() => onToggleFavorite(document.id)} />
+          <ActionMenuItem icon={Eye} label="View file" onClick={() => onViewFile(document.id)} />
+          <ActionMenuItem icon={Pencil} label="Rename" onClick={() => onEdit(document)} />
+          <ActionMenuItem icon={Download} label="Download" onClick={() => onDownload(document.id, document.name)} />
+          <ActionMenuItem icon={Share2} label="Share document" onClick={() => onShare(document.id)} disabled={sharingDocumentId === document.id} />
+          <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => onReprocess(document.id)} />
+          <ActionMenuItem icon={Trash2} label="Delete" onClick={() => onDelete(document.id)} danger />
+        </RowActionMenu>
       </div>
     </div>
   );
@@ -199,6 +165,8 @@ function DocumentCard({
   onDelete,
   onReprocess,
   onDownload,
+  onShare,
+  sharingDocumentId,
   onViewFile,
   onEdit,
 }: {
@@ -207,6 +175,8 @@ function DocumentCard({
   onDelete: (documentId: number) => void;
   onReprocess: (documentId: number) => void;
   onDownload: (documentId: number, fileName: string) => void;
+  onShare: (documentId: number) => void | Promise<void>;
+  sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
   onEdit: (document: LibraryDocument) => void;
 }) {
@@ -278,43 +248,15 @@ function DocumentCard({
   </div>
 </div>
 
-      <div className="mt-5 flex items-center justify-end gap-1 border-t border-slate-100 pt-4 dark:border-slate-800">
-        <button
-          onClick={() => onViewFile(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-          title="View file"
-        >
-          <Eye className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onEdit(document)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-          title="Rename"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onDownload(document.id, document.name)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-        >
-          <Download className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onReprocess(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onDelete(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+      <div className="mt-5 flex items-center justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
+        <RowActionMenu>
+          <ActionMenuItem icon={Eye} label="View file" onClick={() => onViewFile(document.id)} />
+          <ActionMenuItem icon={Pencil} label="Rename" onClick={() => onEdit(document)} />
+          <ActionMenuItem icon={Download} label="Download" onClick={() => onDownload(document.id, document.name)} />
+          <ActionMenuItem icon={Share2} label="Share document" onClick={() => onShare(document.id)} disabled={sharingDocumentId === document.id} />
+          <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => onReprocess(document.id)} />
+          <ActionMenuItem icon={Trash2} label="Delete" onClick={() => onDelete(document.id)} danger />
+        </RowActionMenu>
       </div>
     </div>
   );
@@ -343,6 +285,8 @@ export function AllDocumentsPage() {
   const [editingDocument, setEditingDocument] =
     useState<LibraryDocument | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const { createAndCopyPublicLink, loadingDocumentId } =
+    useCreatePublicLink();
 
   const loadDocuments = async () => {
     try {
@@ -538,7 +482,7 @@ export function AllDocumentsPage() {
 
       {viewMode === "list" ? (
         <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="min-w-[1260px]">
+          <div className="min-w-[1120px]">
             <div
               className={`${documentListGridClass} border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60`}
             >
@@ -548,7 +492,7 @@ export function AllDocumentsPage() {
               <div>Size</div>
               <div>Upload Status</div>
               <div>AI Status</div>
-              <div className="text-right">Actions</div>
+              <div className="text-center">Actions</div>
             </div>
 
             {isLoading ? (
@@ -566,6 +510,8 @@ export function AllDocumentsPage() {
                   onDelete={setDeleteId}
                   onReprocess={handleReprocess}
                   onDownload={handleDownload}
+                  onShare={createAndCopyPublicLink}
+                  sharingDocumentId={loadingDocumentId}
                   onViewFile={handleViewFile}
                   onEdit={handleOpenEdit}
                 />
@@ -593,6 +539,8 @@ export function AllDocumentsPage() {
                   onDelete={setDeleteId}
                   onReprocess={handleReprocess}
                   onDownload={handleDownload}
+                  onShare={createAndCopyPublicLink}
+                  sharingDocumentId={loadingDocumentId}
                   onViewFile={handleViewFile}
                   onEdit={handleOpenEdit}
                 />

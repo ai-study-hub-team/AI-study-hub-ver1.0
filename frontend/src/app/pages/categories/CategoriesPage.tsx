@@ -14,7 +14,7 @@ import { documentApi } from "../../services/documentApi";
 import { getCurrentUserId } from "../../services/apiClient";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 import type { DocumentListItemResponse } from "../../types/documents/types";
-
+import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
 type ListResponse<T> = T[] | { content?: T[] };
 
 const normalizeList = <T,>(data: ListResponse<T> | null | undefined): T[] => {
@@ -322,29 +322,10 @@ export function CategoriesPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openEditModal(category.id);
-                      }}
-                      className="rounded-lg p-2 text-blue-500 opacity-100 transition hover:bg-blue-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-blue-950/30"
-                      title="Edit category"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setDeleteId(category.id);
-                      }}
-                      className="rounded-lg p-2 text-red-500 opacity-100 transition hover:bg-red-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-red-950/30"
-                      title="Delete category"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <RowActionMenu>
+                      <ActionMenuItem icon={Pencil} label="Edit category" onClick={() => openEditModal(category.id)} />
+                      <ActionMenuItem icon={Trash2} label="Delete category" onClick={() => setDeleteId(category.id)} danger />
+                    </RowActionMenu>
 
                     <ChevronRight className="h-5 w-5 text-slate-400 transition group-hover:translate-x-1" />
                   </div>

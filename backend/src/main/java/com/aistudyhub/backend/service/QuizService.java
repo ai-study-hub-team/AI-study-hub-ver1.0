@@ -102,7 +102,7 @@ public class QuizService {
         }
 
         // 8. Validate Token Quota before calling AI
-        tokenUsageService.validateTokenQuota(user.getId());
+        tokenUsageService.validateTokenQuota(user.getId(), "QUIZ");
 
         // 9. Build Python request
         PythonQuizRequest pythonRequest = PythonQuizRequest.builder()

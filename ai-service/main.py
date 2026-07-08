@@ -64,7 +64,16 @@ async def process_document(request: DocumentRequest):
             }
 
             # ── 2. Extract text ───────────────────────────────────────────────────
-        text = extract_text(abs_file_path, request.fileType)
+        raw_extract = extract_text(abs_file_path, request.fileType)
+
+        # PDF returns a structured dict with page_char_map for locator injection.
+        # All other file types return a plain string (or None).
+        page_char_map = None
+        if isinstance(raw_extract, dict):
+            text = raw_extract.get("text", "")
+            page_char_map = raw_extract.get("page_char_map")  # list[{page_number, char_start, char_end}]
+        else:
+            text = raw_extract
 
         if text is None or not str(text).strip():
             logger.error(f"Extracted text is empty for document ID: {request.documentId}")
@@ -102,8 +111,48 @@ async def process_document(request: DocumentRequest):
                 "message": "No chunks were created from extracted text.",
             }
 
+        # ── 3a. Inject PDF page locators using page_char_map ────────────────
+        # For PDF, text_extractor returns a page_char_map so we can determine
+        # which page(s) each chunk's character range falls on.
+        if page_char_map:
+            for chunk in chunks:
+                c_start = chunk.get("charStart", 0)
+                c_end   = chunk.get("charEnd", 0)
+
+                first_page = None
+                last_page  = None
+
+                for page_info in page_char_map:
+                    p_num   = page_info["page_number"]
+                    p_start = page_info["char_start"]
+                    p_end   = page_info["char_end"]
+
+                    # Chunk overlaps this page if the ranges intersect
+                    if c_start < p_end and c_end > p_start:
+                        if first_page is None:
+                            first_page = p_num
+                        last_page = p_num
+
+                chunk["locatorType"]  = "PAGE"
+                chunk["locatorStart"] = first_page
+                chunk["locatorEnd"]   = last_page
+
+        # ── 3b. Log sample locator metadata for the first 5 chunks ──────────
         logger.info(f"Extracted {text_length} characters from document ID: {request.documentId}")
         logger.info(f"Created {chunk_count} chunks")
+<<<<<<< HEAD
+=======
+        if chunks:
+            logger.info(f"First chunk preview: {chunks[0]['chunkText'][:100]}...")
+        for i, chunk in enumerate(chunks[:5]):
+            logger.info(
+                f"[ChunkMetadata] docId={request.documentId}, "
+                f"chunkIndex={chunk.get('chunkIndex')}, "
+                f"locatorType={chunk.get('locatorType')}, "
+                f"locatorStart={chunk.get('locatorStart')}, "
+                f"locatorEnd={chunk.get('locatorEnd')}"
+            )
+>>>>>>> origin/main
 
         # ── 4. Upsert embeddings to vector store ─────────────────────────────
         # Routes to pgvector or Pinecone based on VECTOR_STORE setting.
@@ -349,7 +398,7 @@ Quy tắc bắt buộc:
             config=config
         )
         answer = response.text or "Không nhận được phản hồi từ mô hình AI."
-        usage = extract_usage(response)
+        usage = extract_usage(response, "chat-legacy")
     except Exception as e:
         logger.exception(f"Error calling Gemini: {e}")
         answer = f"Lỗi khi gọi mô hình AI: {str(e)}"
@@ -510,6 +559,9 @@ Return ONLY this JSON, no markdown, no explanation:
         needs_retrieval = bool(data.get("needsRetrieval", True))
         confidence = float(data.get("confidence", 0.8))
 
+        # Extract token usage from planner Gemini call
+        planner_usage = extract_usage(response, "chat-planner")
+
         logger.info(f"[analyze-chat-query] intent={intent}, strategy={strategy}, confidence={confidence}")
         return AnalyzeChatQueryResponse(
             intent=intent,
@@ -518,9 +570,11 @@ Return ONLY this JSON, no markdown, no explanation:
             searchQueries=queries,
             needsRetrieval=needs_retrieval,
             confidence=confidence,
+            usage=planner_usage,
         )
     except Exception as e:
         logger.warning(f"[analyze-chat-query] Gemini call or JSON parse failed: {e}. Using fallback.")
+        # Safe fallback: no Gemini was called (or it failed), so usage=None
         return safe_fallback(request.question)
 
 
@@ -564,13 +618,37 @@ async def generate_answer_endpoint(request: GenerateAnswerRequest):
         f"historyLen={len(request.history or [])}"
     )
 
+    # Log context chunk locator metadata for observability
+    for chunk in (request.contextChunks or []):
+        logger.info(
+            f"[Chat Context] docId={chunk.documentId}, chunkIndex={chunk.chunkIndex}, "
+            f"locatorType={chunk.locatorType}, locatorStart={chunk.locatorStart}, "
+            f"locatorEnd={chunk.locatorEnd}, score={chunk.score}"
+        )
+
     # Build context text from provided chunks
     context_parts = []
     for chunk in (request.contextChunks or []):
         if chunk.chunkText and chunk.chunkText.strip():
             label = chunk.sourceLabel or f"Chunk {chunk.chunkIndex}"
             doc_info = f"Tài liệu: {chunk.documentTitle}" if chunk.documentTitle else f"Tài liệu ID: {chunk.documentId}"
-            context_parts.append(f"[{doc_info} — {label}]\n{chunk.chunkText.strip()}")
+
+            # Append source location only when reliable location data exists.
+            # Never invent page/slide numbers for UNKNOWN locator types.
+            location_info = ""
+            if chunk.locatorType == "PAGE" and chunk.locatorStart is not None:
+                if chunk.locatorEnd is not None and chunk.locatorEnd != chunk.locatorStart:
+                    location_info = f" — Trang {chunk.locatorStart}-{chunk.locatorEnd}"
+                else:
+                    location_info = f" — Trang {chunk.locatorStart}"
+            elif chunk.locatorType == "SLIDE" and chunk.locatorStart is not None:
+                if chunk.locatorEnd is not None and chunk.locatorEnd != chunk.locatorStart:
+                    location_info = f" — Slide {chunk.locatorStart}-{chunk.locatorEnd}"
+                else:
+                    location_info = f" — Slide {chunk.locatorStart}"
+            # UNKNOWN or None: no location info appended — prevents hallucination
+
+            context_parts.append(f"[{doc_info} — {label}{location_info}]\n{chunk.chunkText.strip()}")
 
     context_text = "\n\n".join(context_parts)
 
@@ -634,12 +712,15 @@ async def generate_answer_endpoint(request: GenerateAnswerRequest):
             config=config
         )
         answer = response.text or "Không nhận được phản hồi từ mô hình AI."
+        answer_usage = extract_usage(response, "generate-answer")
         logger.info("[generate-answer] Gemini answered successfully.")
     except Exception as e:
         logger.exception(f"[generate-answer] Gemini call failed: {e}")
         answer = f"Lỗi khi gọi mô hình AI: {str(e)}"
+        from schemas.usage_schema import UsageResponse
+        answer_usage = UsageResponse()
 
-    return GenerateAnswerResponse(answer=answer)
+    return GenerateAnswerResponse(answer=answer, usage=answer_usage)
 
 
 # ─── Document Summary Endpoint ────────────────────────────────────────────────

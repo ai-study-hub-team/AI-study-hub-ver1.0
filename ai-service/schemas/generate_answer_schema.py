@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional
+from schemas.usage_schema import UsageResponse
 
 
 class ContextChunk(BaseModel):
@@ -11,6 +12,10 @@ class ContextChunk(BaseModel):
     chunkText: str
     score: Optional[float] = None
     sourceLabel: Optional[str] = None
+    # Source-location metadata injected by Spring Boot from DocumentChunk entity
+    locatorType: Optional[str] = None    # "PAGE", "SLIDE", "UNKNOWN", or None
+    locatorStart: Optional[int] = None   # 1-based start page/slide; None for UNKNOWN
+    locatorEnd: Optional[int] = None     # 1-based end page/slide; None for UNKNOWN
 
 
 class HistoryMessage(BaseModel):
@@ -33,5 +38,12 @@ class GenerateAnswerRequest(BaseModel):
 
 
 class GenerateAnswerResponse(BaseModel):
-    """Response from Python /generate-answer — just the answer string."""
+    """
+    Response from Python /generate-answer.
+    Includes the Gemini-generated answer and token usage metadata.
+    `usage` is Optional so the endpoint stays backward compatible if
+    token extraction fails — Spring Boot must treat None as zero tokens.
+    """
     answer: str
+    # Token usage from the answer-generation Gemini call
+    usage: Optional[UsageResponse] = None

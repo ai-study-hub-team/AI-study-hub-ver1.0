@@ -35,4 +35,12 @@ public class SemanticSearchResultResponse {
     private String  documentName;
     private String  type;
     private String  label;
+
+    // ── Source-location locator metadata ────────────────────────────────────
+    /** "PAGE", "SLIDE", "UNKNOWN", or null. */
+    private String  locatorType;
+    /** 1-based start page/slide; null when UNKNOWN. */
+    private Integer locatorStart;
+    /** 1-based end page/slide; null when UNKNOWN. */
+    private Integer locatorEnd;
 }

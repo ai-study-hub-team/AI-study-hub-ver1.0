@@ -11,6 +11,7 @@ import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { EmailVerificationPage } from "./pages/auth/EmailVerificationPage";
 import { VerifyEmailSuccessPage } from "./pages/auth/VerifyEmailSuccessPage";
+import VerifyResetCodePage from "./pages/auth/VerifyResetCodePage";
 
 import { StudentDashboard } from "./pages/dashboard/StudentDashboard";
 
@@ -21,6 +22,8 @@ import { AllCategoriesPage } from "./pages/library/AllCategoriesPage";
 import { LibraryCategoryDocumentsPage } from "./pages/library/LibraryCategoryDocumentsPage";
 import { AllDocumentsPage } from "./pages/library/AllDocumentsPage";
 import { DocumentPreviewPage } from "./pages/library/DocumentPreviewPage";
+import { FavoriteDocumentsPage } from "./pages/library/FavoriteDocumentsPage";
+
 import { AIChatPage } from "./pages/chat/AIChatPage";
 import { AISummaryPage } from "./pages/summary/AISummaryPage";
 import { QuizGeneratorPage } from "./pages/quiz/QuizGeneratorPage";
@@ -28,10 +31,18 @@ import { ProfilePage } from "./pages/profile/ProfilePage";
 import { StorageDashboard } from "./pages/storage/StorageDashboard";
 import { CategoriesPage } from "./pages/categories/CategoriesPage";
 import { CategoryDocumentsPage } from "./pages/categories/CategoryDocumentsPage";
-import { FavoriteDocumentsPage } from "./pages/library/FavoriteDocumentsPage";
+import { FoldersPage } from "./pages/folders/FoldersPage";
+import { FolderDocumentsPage } from "./pages/folders/FolderDocumentsPage";
 import { PricingPage } from "./pages/subscription/PricingPage";
 import { SubscriptionDashboard } from "./pages/subscription/SubscriptionDashboard";
 import { UpgradePlanPage } from "./pages/subscription/UpgradePlanPage";
+
+import { MySharedDocumentsPage } from "./pages/shares/MySharedDocumentsPage";
+import { DocumentSharesPage } from "./pages/shares/DocumentSharesPage";
+import { SharedWithMePage } from "./pages/shares/SharedWithMePage";
+import { SharedFolderDocumentsPage } from "./pages/shares/SharedFolderDocumentsPage";
+import { PublicDocumentPage } from "./pages/public/PublicDocumentPage";
+import { PublicSharedUploadPage } from "./pages/public/PublicSharedUploadPage";
 
 import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { UserManagement } from "./pages/admin/UserManagement";
@@ -39,13 +50,14 @@ import { DocumentAdmin } from "./pages/admin/DocumentAdmin";
 import { ReportManagement } from "./pages/admin/ReportManagement";
 import { SubscriptionAdmin } from "./pages/admin/SubscriptionAdmin";
 import { AnalyticsDashboard } from "./pages/admin/AnalyticsDashboard";
-import VerifyResetCodePage from "./pages/auth/VerifyResetCodePage";
+
 export const router = createBrowserRouter([
   {
     path: "/",
     element: <RootLayout />,
     children: [
       { index: true, element: <LandingPage /> },
+
       { path: "login", element: <LoginPage /> },
       { path: "register", element: <RegisterPage /> },
       { path: "forgot-password", element: <ForgotPasswordPage /> },
@@ -55,6 +67,20 @@ export const router = createBrowserRouter([
       { path: "verify-reset-code", element: <VerifyResetCodePage /> },
       { path: "pricing", element: <PricingPage /> },
 
+      // Public document share routes
+      {
+        path: "public/documents/:token",
+        element: <PublicDocumentPage />,
+      },
+      {
+        path: "share/:token",
+        element: <PublicDocumentPage />,
+      },
+      {
+        path: "shared-upload/:token",
+        element: <PublicSharedUploadPage />,
+      },
+
       {
         path: "app",
         element: <DashboardLayout />,
@@ -62,12 +88,39 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="dashboard" replace /> },
           { path: "dashboard", element: <StudentDashboard /> },
           { path: "upload", element: <UploadDocumentsPage /> },
+
           { path: "library", element: <MyLibrary /> },
           { path: "library/categories", element: <AllCategoriesPage /> },
-          { path: "library/categories/:categoryId", element: <LibraryCategoryDocumentsPage />, },
+          {
+            path: "library/categories/:categoryId",
+            element: <LibraryCategoryDocumentsPage />,
+          },
           { path: "library/documents", element: <AllDocumentsPage /> },
-          { path: "library/:id/preview", element: <DocumentPreviewPage />, },
-          { path: "library/favorites", element: <FavoriteDocumentsPage />, },
+          {
+            path: "library/:id/preview",
+            element: <DocumentPreviewPage />,
+          },
+          { path: "library/favorites", element: <FavoriteDocumentsPage /> },
+          {
+            path: "my-shared-documents",
+            element: <MySharedDocumentsPage />,
+          },
+          {
+            path: "shares",
+            element: <DocumentSharesPage />,
+          },
+          {
+            path: "shared-with-me",
+            element: <SharedWithMePage />,
+          },
+          {
+            path: "shared/folders/:folderId",
+            element: <SharedFolderDocumentsPage />,
+          },
+
+          { path: "folders", element: <FoldersPage /> },
+          { path: "folders/:folderId", element: <FolderDocumentsPage /> },
+
           { path: "trash", element: <TrashPage /> },
           { path: "chat", element: <AIChatPage /> },
           { path: "summary", element: <AISummaryPage /> },
@@ -75,7 +128,10 @@ export const router = createBrowserRouter([
           { path: "profile", element: <ProfilePage /> },
           { path: "storage", element: <StorageDashboard /> },
           { path: "categories", element: <CategoriesPage /> },
-          { path: "categories/:categoryId", element: <CategoryDocumentsPage />, },
+          {
+            path: "categories/:categoryId",
+            element: <CategoryDocumentsPage />,
+          },
           { path: "subscription", element: <SubscriptionDashboard /> },
           { path: "subscription/upgrade", element: <UpgradePlanPage /> },
         ],

@@ -11,12 +11,10 @@ import lombok.Setter;
 @Getter
 @Setter
 public class CategoryRequest {
-
+    private Long userId;
     @NotBlank(message = "Category name must not be blank")
     private String name;
 
     private String description;
 
-    @NotNull(message = "userId is required")
-    private Long userId;
 }

@@ -21,6 +21,7 @@ import { documentApi } from "../../services/documentApi";
 import { getCurrentUserId } from "../../services/apiClient";
 import type { AiStatus } from "../../constants/documentStatus";
 import { filterMyDocuments } from "../../utils/documentOwnership";
+import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
 
 interface TrashDocument {
   id: number;
@@ -325,21 +326,10 @@ export function TrashPage() {
                         <FileIcon className="h-5 w-5" />
                       </div>
 
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleRestore(document.id)}
-                          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </button>
-
-                        <button
-                          onClick={() => handleDeleteForever(document.id)}
-                          className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
+                      <RowActionMenu>
+                        <ActionMenuItem icon={RotateCcw} label="Restore" onClick={() => handleRestore(document.id)} />
+                        <ActionMenuItem icon={Trash2} label="Delete forever" onClick={() => handleDeleteForever(document.id)} danger />
+                      </RowActionMenu>
                     </div>
 
                     <h3 className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -368,13 +358,13 @@ export function TrashPage() {
           )
         ) : (
           <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="hidden bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 md:grid md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(120px,auto)]">
+            <div className="hidden bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 md:grid md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_72px]">
               <span>Document Name</span>
               <span>Category</span>
               <span>Deleted Date</span>
               <span>Size</span>
               <span>AI Status</span>
-              <span className="text-right">Actions</span>
+              <span className="text-center">Actions</span>
             </div>
 
             {filteredDocuments.map((document) => {
@@ -383,7 +373,7 @@ export function TrashPage() {
               return (
                 <div
                   key={document.id}
-                  className="grid gap-3 border-t border-slate-100 bg-white p-4 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70 md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(120px,auto)] md:items-center"
+                  className="grid gap-3 border-t border-slate-100 bg-white p-4 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70 md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_72px] md:items-center"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-300">
@@ -418,20 +408,11 @@ export function TrashPage() {
                     {document.aiStatus}
                   </span>
 
-                  <div className="flex items-center justify-end gap-1">
-                    <button
-                      onClick={() => handleRestore(document.id)}
-                      className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800"
-                    >
-                      <RotateCcw className="h-4 w-4" />
-                    </button>
-
-                    <button
-                      onClick={() => handleDeleteForever(document.id)}
-                      className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                  <div className="flex min-w-[72px] items-center justify-center">
+                    <RowActionMenu>
+                      <ActionMenuItem icon={RotateCcw} label="Restore" onClick={() => handleRestore(document.id)} />
+                      <ActionMenuItem icon={Trash2} label="Delete forever" onClick={() => handleDeleteForever(document.id)} danger />
+                    </RowActionMenu>
                   </div>
                 </div>
               );

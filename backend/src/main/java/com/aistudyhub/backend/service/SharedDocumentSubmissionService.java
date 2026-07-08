@@ -6,9 +6,11 @@ import com.aistudyhub.backend.dto.response.DocumentResponse;
 import com.aistudyhub.backend.dto.response.SharedDocumentSubmissionResponse;
 import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.repository.*;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -268,7 +270,60 @@ public class SharedDocumentSubmissionService {
         return toResponse(saved);
     }
 
+    // ─── File view / download (User A) ────────────────────────────────────────
+
+    /**
+     * Carries the file {@link Resource} together with the display metadata
+     * needed by the controller to build correct HTTP response headers.
+     */
+    @Data
+    public static class SubmissionFileResult {
+        private final Resource resource;
+        /** Stored UUID-based file name, used as a fallback display name. */
+        private final String storedFileName;
+        /** Original file name as uploaded by User B (shown in Content-Disposition). */
+        private final String originalFileName;
+        /** MIME type detected at upload time; may be null. */
+        private final String mimeType;
+    }
+
+    /**
+     * Loads the raw file for a shared submission, enforcing that the caller
+     * is the owner via {@code findByIdAndOwnerUserId}.
+     *
+     * @param submissionId the submission to retrieve
+     * @param ownerUserId  the authenticated User A
+     * @return a {@link SubmissionFileResult} ready for streaming
+     * @throws RuntimeException (→ 404) if the submission does not belong to the user
+     */
+    @Transactional(readOnly = true)
+    public SubmissionFileResult getSubmissionFileForOwner(Long submissionId, Long ownerUserId) {
+        SharedDocumentSubmission submission = submissionRepository
+                .findByIdAndOwnerUserId(submissionId, ownerUserId)
+                .orElseThrow(() -> new RuntimeException(
+                        "Submission not found or does not belong to user: " + submissionId));
+
+        String storedFileName = submission.getStoredFileName();
+        if (storedFileName == null || storedFileName.isBlank()) {
+            throw new RuntimeException("No file attached to submission: " + submissionId);
+        }
+
+        Resource resource = fileStorageService.loadSharedSubmissionFileAsResource(storedFileName);
+
+        // Resolve MIME type: prefer the value captured at upload time, fall back to extension
+        String mimeType = (submission.getFileType() != null && !submission.getFileType().isBlank())
+                ? submission.getFileType()
+                : fileStorageService.getMimeTypeFromFileName(storedFileName);
+
+        return new SubmissionFileResult(
+                resource,
+                storedFileName,
+                submission.getOriginalFileName(),
+                mimeType);
+    }
+
     // ─── Mappers ───────────────────────────────────────────────────────────────
+
 
     public SharedDocumentSubmissionResponse toResponse(SharedDocumentSubmission s) {
         String shareLinkTitle = null;

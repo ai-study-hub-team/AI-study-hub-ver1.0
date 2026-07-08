@@ -90,6 +90,7 @@ const isPublicAuthApi = (url?: string) => {
   if (!url) return false;
 
   return (
+    url.includes("/api/public/") ||
     url.includes("/api/auth/login") ||
     url.includes("/api/auth/register") ||
     url.includes("/api/auth/refresh") ||

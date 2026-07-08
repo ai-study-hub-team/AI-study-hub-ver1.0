@@ -5,8 +5,13 @@ application:
   security:
     jwt:
       secret-key: ${JWT_SECRET}
-      access-token-expiration: 900000
+      access-token-expiration: 7200000
       refresh-token-expiration: 604800000
+
+resend:
+  api-key: ${RESEND_API_KEY}
+  from-email: "AI Study Hub <noreply@aistudyhub.com>"
+  frontend-url: http://localhost:5173
 
 spring:
   application:

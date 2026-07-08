@@ -475,6 +475,9 @@ public class SemanticSearchService {
                             .chunkIndex(chunkIndex)
                             .score(score)
                             .chunkText(chunkText)
+                            .locatorType(c != null ? c.getLocatorType() : null)
+                            .locatorStart(c != null ? c.getLocatorStart() : null)
+                            .locatorEnd(c != null ? c.getLocatorEnd() : null)
                             .source("SEMANTIC")
                             .build());
                 }
@@ -502,6 +505,9 @@ public class SemanticSearchService {
                                     .chunkIndex(c.getChunkIndex())
                                     .score(0.0)
                                     .chunkText(c.getChunkText())
+                                    .locatorType(c.getLocatorType())
+                                    .locatorStart(c.getLocatorStart())
+                                    .locatorEnd(c.getLocatorEnd())
                                     .source("KEYWORD")
                                     .build());
                         }
@@ -534,12 +540,24 @@ public class SemanticSearchService {
                             .chunkText(r.getChunkText())
                             .score(finalScore)
                             .sourceLabel("Chunk " + r.getChunkIndex())
+                            .locatorType(r.getLocatorType())
+                            .locatorStart(r.getLocatorStart())
+                            .locatorEnd(r.getLocatorEnd())
                             .build();
                 })
                 .collect(Collectors.toList());
 
         log.info("[Chat RAG] retrieveForChat returned {} context chunks from {} candidates.",
                 results.size(), candidateMap.size());
+
+        // Log each context chunk's locator metadata (mirrors [Chat Context] requirement)
+        for (PythonContextChunk c : results) {
+            log.info("[Chat Context] docId={}, chunkIndex={}, locatorType={}, locatorStart={}, locatorEnd={}, score={}",
+                    c.getDocumentId(), c.getChunkIndex(),
+                    c.getLocatorType(), c.getLocatorStart(), c.getLocatorEnd(),
+                    c.getScore() != null ? String.format("%.4f", c.getScore()) : "null");
+        }
+
         return results;
     }
 

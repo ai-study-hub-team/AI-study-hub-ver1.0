@@ -6,7 +6,6 @@ import lombok.Data;
 
 @Data
 public class DocumentNoteUpdateRequest {
-    @NotNull(message = "userId cannot be null")
     private Long userId;
 
     @NotBlank(message = "title cannot be blank")
