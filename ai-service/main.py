@@ -104,8 +104,6 @@ async def process_document(request: DocumentRequest):
 
         logger.info(f"Extracted {text_length} characters from document ID: {request.documentId}")
         logger.info(f"Created {chunk_count} chunks")
-        if chunks:
-            logger.info(f"First chunk preview: {chunks[0]['chunkText'][:100]}...")
 
         # ── 4. Upsert embeddings to vector store ─────────────────────────────
         # Routes to pgvector or Pinecone based on VECTOR_STORE setting.

@@ -175,6 +175,9 @@ public class DocumentService {
         log.info("Document metadata saved — id={}, title='{}', processStatus=PROCESSING",
                 saved.getId(), saved.getTitle());
 
+        storageQuotaService.addStorageUsage(userId, file.getSize());
+        log.info("Storage usage increased for userId={} by {} bytes", userId, file.getSize());
+
         // 8. Fire-and-forget: AI processing runs in a background thread.
         //    The upload response is returned immediately to the frontend.
         documentProcessingAsyncService.processDocumentAsync(saved.getId());
@@ -243,10 +246,22 @@ public class DocumentService {
         Document document = documentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Document not found with id: " + id));
 
+        if (document.getStatus() == DocumentStatus.DELETED) {
+            return;
+        }
+
+        Long ownerId = document.getUser() != null ? document.getUser().getId() : null;
+        Long fileSize = document.getCloudFile() != null ? document.getCloudFile().getFileSize() : null;
+
         // Soft delete: change status to DELETED instead of removing from DB
         document.setStatus(DocumentStatus.DELETED);
         document.setUpdatedAt(LocalDateTime.now());
         documentRepository.save(document);
+
+        if (ownerId != null && fileSize != null) {
+            storageQuotaService.subtractStorageUsage(ownerId, fileSize);
+            log.info("Storage usage decreased for userId={} by {} bytes", ownerId, fileSize);
+        }
     }
 
     // ─── Reprocess Document ────────────────────────────────────────────────────

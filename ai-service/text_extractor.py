@@ -1,8 +1,11 @@
 import logging
 import os
+import subprocess
+import shutil
 import time
+import math
 from google import genai
-from settings import GEMINI_API_KEY, GEMINI_MODEL
+from settings import GEMINI_API_KEY, GEMINI_MODEL,LIBREOFFICE_PATH
 import random
 from google.genai import errors
 from google.genai import types
@@ -35,6 +38,78 @@ AUDIO_PROMPT = """Bạn hãy phân tích file âm thanh này và trả về kế
 - English keywords hỗ trợ semantic search
 
 Nếu không nghe rõ thì ghi rõ [không nghe rõ]."""
+
+PROMPT_A = """
+You are a PDF classifier and extractor.
+
+Classify this PDF into ONE type:
+
+NORMAL_PDF:
+- A normal text-based PDF such as book, report, article, paper, manual, or Word-exported PDF.
+- Text can be extracted well by a Python PDF library.
+
+GEMINI_PDF:
+- A PDF that needs visual reading.
+- Examples: slide PDF, scanned PDF, image-based PDF, or PDF with important diagrams/screenshots/charts.
+
+Output format:
+
+If NORMAL_PDF, output exactly:
+
+DOCUMENT_TYPE: NORMAL_PDF
+EXTRACTED_TEXT:
+
+If GEMINI_PDF, output exactly:
+
+DOCUMENT_TYPE: GEMINI_PDF
+EXTRACTED_TEXT:
+
+<<<PAGE_START:{page_number}>>>
+[Page {page_number}]
+{full extracted content of this page}
+
+Rules:
+- If NORMAL_PDF, do NOT extract full text.
+- If GEMINI_PDF, extract page by page.
+- Do not summarize.
+- Do not rewrite.
+- Do not invent.
+- Keep titles, bullets, tables, formulas, code, labels, captions, and important diagram text.
+- Ignore decorative background, logo, colors, borders, and watermark.
+- Return only the required format.
+"""
+
+PROMPT_B = """
+You are a professional presentation transcription system.
+
+The input is a PDF converted from a presentation file or a PDF confirmed to be slide-based.
+
+Each PDF page is ONE slide.
+
+Your task:
+- Extract all readable educational content.
+- Keep the content slide by slide.
+- Do NOT summarize.
+- Do NOT rewrite.
+- Do NOT shorten.
+- Do NOT invent information.
+
+Output format:
+
+<<<SLIDE_START:{slide_number}>>>
+[Slide {slide_number}]
+{full extracted content of this slide}
+
+Rules:
+- Treat each page as one separate slide.
+- Never merge slides.
+- Never split slides.
+- Keep titles, headings, bullet points, numbering, tables, formulas, source code, comments, labels, captions, and annotations.
+- If there are diagrams, charts, screenshots, or educational images, briefly describe the important meaning and include visible labels if readable.
+- Ignore decorative backgrounds, theme colors, logos, borders, watermarks, and page decorations unless they contain educational content.
+- If some content is unreadable, write: [unclear content].
+- Return only the required slide-by-slide output.
+"""
 
 def get_gemini_client():
     if not GEMINI_API_KEY:
@@ -283,14 +358,14 @@ def extract_text(file_path: str, file_type: str) -> str:
         
     # Try generic mime types handling as well
     if 'pdf' in file_type or ext == 'pdf':
-        return extract_text_from_pdf(file_path)
+        return extract_pdf_auto(file_path)
     elif 'excel' in file_type or 'spreadsheet' in file_type or ext in ['xls', 'xlsx']:
         return extract_text_from_excel(file_path, file_type)
     elif 'text' in file_type or 'txt' in file_type or ext == 'txt':
         return extract_text_from_txt(file_path)
 
     elif 'powerpoint' in file_type or 'presentation' in file_type or ext in ['ppt', 'pptx']:
-        return extract_text_from_pptx(file_path)
+        return extract_presentation_document(file_path)
     elif 'document' in file_type or 'docx' in file_type or ext == 'docx':
         return extract_text_from_docx(file_path)
     else:
@@ -320,6 +395,184 @@ def extract_text_from_pdf(file_path: str) -> str:
         for page in doc:
             text += page.get_text()
     return text
+
+def _sample_pdf_page_indexes(page_count: int, max_pages: int = 5) -> list:
+    sample_count = min(max_pages, page_count)
+    if sample_count <= 0:
+        return []
+    if sample_count == 1:
+        return [0]
+    return sorted({
+        min(page_count - 1, round(i * (page_count - 1) / (sample_count - 1)))
+        for i in range(sample_count)
+    })
+
+def has_full_page_background_or_object(file_path: str) -> bool:
+    """
+    Detect large image/drawing objects that cover most of sampled PDF pages.
+    This intentionally ignores text meaning, titles, logos, and content labels.
+    """
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        raise ImportError("PyMuPDF is required for PDF inspection. Please install it using 'pip install PyMuPDF'")
+
+    try:
+        with fitz.open(file_path) as doc:
+            page_indexes = _sample_pdf_page_indexes(len(doc))
+            if not page_indexes:
+                logger.info("background_detected=False, reason=no_pages")
+                return False
+
+            detected_pages = 0
+            for page_index in page_indexes:
+                page = doc[page_index]
+                page_area = page.rect.width * page.rect.height
+                if page_area <= 0:
+                    continue
+
+                page_has_large_object = False
+
+                for image in page.get_images(full=True):
+                    xref = image[0]
+                    try:
+                        rects = page.get_image_rects(xref)
+                    except Exception:
+                        rects = []
+
+                    for rect in rects:
+                        coverage = (rect.width * rect.height) / page_area
+                        if coverage >= 0.70:
+                            page_has_large_object = True
+                            break
+
+                    if page_has_large_object:
+                        break
+
+                if not page_has_large_object:
+                    try:
+                        drawings = page.get_drawings()
+                    except Exception:
+                        drawings = []
+
+                    for drawing in drawings:
+                        rect = drawing.get("rect")
+                        if rect is None:
+                            continue
+                        coverage = (rect.width * rect.height) / page_area
+                        if coverage >= 0.70:
+                            page_has_large_object = True
+                            break
+
+                if page_has_large_object:
+                    detected_pages += 1
+
+            required_pages = 1 if len(page_indexes) == 1 else max(2, math.ceil(len(page_indexes) * 0.6))
+            result = detected_pages >= required_pages
+            logger.info(
+                f"background_detected={result}, detected_pages={detected_pages}, "
+                f"sampled_pages={len(page_indexes)}"
+            )
+            return result
+
+    except Exception as e:
+        logger.warning(f"background_detected=False, reason=inspection_failed, error={e}")
+        return False
+
+def analyze_pdf_ratio(file_path: str) -> str:
+    """
+    Analyze sampled PDF page ratios.
+    Returns NORMAL_PDF_BY_RATIO, SLIDE_PDF_BY_RATIO, or UNCERTAIN.
+    """
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        raise ImportError("PyMuPDF is required for PDF ratio analysis. Please install it using 'pip install PyMuPDF'")
+
+    try:
+        with fitz.open(file_path) as doc:
+            page_indexes = _sample_pdf_page_indexes(len(doc))
+            if not page_indexes:
+                logger.info("ratio_result=UNCERTAIN, reason=no_pages")
+                return "UNCERTAIN"
+
+            normal_count = 0
+            slide_count = 0
+            ratios = []
+
+            for page_index in page_indexes:
+                rect = doc[page_index].rect
+                if rect.height <= 0:
+                    continue
+
+                ratio = rect.width / rect.height
+                ratios.append(round(ratio, 4))
+
+                if 0.65 <= ratio <= 0.85:
+                    normal_count += 1
+                elif 1.30 <= ratio <= 1.36 or 1.70 <= ratio <= 1.82:
+                    slide_count += 1
+
+            valid_count = len(ratios)
+            if valid_count == 0:
+                result = "UNCERTAIN"
+            elif normal_count > valid_count / 2:
+                result = "NORMAL_PDF_BY_RATIO"
+            elif slide_count > valid_count / 2:
+                result = "SLIDE_PDF_BY_RATIO"
+            else:
+                result = "UNCERTAIN"
+
+            logger.info(
+                f"ratio_result={result}, ratios={ratios}, "
+                f"normal_count={normal_count}, slide_count={slide_count}"
+            )
+            return result
+
+    except Exception as e:
+        logger.warning(f"ratio_result=UNCERTAIN, reason=ratio_analysis_failed, error={e}")
+        return "UNCERTAIN"
+
+def _extract_text_after_marker(gemini_text: str, marker: str = "EXTRACTED_TEXT:") -> str:
+    marker_index = gemini_text.find(marker)
+    if marker_index < 0:
+        return gemini_text.strip()
+    return gemini_text[marker_index + len(marker):].strip()
+
+def extract_pdf_auto(file_path: str) -> str:
+    """Main flow for directly uploaded PDF files."""
+    if has_full_page_background_or_object(file_path):
+        logger.info("background_detected=True -> slide_pdf_prompt_b")
+        return extract_presentation_document(file_path)
+
+    ratio_result = analyze_pdf_ratio(file_path)
+    logger.info(f"ratio_result={ratio_result}")
+
+    if ratio_result == "SLIDE_PDF_BY_RATIO":
+        logger.info("slide_pdf_prompt_b")
+        return extract_presentation_document(file_path)
+
+    if ratio_result == "NORMAL_PDF_BY_RATIO":
+        logger.info("normal_pdf_python_extract")
+        return extract_text_from_pdf(file_path)
+
+    logger.info("uncertain_pdf_prompt_a")
+    gemini_text = call_gemini_for_pdf(file_path, PROMPT_A)
+    normalized = (gemini_text or "").upper()
+
+    if "DOCUMENT_TYPE: NORMAL_PDF" in normalized:
+        logger.info("PROMPT_A classified NORMAL_PDF -> normal_pdf_python_extract")
+        return extract_text_from_pdf(file_path)
+
+    if "DOCUMENT_TYPE: GEMINI_PDF" in normalized:
+        logger.info("PROMPT_A classified GEMINI_PDF -> using EXTRACTED_TEXT")
+        extracted_text = _extract_text_after_marker(gemini_text)
+        if not extracted_text:
+            raise ValueError("Gemini classified PDF as GEMINI_PDF but returned empty EXTRACTED_TEXT")
+        return extracted_text
+
+    logger.warning("PROMPT_A returned unrecognized format; returning Gemini text as fallback.")
+    return gemini_text
 
 def extract_text_from_docx(file_path: str) -> str:
     try:
@@ -422,349 +675,144 @@ def extract_text_from_excel(file_path: str, file_type: str = "") -> str:
         return "\n".join(text_parts)
 
 
-PPTX_IMAGE_PROMPT = """Bạn là Kiến trúc sư Hệ thống và Chuyên gia Phân tích. Hãy trả về kết quả theo format sau:
-DÒNG 1: [TYPE] -> Chọn 1 trong 4: DIAGRAM, CHART, PHOTO, LOGO.
-DÒNG 2 TRỞ ĐI: [ANALYSIS]
-- Nếu là DIAGRAM (Sơ đồ): Phân tích Purpose, Main Actors, Input, Output, Components, Relationships, Data Flow, Key Concepts. Không mô tả màu sắc/hình dạng.
-- Nếu là CHART (Biểu đồ): Mô tả Loại biểu đồ, Trục X, Trục Y, Legend, Peak, Lowest Point, Trend, Trend Change, Anomaly.
-- Nếu là PHOTO (Ảnh/Screenshot): Mô tả tổng quan nội dung, văn bản trong ảnh, ý nghĩa học tập.
-- Nếu là LOGO (Logo/Icon/Watermark): Trả về mô tả ngắn gọn."""
+def _find_libreoffice() -> str:
+    """Find the LibreOffice executable path."""
+    if LIBREOFFICE_PATH and os.path.exists(LIBREOFFICE_PATH):
+        return LIBREOFFICE_PATH
+
+    soffice_path = shutil.which("soffice")
+    if soffice_path:
+        return soffice_path
+
+    common_paths = [
+        r"C:\Program Files\LibreOffice\program\soffice.exe",
+        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+    ]
+    for path in common_paths:
+        if os.path.exists(path):
+            return path
+            
+    return ""
+
+def convert_ppt_to_pdf(file_path: str) -> str:
+    """
+    Convert PPT/PPTX to PDF using LibreOffice Headless.
+    Returns the absolute path to the converted PDF file.
+    """
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    abs_file_path = os.path.abspath(file_path)
+    output_dir = os.path.dirname(abs_file_path)
+
+    base_name = os.path.splitext(os.path.basename(abs_file_path))[0]
+    pdf_path = os.path.join(output_dir, f"{base_name}.pdf")
+
+    logger.info(f"Start converting PPT/PPTX to PDF: {abs_file_path}")
+
+    libreoffice_path = _find_libreoffice()
+
+    if not libreoffice_path or not os.path.exists(libreoffice_path):
+        raise RuntimeError(
+            "LibreOffice not found. Set LIBREOFFICE_PATH or install soffice in PATH."
+        )
+
+    command = [
+        libreoffice_path,
+        "--headless",
+        "--convert-to",
+        "pdf",
+        "--outdir",
+        output_dir,
+        abs_file_path
+    ]
+
+    logger.info("Running LibreOffice command:")
+    logger.info(" ".join(command))
+
+    try:
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=120,
+            check=True
+        )
+
+        logger.info(result.stdout)
+
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"LibreOffice conversion timed out for file: {abs_file_path}")
+
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            f"LibreOffice conversion failed.\n"
+            f"stdout:\n{e.stdout}\n\n"
+            f"stderr:\n{e.stderr}"
+        )
+
+    if not os.path.exists(pdf_path):
+        raise RuntimeError(
+            f"LibreOffice finished but PDF was not created: {pdf_path}"
+        )
+
+    logger.info(f"PDF created successfully: {pdf_path}")
+
+    return pdf_path
 
 def extract_text_from_pptx(file_path: str) -> str:
+    """Backward-compatible wrapper for PPT/PPTX extraction."""
+    return extract_presentation_document(file_path)
+
+def extract_presentation_document(file_path: str) -> str:
+    """
+    Extract a confirmed presentation/slide document.
+    PPT/PPTX are converted to PDF first; slide PDFs go directly to Gemini Prompt B.
+    """
     ext = os.path.splitext(file_path)[1].lower().strip('.')
-    if ext == 'ppt':
-        raise ValueError("Định dạng .ppt cũ không được hỗ trợ để bóc tách. Vui lòng chuyển đổi sang .pptx trước khi upload.")
-        
+
+    if ext in ["ppt", "pptx"]:
+        pdf_path = convert_ppt_to_pdf(file_path)
+        logger.info(f"ppt_converted_prompt_b, source={file_path}, converted_pdf={pdf_path}")
+        return call_gemini_for_pdf(pdf_path, PROMPT_B)
+
+    if ext == "pdf":
+        logger.info("slide_pdf_prompt_b")
+        return call_gemini_for_pdf(file_path, PROMPT_B)
+
+    raise ValueError(f"Unsupported presentation document type: {ext}")
+
+def call_gemini_for_pdf(file_path: str, prompt: str) -> str:
+    """Call Gemini Inline API for a PDF with the provided prompt."""
+    client = get_gemini_client()
     try:
-        from pptx import Presentation
-        from pptx.enum.shapes import MSO_SHAPE_TYPE
-    except ImportError:
-        raise ImportError("python-pptx is required. pip install python-pptx")
-        
-    try:
-        import imagehash
-        from PIL import Image
-        import io
-        import hashlib
-        import tempfile
-    except ImportError:
-        raise ImportError("Pillow and ImageHash are required. pip install Pillow ImageHash")
-
-    prs = Presentation(file_path)
-    slide_width = prs.slide_width
-    slide_height = prs.slide_height
-    
-    # Phase 1: Scan Entire Presentation
-    parsed_slides = []
-    image_records = []
-    phash_counter = {}
-    
-    for idx, slide in enumerate(prs.slides, start=1):
-        slide_types = set()
-        slide_parts = []
-        
-        slide_title = ""
-        if slide.shapes.title:
-            slide_title = slide.shapes.title.text.strip()
+        logger.info(f"Reading PDF file {file_path} for Gemini Inline API...")
+        with open(file_path, "rb") as f:
+            pdf_bytes = f.read()
             
-        if slide_title:
-            slide_parts.append(f"Title: {slide_title}")
+        pdf_part = types.Part.from_bytes(
+            data=pdf_bytes,
+            mime_type="application/pdf",
+        )
+        
+        logger.info(f"Sending PDF inline analysis request to model: {GEMINI_MODEL}")
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[pdf_part, prompt]
+        )
+        
+        text = response.text
+        if not text or not text.strip():
+            raise ValueError("Gemini returned empty text for PDF extraction")
             
-        picture_count_in_slide = 0
-        
-        for shape_idx, shape in enumerate(slide.shapes):
-            if shape.has_text_frame:
-                text = shape.text.strip()
-                if text and text != slide_title:
-                    slide_parts.append(text)
-                    if "public class " in text or "def " in text or "SELECT " in text.upper():
-                        slide_types.add("CODE")
-                    else:
-                        slide_types.add("TEXT")
-                        
-            elif shape.has_table:
-                slide_types.add("TABLE")
-                for row in shape.table.rows:
-                    row_data = []
-                    for cell in row.cells:
-                        row_data.append(cell.text.strip().replace("\n", " "))
-                    slide_parts.append(" | ".join(row_data))
-                    
-            elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                picture_count_in_slide += 1
-                is_first_picture = (picture_count_in_slide == 1)
-                
-                image_blob = shape.image.blob
-                img = Image.open(io.BytesIO(image_blob))
-                h = str(imagehash.phash(img))
-                
-                phash_counter[h] = phash_counter.get(h, 0) + 1
-                
-                width_px = shape.width.inches * 96 if shape.width else 0
-                height_px = shape.height.inches * 96 if shape.height else 0
-                
-                width_ratio = shape.width / slide_width if slide_width and shape.width else 0
-                height_ratio = shape.height / slide_height if slide_height and shape.height else 0
-                
-                img_ext = shape.image.ext
-                
-                record = {
-                    "slide_index": idx,
-                    "shape_index": shape_idx,
-                    "is_first_picture": is_first_picture,
-                    "width_px": width_px,
-                    "height_px": height_px,
-                    "width_ratio": width_ratio,
-                    "height_ratio": height_ratio,
-                    "image_size": len(image_blob),
-                    "phash": h,
-                    "image_blob": image_blob,
-                    "ext": img_ext
-                }
-                image_records.append(record)
-                
-                slide_parts.append({
-                    "job_type": "image",
-                    "record": record
-                })
-                
-            elif shape.shape_type == MSO_SHAPE_TYPE.MEDIA:
-                media_blob = None
-                media_ext = "mp4"
-                try:
-                    xml = shape._element.xml
-                    import re
-                    match = re.search(r'<(?:a:videoFile|a:audioFile)[^>]+r:link="(rId\d+)"', xml)
-                    if match:
-                        r_id = match.group(1)
-                        if r_id in shape.part.rels:
-                            rel = shape.part.rels[r_id]
-                            if rel.target_part:
-                                media_blob = rel.target_part.blob
-                                if hasattr(rel.target_part, 'partname') and rel.target_part.partname:
-                                    media_ext = rel.target_part.partname.ext.strip('.')
-                except Exception as e:
-                    logger.warning(f"Failed to extract media blob: {e}")
-                    
-                if media_blob:
-                    h = hashlib.md5(media_blob).hexdigest()
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{media_ext}") as tmp:
-                        tmp.write(media_blob)
-                        tmp_path = tmp.name
-                        
-                    is_audio = media_ext.lower() in ['mp3', 'wav', 'm4a', 'ogg', 'wma']
-                    job_type = "audio" if is_audio else "video"
-                    
-                    slide_parts.append({
-                        "job_type": job_type,
-                        "hash": h,
-                        "tmp_path": tmp_path,
-                        "ext": media_ext
-                    })
-                else:
-                    slide_parts.append("[Embedded Media: Lỗi trích xuất]")
-                    slide_types.add("MIXED")
-                
-        parsed_slides.append({
-            "idx": idx,
-            "parts": slide_parts,
-            "slide_types": slide_types
-        })
+        return text
+    except Exception as e:
+        logger.error(f"Failed to process PDF with Gemini Inline API: {e}")
+        raise
 
-    # Phase 2: Classification
-    stats = {
-        "total": len(image_records),
-        "small": 0,
-        "background": 0,
-        "template": 0,
-        "cache": 0,
-        "gemini": 0
-    }
+def extract_text_from_pdf_gemini(file_path: str) -> str:
+    """Backward-compatible wrapper for old call sites."""
+    return call_gemini_for_pdf(file_path, PROMPT_A)
 
-    media_cache = {} 
-    unique_image_jobs = []
-    unique_media_jobs = []
-    
-    for slide_data in parsed_slides:
-        for part in slide_data["parts"]:
-            if isinstance(part, dict) and "job_type" in part:
-                if part["job_type"] == "image":
-                    record = part["record"]
-                    h = record["phash"]
-                    idx = record["slide_index"]
-                    
-                    # Step 1: Small Image Filter
-                    if record["width_px"] < 120 or record["height_px"] < 120:
-                        logger.info(f"[SKIP][SMALL_IMAGE]\nSlide {idx}")
-                        part["classification"] = "SMALL_IMAGE"
-                        stats["small"] += 1
-                        continue
-                        
-                    # Step 2: Repeated Image Detection & Step 3: Background vs Template
-                    if phash_counter.get(h, 0) >= 3:
-                        is_bg_size = record["width_ratio"] > 0.8 and record["height_ratio"] > 0.8
-                        is_first = record["is_first_picture"]
-                        
-                        if is_bg_size and is_first:
-                            logger.info(f"[SKIP][BACKGROUND]\nSlide {idx}")
-                            part["classification"] = "BACKGROUND"
-                            stats["background"] += 1
-                        else:
-                            logger.info(f"[SKIP][TEMPLATE_GRAPHIC]\nSlide {idx}")
-                            part["classification"] = "TEMPLATE_GRAPHIC"
-                            stats["template"] += 1
-                        continue
-                        
-                    # Step 4: Duplicate Cache
-                    if h in media_cache:
-                        logger.info(f"[CACHE]\nReused Gemini result for Slide {idx}")
-                        part["classification"] = "CACHE"
-                        stats["cache"] += 1
-                        continue
-                        
-                    # Step 5: Gemini Analysis
-                    logger.info(f"[GEMINI]\nAnalyzing educational image on Slide {idx}...")
-                    part["classification"] = "GEMINI"
-                    stats["gemini"] += 1
-                    
-                    media_cache[h] = None 
-                    unique_image_jobs.append(part)
-                    
-                else: 
-                    h = part["hash"]
-                    if h in media_cache:
-                        part["classification"] = "CACHE"
-                    else:
-                        part["classification"] = "GEMINI"
-                        media_cache[h] = None
-                        unique_media_jobs.append(part)
-
-    # Phase 3: Process Media Concurrently
-    def process_job(job):
-        job_type = job["job_type"]
-        tmp_path = None
-        
-        try:
-            if job_type == "image":
-                record = job["record"]
-                ext = record["ext"]
-                h = record["phash"]
-                image_blob = record["image_blob"]
-                
-                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-                    tmp.write(image_blob)
-                    tmp_path = tmp.name
-                    
-                mime_type = guess_media_mime_type(tmp_path, f"image/{ext}")
-                return h, extract_image_inline(tmp_path, mime_type, prompt=PPTX_IMAGE_PROMPT).strip()
-                
-            elif job_type == "video":
-                tmp_path = job["tmp_path"]
-                ext = job["ext"]
-                h = job["hash"]
-                mime_type = guess_media_mime_type(tmp_path, f"video/{ext}")
-                return h, extract_media_with_gemini(tmp_path, mime_type).strip()
-                
-            elif job_type == "audio":
-                tmp_path = job["tmp_path"]
-                ext = job["ext"]
-                h = job["hash"]
-                mime_type = guess_media_mime_type(tmp_path, f"audio/{ext}")
-                return h, extract_media_with_gemini(tmp_path, mime_type).strip()
-                
-        except Exception as e:
-            logger.error(f"Failed to process {job_type} with Gemini: {e}")
-            h_val = job.get("record", {}).get("phash") if job_type == "image" else job.get("hash")
-            return h_val, f"[{job_type.capitalize()} extraction failed]"
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                try:
-                    os.remove(tmp_path)
-                except OSError:
-                    pass
-
-    all_jobs = unique_image_jobs + unique_media_jobs
-    if all_jobs:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(process_job, job) for job in all_jobs]
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    h, text_res = future.result()
-                    media_cache[h] = text_res
-                except Exception as exc:
-                    logger.error(f"Job generated an exception: {exc}")
-
-    # Phase 4: Cache Gemini Result and Log Statistics
-    stats_msg = f"""
-========== PPT Image Statistics ==========
-Total images           : {stats['total']}
-Small skipped          : {stats['small']}
-Background skipped     : {stats['background']}
-Template skipped       : {stats['template']}
-Gemini cache reused    : {stats['cache']}
-Gemini analyzed        : {stats['gemini']}
-========================================="""
-    logger.info(stats_msg)
-
-    # Phase 5: Merge results back into the original slide order
-    text_parts = []
-    
-    for slide_data in parsed_slides:
-        idx = slide_data["idx"]
-        slide_types = slide_data["slide_types"]
-        slide_text_parts = []
-        
-        for part in slide_data["parts"]:
-            if isinstance(part, dict) and "job_type" in part:
-                if part["job_type"] == "image":
-                    classification = part.get("classification")
-                    
-                    if classification in ["SMALL_IMAGE", "BACKGROUND", "TEMPLATE_GRAPHIC"]:
-                        continue # Skip these images
-                        
-                    h = part["record"]["phash"]
-                    text_res = media_cache.get(h)
-                    if not text_res:
-                        text_res = "[Image extraction failed]"
-                        
-                    lines = text_res.split("\n", 1)
-                    if lines:
-                        type_line = lines[0].upper()
-                        if "DIAGRAM" in type_line:
-                            slide_types.add("DIAGRAM")
-                        elif "CHART" in type_line:
-                            slide_types.add("CHART")
-                        else:
-                            slide_types.add("IMAGE")
-                            
-                    slide_text_parts.append(text_res)
-                    
-                else:
-                    h = part["hash"]
-                    text_res = media_cache.get(h)
-                    if not text_res:
-                        text_res = "[Media extraction failed]"
-                    slide_types.add("MIXED")
-                    slide_text_parts.append(text_res)
-                    
-            else:
-                slide_text_parts.append(part)
-                
-        if len(slide_types) == 0:
-            slide_type = "TEXT"
-        elif len(slide_types) == 1:
-            slide_type = list(slide_types)[0]
-        else:
-            if "DIAGRAM" in slide_types:
-                slide_type = "DIAGRAM"
-            elif "CHART" in slide_types:
-                slide_type = "CHART"
-            else:
-                slide_type = "MIXED"
-                
-        text_parts.append(f"<<<SLIDE_START:{idx}|TYPE:{slide_type}>>>")
-        text_parts.append(f"[Slide {idx}]")
-        text_parts.append("\n\n".join(slide_text_parts))
-        
-    return "\n".join(text_parts)

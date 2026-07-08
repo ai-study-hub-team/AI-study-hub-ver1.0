@@ -48,6 +48,10 @@ public class User {
     @Builder.Default
     private UserStatus status = UserStatus.ACTIVE;
 
+    @Column(name = "total_storage_used_bytes", nullable = false)
+    @Builder.Default
+    private Long totalStorageUsedBytes = 0L;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -77,6 +81,9 @@ public class User {
         }
         if (status == null) {
             status = UserStatus.ACTIVE;
+        }
+        if (totalStorageUsedBytes == null) {
+            totalStorageUsedBytes = 0L;
         }
     }
     @PreUpdate

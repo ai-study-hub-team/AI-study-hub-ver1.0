@@ -72,7 +72,6 @@ public class AiIntegrationService {
             ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
 
             log.info("AI service HTTP status: {}", response.getStatusCode());
-            log.info("AI service response body: {}", response.getBody());
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 Map<String, Object> body = response.getBody();
@@ -81,7 +80,12 @@ public class AiIntegrationService {
 
                 if ("PROCESSED".equals(status)) {
                     log.info("Python returned PROCESSED for document ID: {}", documentId);
-                    log.info("Text length: {} | Preview: {}", body.get("textLength"), body.get("previewText"));
+                    log.info(
+                            "AI extraction summary for document ID {}: textLength={}, chunkCount={}",
+                            documentId,
+                            body.get("textLength"),
+                            body.get("chunkCount")
+                    );
 
                     // Log vector storage result from Python (informational)
                     Boolean vectorStored = (Boolean) body.get("vectorStored");
