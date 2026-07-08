@@ -309,17 +309,46 @@ def extract_text_from_txt(file_path: str) -> str:
     with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
         return f.read()
 
-def extract_text_from_pdf(file_path: str) -> str:
+def extract_text_from_pdf(file_path: str) -> dict:
+    """
+    Extract text from a PDF preserving per-page character offsets.
+
+    Returns a dict:
+        {
+            "text": str,          # full concatenated text (all pages)
+            "page_char_map": [    # one entry per page (0-indexed list, 1-based page_number)
+                {
+                    "page_number": int,   # 1-based
+                    "char_start": int,    # inclusive start offset in 'text'
+                    "char_end": int,      # exclusive end offset in 'text'
+                }
+            ]
+        }
+
+    The caller (main.py /process-document) uses page_char_map to assign
+    locatorType="PAGE", locatorStart, locatorEnd to each chunk.
+    """
     try:
         import fitz  # PyMuPDF
     except ImportError:
         raise ImportError("PyMuPDF is required for PDF extraction. Please install it using 'pip install PyMuPDF'")
-        
-    text = ""
+
+    full_text = ""
+    page_char_map = []
     with fitz.open(file_path) as doc:
-        for page in doc:
-            text += page.get_text()
-    return text
+        for page_num_0based, page in enumerate(doc):
+            page_text = page.get_text()
+            char_start = len(full_text)
+            full_text += page_text
+            char_end = len(full_text)
+            page_char_map.append({
+                "page_number": page_num_0based + 1,  # 1-based
+                "char_start": char_start,
+                "char_end": char_end,
+            })
+
+    return {"text": full_text, "page_char_map": page_char_map}
+
 
 def extract_text_from_docx(file_path: str) -> str:
     try:

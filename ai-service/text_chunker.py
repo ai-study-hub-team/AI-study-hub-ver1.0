@@ -12,12 +12,28 @@ def chunk_text(
 ) -> list:
     """
     Dispatcher for chunking logic based on file type.
+
+    Locator metadata added per file type:
+      - PDF  : locatorType="PAGE",    locatorStart/End = 1-based page numbers  (set by caller in main.py after per-page extraction)
+      - PPTX : locatorType="SLIDE",   locatorStart/End = 1-based slide numbers (set here in chunk_pptx)
+      - DOCX : locatorType="UNKNOWN", locatorStart/End = None                   (set here; no reliable page numbers without PDF render)
+      - XLS/X: locatorType="UNKNOWN", locatorStart/End = None                   (row ranges are stored separately as sheetName/rowStart/rowEnd)
+      - Other: locatorType not set    (chunk_text_sliding_window — set by caller)
     """
     file_type = (file_type or "").lower()
     if file_type in ["xls", "xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"]:
         return chunk_excel(text)
     elif file_type in ["ppt", "pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.ms-powerpoint"]:
         return chunk_pptx(text, chunk_size, chunk_overlap, max_chunks)
+    elif file_type in ["docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]:
+        # DOCX: no reliable fixed page numbers without rendering to PDF.
+        # Extract and chunk normally, but mark every chunk as UNKNOWN.
+        chunks = chunk_text_sliding_window(text, chunk_size, chunk_overlap, max_chunks)
+        for chunk in chunks:
+            chunk["locatorType"] = "UNKNOWN"
+            chunk["locatorStart"] = None
+            chunk["locatorEnd"] = None
+        return chunks
     else:
         return chunk_text_sliding_window(text, chunk_size, chunk_overlap, max_chunks)
 
@@ -66,13 +82,15 @@ def chunk_excel(text: str, max_rows=50, max_chars=1500) -> list:
             nonlocal chunk_index, current_chunk_rows, start_row_num, end_row_num, current_char_count
             if not current_chunk_rows:
                 return
-            
+
             chunk_text_parts = [f"[Sheet: {sheet_name}]"]
             if header:
                 chunk_text_parts.append(header)
             chunk_text_parts.extend(current_chunk_rows)
             chunk_text_str = "\n\n".join(chunk_text_parts)
-            
+
+            # Excel/XLS: row ranges are stored as sheetName/rowStart/rowEnd.
+            # No reliable page-level locator exists; use UNKNOWN.
             chunks.append({
                 "chunkIndex": chunk_index,
                 "chunkText": chunk_text_str.strip(),
@@ -81,7 +99,10 @@ def chunk_excel(text: str, max_rows=50, max_chars=1500) -> list:
                 "textLength": len(chunk_text_str),
                 "sheetName": sheet_name,
                 "rowStart": start_row_num,
-                "rowEnd": end_row_num
+                "rowEnd": end_row_num,
+                "locatorType": "UNKNOWN",
+                "locatorStart": None,
+                "locatorEnd": None,
             })
             chunk_index += 1
             current_chunk_rows = []
@@ -148,36 +169,43 @@ def chunk_pptx(text: str, chunk_size=1000, chunk_overlap=150, max_chunks=10000) 
     
     chunks = chunk_text_sliding_window(clean_text, chunk_size, chunk_overlap, max_chunks)
     
+    # For PPTX, locatorStart/locatorEnd represent 1-based slide numbers (not page numbers).
+    # A single chunk may span multiple slides when its text crosses a slide boundary.
     for chunk in chunks:
         c_start = chunk["charStart"]
         c_end = chunk["charEnd"]
-        
+
         start_slide = None
         end_slide = None
         types_in_chunk = set()
-        
+
         for i, (pos, s_num, s_type) in enumerate(slide_mapping):
             if pos <= c_start:
                 start_slide = s_num
-                types_in_chunk.clear() 
+                types_in_chunk.clear()
                 types_in_chunk.add(s_type)
             elif c_start < pos < c_end:
                 types_in_chunk.add(s_type)
                 end_slide = s_num
-                
+
         if end_slide is None:
             end_slide = start_slide
-            
+
         chunk["slideStart"] = start_slide
         chunk["slideEnd"] = end_slide
-        
+
+        # Generic locator fields — SLIDE type with 1-based slide numbers
+        chunk["locatorType"] = "SLIDE"
+        chunk["locatorStart"] = start_slide
+        chunk["locatorEnd"] = end_slide
+
         if len(types_in_chunk) > 1:
             chunk["slideType"] = "MIXED"
         elif len(types_in_chunk) == 1:
             chunk["slideType"] = list(types_in_chunk)[0]
         else:
             chunk["slideType"] = "TEXT"
-            
+
     return chunks
 
 
