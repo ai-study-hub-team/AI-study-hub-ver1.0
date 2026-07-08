@@ -787,9 +787,7 @@ export function MyLibrary() {
   const [allCategories, setAllCategories] = useState<CategoryResponse[]>([]);
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
-    null,
-  );
+  const selectedCategoryId: number | null = null;
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [editDocument, setEditDocument] = useState<LibraryDocument | null>(
     null,
@@ -1598,10 +1596,6 @@ export function MyLibrary() {
   const selectedFolder = folders.find(
     (folder) => folder.id === selectedFolderId,
   );
-  const selectedCategory = categories.find(
-    (category) => Number(category.id) === Number(selectedCategoryId),
-  );
-
   const rootFolders = useMemo(() => {
     return folders.filter((folder) => folder.parentFolderId === null);
   }, [folders]);
@@ -1870,12 +1864,6 @@ export function MyLibrary() {
                   key={category.id}
                   category={category}
                   onClick={() => {
-                    if (isNoCategory) {
-                      setSelectedCategoryId(0);
-                      setSelectedFolderId(null);
-                      return;
-                    }
-
                     navigate(`/app/categories/${category.id}`, {
                       state: { from: "/app/library" },
                     });
@@ -1907,14 +1895,6 @@ export function MyLibrary() {
           </div>
 
           <div className="flex items-center gap-3">
-            {selectedCategory && (
-              <button
-                onClick={() => setSelectedCategoryId(null)}
-                className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700 hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-300"
-              >
-                {selectedCategory.name} ×
-              </button>
-            )}
             {selectedFolder && (
               <button
                 onClick={() => setSelectedFolderId(null)}

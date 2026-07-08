@@ -26,6 +26,7 @@ import type { DocumentListItemResponse } from "../../types/documents/types";
 import { getCurrentUserId } from "../../services/apiClient";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
+import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
 
 const statusBadgeClass: Record<AiStatus, string> = {
   UPLOADED: "bg-blue-50 text-blue-700 ring-blue-200",
@@ -111,9 +112,10 @@ export function CategoryDocumentsPage() {
   const loadDocuments = async () => {
     try {
       const currentCategoryId = Number(categoryId);
+      const isUncategorized = currentCategoryId === 0;
       const userId = getCurrentUserId();
 
-      if (!currentCategoryId) {
+      if (!Number.isInteger(currentCategoryId) || currentCategoryId < 0) {
         toast.error("Invalid category.");
         navigate("/app/categories");
         return;
@@ -127,10 +129,36 @@ export function CategoryDocumentsPage() {
 
       const categoryResponse = await categoryApi.getCategories();
 
-      const currentCategory = categoryResponse.data.find(
-        (category) =>
-          category.id === currentCategoryId &&
-          Number(category.userId) === Number(userId),
+      const myCategories = (categoryResponse.data ?? []).filter(
+        (category) => Number(category.userId) === Number(userId),
+      );
+
+      if (isUncategorized) {
+        setCategoryName("Uncategorized");
+
+        const response = await documentApi.getDocuments({
+          page: 0,
+          size: 100,
+        });
+
+        const myCategoryIds = new Set(
+          myCategories.map((category) => Number(category.id)),
+        );
+
+        setDocuments(
+          filterMyDocuments(response.data.content ?? [], userId).filter(
+            (document) =>
+              document.categoryId === null ||
+              document.categoryId === undefined ||
+              !myCategoryIds.has(Number(document.categoryId)),
+          ),
+        );
+
+        return;
+      }
+
+      const currentCategory = myCategories.find(
+        (category) => Number(category.id) === currentCategoryId,
       );
 
       if (!currentCategory) {
@@ -296,22 +324,22 @@ export function CategoryDocumentsPage() {
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="min-w-[1300px]">
-          <div className="grid grid-cols-[320px_150px_150px_120px_150px_150px_260px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:border-slate-800 dark:bg-slate-950">
+        <div className="min-w-[1120px]">
+          <div className="grid grid-cols-[320px_150px_150px_120px_150px_150px_72px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:border-slate-800 dark:bg-slate-950">
             <span>Document Name</span>
             <span>Category</span>
             <span>Date Added</span>
             <span>Size</span>
             <span>Upload Status</span>
             <span>AI Status</span>
-            <span className="text-right">Actions</span>
+            <span className="text-center">Actions</span>
           </div>
 
           {documents.length > 0 ? (
             documents.map((document) => (
               <div
                 key={document.id}
-                className="grid grid-cols-[320px_150px_150px_120px_150px_150px_260px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70"
+                className="grid grid-cols-[320px_150px_150px_120px_150px_150px_72px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
@@ -329,7 +357,9 @@ export function CategoryDocumentsPage() {
                 </div>
 
                 <span className="inline-flex max-w-full rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                  <span className="truncate">{document.folder}</span>
+                  <span className="truncate">
+                    {document.categoryName || "Uncategorized"}
+                  </span>
                 </span>
 
                 <p className="text-sm font-semibold text-slate-500">
@@ -352,83 +382,16 @@ export function CategoryDocumentsPage() {
                   {document.aiStatus}
                 </span>
 
-                <div className="flex min-w-[260px] items-center justify-end gap-1">
-                  <button
-                    onClick={() => toggleFavorite(document.id)}
-                    className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
-                      favorites[document.id]
-                        ? "text-amber-400"
-                        : "text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-                    }`}
-                    title={
-                      favorites[document.id]
-                        ? "Remove from favorites"
-                        : "Add to favorites"
-                    }
-                  >
-                    <Star
-                      className={`h-4 w-4 ${
-                        favorites[document.id] ? "fill-amber-400" : ""
-                      }`}
-                    />
-                  </button>
-
-                  <button
-                    onClick={() => handleViewFile(document.id)}
-                    className={actionIconButtonClass}
-                    title="View file"
-                  >
-                    <Eye className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    onClick={() => handleOpenEdit(document)}
-                    className={actionIconButtonClass}
-                    title="Rename"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    onClick={() => handleDownload(document.id, document.name)}
-                    className={actionIconButtonClass}
-                    title="Download"
-                  >
-                    <Download className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => createAndCopyPublicLink(document.id)}
-                    disabled={loadingDocumentId === document.id}
-                    className={actionIconButtonClass}
-                    title="Share document"
-                    aria-label="Share document"
-                  >
-                    <Share2
-                      className={`h-4 w-4 ${
-                        loadingDocumentId === document.id
-                          ? "animate-pulse"
-                          : ""
-                      }`}
-                    />
-                  </button>
-
-                  <button
-                    onClick={() => handleReprocess(document.id)}
-                    className={actionIconButtonClass}
-                    title="Reprocess"
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    onClick={() => setDeleteId(document.id)}
-                    className={deleteIconButtonClass}
-                    title="Delete"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                <div className="flex min-w-[72px] items-center justify-center">
+                  <RowActionMenu>
+                    <ActionMenuItem icon={Star} label={favorites[document.id] ? "Remove favorite" : "Add favorite"} onClick={() => toggleFavorite(document.id)} />
+                    <ActionMenuItem icon={Eye} label="View file" onClick={() => handleViewFile(document.id)} />
+                    <ActionMenuItem icon={Pencil} label="Rename" onClick={() => handleOpenEdit(document)} />
+                    <ActionMenuItem icon={Download} label="Download" onClick={() => handleDownload(document.id, document.name)} />
+                    <ActionMenuItem icon={Share2} label="Share document" onClick={() => createAndCopyPublicLink(document.id)} disabled={loadingDocumentId === document.id} />
+                    <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => handleReprocess(document.id)} />
+                    <ActionMenuItem icon={Trash2} label="Delete" onClick={() => setDeleteId(document.id)} danger />
+                  </RowActionMenu>
                 </div>
               </div>
             ))

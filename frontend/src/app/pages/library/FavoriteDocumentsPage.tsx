@@ -29,6 +29,7 @@ import { useTheme } from "../../../layouts/ThemeProvider";
 import { getCurrentUserId } from "../../services/apiClient";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
+import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
 
 interface FavoriteLibraryDocument {
   favoriteId: number;
@@ -95,7 +96,7 @@ const statusBadgeClass: Record<AiStatus, string> = {
 };
 
 const favoriteListGridClass =
-  "grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_260px] items-center";
+  "grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_72px] items-center";
 
 const actionIconButtonClass =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-300";
@@ -296,75 +297,16 @@ function FavoriteDocumentRow({
         {document.aiStatus}
       </span>
 
-      <div className="flex min-w-[260px] items-center justify-end gap-1">
-        <button
-          type="button"
-          onClick={() => onToggleFavorite(document.id)}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-amber-400 transition-colors hover:bg-amber-50 dark:hover:bg-amber-950/30"
-          title="Remove from favorites"
-        >
-          <Star className="h-4 w-4 fill-amber-400" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onViewFile(document.id)}
-          className={actionIconButtonClass}
-          title="View file"
-        >
-          <Eye className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onEdit(document)}
-          className={actionIconButtonClass}
-          title="Rename"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onDownload(document.id, document.name)}
-          className={actionIconButtonClass}
-          title="Download"
-        >
-          <Download className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onShare(document.id)}
-          disabled={sharingDocumentId === document.id}
-          className={actionIconButtonClass}
-          title="Share document"
-          aria-label="Share document"
-        >
-          <Share2
-            className={`h-4 w-4 ${
-              sharingDocumentId === document.id ? "animate-pulse" : ""
-            }`}
-          />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onReprocess(document.id)}
-          className={actionIconButtonClass}
-          title="Reprocess"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onDelete(document.id)}
-          className={deleteIconButtonClass}
-          title="Delete"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+      <div className="flex min-w-[72px] items-center justify-center">
+        <RowActionMenu>
+          <ActionMenuItem icon={Star} label="Remove from favorites" onClick={() => onToggleFavorite(document.id)} />
+          <ActionMenuItem icon={Eye} label="View file" onClick={() => onViewFile(document.id)} />
+          <ActionMenuItem icon={Pencil} label="Rename" onClick={() => onEdit(document)} />
+          <ActionMenuItem icon={Download} label="Download" onClick={() => onDownload(document.id, document.name)} />
+          <ActionMenuItem icon={Share2} label="Share document" onClick={() => onShare(document.id)} disabled={sharingDocumentId === document.id} />
+          <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => onReprocess(document.id)} />
+          <ActionMenuItem icon={Trash2} label="Delete" onClick={() => onDelete(document.id)} danger />
+        </RowActionMenu>
       </div>
     </div>
   );
@@ -466,66 +408,15 @@ function FavoriteDocumentCard({
         </div>
       </div>
 
-      <div className="mt-5 flex items-center justify-end gap-1 border-t border-slate-100 pt-4 dark:border-slate-800">
-        <button
-          type="button"
-          onClick={() => onViewFile(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-          title="View file"
-        >
-          <Eye className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onEdit(document)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-          title="Rename"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onDownload(document.id, document.name)}
-          className={actionIconButtonClass}
-          title="Download"
-        >
-          <Download className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onShare(document.id)}
-          disabled={sharingDocumentId === document.id}
-          className={actionIconButtonClass}
-          title="Share document"
-          aria-label="Share document"
-        >
-          <Share2
-            className={`h-4 w-4 ${
-              sharingDocumentId === document.id ? "animate-pulse" : ""
-            }`}
-          />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onReprocess(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-          title="Reprocess"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onDelete(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-          title="Delete"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+      <div className="mt-5 flex items-center justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
+        <RowActionMenu>
+          <ActionMenuItem icon={Eye} label="View file" onClick={() => onViewFile(document.id)} />
+          <ActionMenuItem icon={Pencil} label="Rename" onClick={() => onEdit(document)} />
+          <ActionMenuItem icon={Download} label="Download" onClick={() => onDownload(document.id, document.name)} />
+          <ActionMenuItem icon={Share2} label="Share document" onClick={() => onShare(document.id)} disabled={sharingDocumentId === document.id} />
+          <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => onReprocess(document.id)} />
+          <ActionMenuItem icon={Trash2} label="Delete" onClick={() => onDelete(document.id)} danger />
+        </RowActionMenu>
       </div>
     </div>
   );
@@ -782,7 +673,7 @@ export function FavoriteDocumentsPage() {
 
       {viewMode === "list" ? (
         <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="min-w-[1450px]">
+          <div className="min-w-[1265px]">
             <div
               className={`${favoriteListGridClass} border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60`}
             >
@@ -793,7 +684,7 @@ export function FavoriteDocumentsPage() {
               <div>Size</div>
               <div>Upload Status</div>
               <div>AI Status</div>
-              <div className="text-right">Actions</div>
+              <div className="text-center">Actions</div>
             </div>
 
             {isLoading ? (

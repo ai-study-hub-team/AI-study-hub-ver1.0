@@ -34,6 +34,7 @@ import type { AiStatus } from "../../constants/documentStatus";
 import { useTheme } from "../../../layouts/ThemeProvider";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 import { FolderShareModal } from "../library/components/FolderShareModal";
+import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
 
 type ListResponse<T> = T[] | { content?: T[] };
 
@@ -146,7 +147,7 @@ const statusBadgeClass: Record<AiStatus, string> = {
 };
 
 const documentListGridClass =
-  "grid grid-cols-[320px_150px_150px_120px_150px_150px_260px] items-center";
+  "grid grid-cols-[320px_150px_150px_120px_150px_150px_72px] items-center";
 
 const actionIconButtonClass =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-300";
@@ -275,88 +276,17 @@ function DocumentRow({
         {document.aiStatus}
       </span>
 
-      <div className="flex min-w-[260px] items-center justify-end gap-1">
-        <button
-          type="button"
-          onClick={() => onToggleFavorite(document.id)}
-          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
-            document.fav
-              ? "text-amber-400"
-              : "text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-          }`}
-          title="Favorite"
-        >
-          <Star className={`h-4 w-4 ${document.fav ? "fill-amber-400" : ""}`} />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onViewFile(document.id)}
-          className={actionIconButtonClass}
-          title="View file"
-        >
-          <Eye className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onEdit(document)}
-          className={actionIconButtonClass}
-          title="Rename"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onMove(document)}
-          className={actionIconButtonClass}
-          title="Move"
-        >
-          <Folder className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onDownload(document.id, document.name)}
-          className={actionIconButtonClass}
-          title="Download"
-        >
-          <Download className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onShare(document.id)}
-          disabled={sharingDocumentId === document.id}
-          className={actionIconButtonClass}
-          title="Share document"
-          aria-label="Share document"
-        >
-          <Share2
-            className={`h-4 w-4 ${
-              sharingDocumentId === document.id ? "animate-pulse" : ""
-            }`}
-          />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onReprocess(document.id)}
-          className={actionIconButtonClass}
-          title="Reprocess"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onDelete(document.id)}
-          className={deleteIconButtonClass}
-          title="Delete"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+      <div className="flex min-w-[72px] items-center justify-center">
+        <RowActionMenu>
+          <ActionMenuItem icon={Star} label={document.fav ? "Remove favorite" : "Add favorite"} onClick={() => onToggleFavorite(document.id)} />
+          <ActionMenuItem icon={Eye} label="View file" onClick={() => onViewFile(document.id)} />
+          <ActionMenuItem icon={Pencil} label="Rename" onClick={() => onEdit(document)} />
+          <ActionMenuItem icon={Folder} label="Move" onClick={() => onMove(document)} />
+          <ActionMenuItem icon={Download} label="Download" onClick={() => onDownload(document.id, document.name)} />
+          <ActionMenuItem icon={Share2} label="Share document" onClick={() => onShare(document.id)} disabled={sharingDocumentId === document.id} />
+          <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => onReprocess(document.id)} />
+          <ActionMenuItem icon={Trash2} label="Delete" onClick={() => onDelete(document.id)} danger />
+        </RowActionMenu>
       </div>
     </div>
   );
@@ -455,75 +385,16 @@ function DocumentCard({
         </div>
       </div>
 
-      <div className="mt-5 flex items-center justify-end gap-1 border-t border-slate-100 pt-4 dark:border-slate-800">
-        <button
-          type="button"
-          onClick={() => onViewFile(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-          title="View file"
-        >
-          <Eye className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onEdit(document)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-          title="Rename"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onMove(document)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-          title="Move"
-        >
-          <Folder className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onDownload(document.id, document.name)}
-          className={actionIconButtonClass}
-          title="Download"
-        >
-          <Download className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onShare(document.id)}
-          disabled={sharingDocumentId === document.id}
-          className={actionIconButtonClass}
-          title="Share document"
-          aria-label="Share document"
-        >
-          <Share2
-            className={`h-4 w-4 ${
-              sharingDocumentId === document.id ? "animate-pulse" : ""
-            }`}
-          />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onReprocess(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-          title="Reprocess"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onDelete(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-          title="Delete"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+      <div className="mt-5 flex items-center justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
+        <RowActionMenu>
+          <ActionMenuItem icon={Eye} label="View file" onClick={() => onViewFile(document.id)} />
+          <ActionMenuItem icon={Pencil} label="Rename" onClick={() => onEdit(document)} />
+          <ActionMenuItem icon={Folder} label="Move" onClick={() => onMove(document)} />
+          <ActionMenuItem icon={Download} label="Download" onClick={() => onDownload(document.id, document.name)} />
+          <ActionMenuItem icon={Share2} label="Share document" onClick={() => onShare(document.id)} disabled={sharingDocumentId === document.id} />
+          <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => onReprocess(document.id)} />
+          <ActionMenuItem icon={Trash2} label="Delete" onClick={() => onDelete(document.id)} danger />
+        </RowActionMenu>
       </div>
     </div>
   );
@@ -1539,54 +1410,12 @@ export function FolderDocumentsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSharingFolder(item);
-                    }}
-                    className="rounded-lg p-2 text-indigo-500 opacity-100 transition hover:bg-indigo-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-indigo-950/30"
-                    title="Share folder"
-                    aria-label="Share folder"
-                  >
-                    <Share2 className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openMoveFolderModal(item);
-                    }}
-                    className="rounded-lg p-2 text-emerald-500 opacity-100 transition hover:bg-emerald-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-emerald-950/30"
-                    title="Move folder"
-                  >
-                    <MoveRight className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openEditModal(item.id);
-                    }}
-                    className="rounded-lg p-2 text-blue-500 opacity-100 transition hover:bg-blue-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-blue-950/30"
-                    title="Edit folder"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setDeleteId(item.id);
-                    }}
-                    className="rounded-lg p-2 text-red-500 opacity-100 transition hover:bg-red-50 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-red-950/30"
-                    title="Delete folder"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <RowActionMenu>
+                    <ActionMenuItem icon={Share2} label="Share folder" onClick={() => setSharingFolder(item)} />
+                    <ActionMenuItem icon={MoveRight} label="Move folder" onClick={() => openMoveFolderModal(item)} />
+                    <ActionMenuItem icon={Pencil} label="Edit folder" onClick={() => openEditModal(item.id)} />
+                    <ActionMenuItem icon={Trash2} label="Delete folder" onClick={() => setDeleteId(item.id)} danger />
+                  </RowActionMenu>
 
                   <ChevronRight className="h-5 w-5 text-slate-400 transition group-hover:translate-x-1" />
                 </div>
@@ -1641,7 +1470,7 @@ export function FolderDocumentsPage() {
 
         {viewMode === "list" ? (
           <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="min-w-[1300px]">
+            <div className="min-w-[1120px]">
               <div
                 className={`${documentListGridClass} border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60`}
               >
@@ -1651,7 +1480,7 @@ export function FolderDocumentsPage() {
                 <div>Size</div>
                 <div>Upload Status</div>
                 <div>AI Status</div>
-                <div className="text-right">Actions</div>
+                <div className="text-center">Actions</div>
               </div>
 
               {filteredDocuments.length > 0 ? (
