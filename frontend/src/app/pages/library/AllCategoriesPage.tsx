@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
+import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
 
 export function AllCategoriesPage() {
   const navigate = useNavigate();
@@ -125,28 +126,11 @@ const handleUpdateCategory = async () => {
                 <Library className="h-5 w-5" />
               </div>
 
-              <div className="flex shrink-0 items-center gap-1">
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleOpenEdit(category);
-                  }}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600"
-                  title="Edit category"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
-
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setDeleteId(category.id);
-                  }}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                  title="Delete category"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+              <div className="flex shrink-0 items-center">
+                <RowActionMenu>
+                  <ActionMenuItem icon={Pencil} label="Edit category" onClick={() => handleOpenEdit(category)} />
+                  <ActionMenuItem icon={Trash2} label="Delete category" onClick={() => setDeleteId(category.id)} danger />
+                </RowActionMenu>
               </div>
             </div>
 

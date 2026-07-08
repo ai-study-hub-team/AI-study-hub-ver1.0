@@ -194,15 +194,15 @@ export function StudentDashboard() {
         const documentsData = documentsResponse.data;
 
         if (Array.isArray(documentsData)) {
-          const myDocuments = filterMyDocuments(documentsData, userId);
+          const myDocuments = filterMyDocuments<DocumentItem>(documentsData, userId);
           setDocuments(myDocuments);
           setTotalDocuments(myDocuments.length);
         } else if (Array.isArray(documentsData?.data)) {
-          const myDocuments = filterMyDocuments(documentsData.data, userId);
+          const myDocuments = filterMyDocuments<DocumentItem>(documentsData.data, userId);
           setDocuments(myDocuments);
           setTotalDocuments(myDocuments.length);
         } else if (Array.isArray(documentsData?.content)) {
-          const myDocuments = filterMyDocuments(documentsData.content, userId);
+          const myDocuments = filterMyDocuments<DocumentItem>(documentsData.content, userId);
           setDocuments(myDocuments);
           setTotalDocuments(myDocuments.length);
         } else {
