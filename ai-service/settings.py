@@ -34,5 +34,5 @@ SPRING_BOOT_BASE_URL = os.getenv("SPRING_BOOT_BASE_URL", "http://localhost:8080"
 
 # ─── Embedding Model ─────────────────────────────────────────────────────────
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-
+LIBREOFFICE_PATH = os.getenv("LIBREOFFICE_PATH")
 

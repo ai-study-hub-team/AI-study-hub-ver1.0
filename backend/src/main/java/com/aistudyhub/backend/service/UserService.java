@@ -189,6 +189,11 @@ public class UserService {
                 .status(user.getStatus().name())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
+                .totalStorageUsedBytes(
+                        user.getTotalStorageUsedBytes() == null
+                                ? 0L
+                                : user.getTotalStorageUsedBytes()
+                )
                 .documentCount(
                         user.getDocuments() == null
                                 ? 0

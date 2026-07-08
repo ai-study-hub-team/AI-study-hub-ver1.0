@@ -140,6 +140,8 @@ async def process_document(request: DocumentRequest):
         # ── 3b. Log sample locator metadata for the first 5 chunks ──────────
         logger.info(f"Extracted {text_length} characters from document ID: {request.documentId}")
         logger.info(f"Created {chunk_count} chunks")
+<<<<<<< HEAD
+=======
         if chunks:
             logger.info(f"First chunk preview: {chunks[0]['chunkText'][:100]}...")
         for i, chunk in enumerate(chunks[:5]):
@@ -150,6 +152,7 @@ async def process_document(request: DocumentRequest):
                 f"locatorStart={chunk.get('locatorStart')}, "
                 f"locatorEnd={chunk.get('locatorEnd')}"
             )
+>>>>>>> origin/main
 
         # ── 4. Upsert embeddings to vector store ─────────────────────────────
         # Routes to pgvector or Pinecone based on VECTOR_STORE setting.
