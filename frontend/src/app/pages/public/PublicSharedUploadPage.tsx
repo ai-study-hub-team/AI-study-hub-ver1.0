@@ -8,6 +8,31 @@ import {
   type PublicDocumentShareLinkResponse,
 } from "../../services/publicShareApi";
 
+const getUploadErrorMessage = (error: any) => {
+  const rawMessage = String(
+    error?.response?.data?.message ||
+      error?.response?.data?.error ||
+      error?.message ||
+      "",
+  );
+
+  const normalizedMessage = rawMessage.toLowerCase();
+
+  if (
+    normalizedMessage.includes("limit") ||
+    normalizedMessage.includes("maximum") ||
+    normalizedMessage.includes("max") ||
+    normalizedMessage.includes("exceed") ||
+    normalizedMessage.includes("exceeded") ||
+    normalizedMessage.includes("full") ||
+    normalizedMessage.includes("quota")
+  ) {
+    return "Upload limit reached.";
+  }
+
+  return rawMessage || "Upload failed. Please try again.";
+};
+
 export function PublicSharedUploadPage() {
   const { token } = useParams();
 
@@ -50,10 +75,7 @@ export function PublicSharedUploadPage() {
           title: null,
           description: null,
           allowUpload: false,
-          reason:
-            error?.response?.data?.message ||
-            error?.response?.data?.error ||
-            "This shared upload link is invalid or unavailable.",
+          reason: getUploadErrorMessage(error),
         });
       } finally {
         setIsLoading(false);
@@ -107,11 +129,7 @@ export function PublicSharedUploadPage() {
     } catch (error: any) {
       console.error(error);
 
-      toast.error(
-        error?.response?.data?.message ||
-          error?.response?.data?.error ||
-          "Upload failed. Please try again.",
-      );
+      toast.error(getUploadErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }

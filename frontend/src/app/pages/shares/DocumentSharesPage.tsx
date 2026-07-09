@@ -9,6 +9,7 @@ import {
   Loader2,
   RefreshCcw,
   ShieldOff,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -250,6 +251,9 @@ export function DocumentSharesPage() {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [disablingLinkId, setDisablingLinkId] = useState<number | null>(null);
+  const [deleteLink, setDeleteLink] =
+    useState<DocumentShareLinkResponse | null>(null);
+  const [isDeletingLink, setIsDeletingLink] = useState(false);
 
   const [workingSubmissionId, setWorkingSubmissionId] = useState<number | null>(
     null,
@@ -462,6 +466,40 @@ export function DocumentSharesPage() {
       );
     } finally {
       setDisablingLinkId(null);
+    }
+  };
+
+  const handleDeleteLink = async () => {
+    const userId = getSafeUserId();
+    const linkId = deleteLink ? getShareLinkId(deleteLink) : null;
+
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
+    if (!linkId) {
+      toast.error("Cannot identify this shared upload link.");
+      return;
+    }
+
+    try {
+      setIsDeletingLink(true);
+
+      await documentShareLinkApi.deleteDocumentShareLink(linkId, userId);
+      toast.success("Shared upload link deleted.");
+      setDeleteLink(null);
+      await loadData();
+    } catch (error: any) {
+      console.error(error);
+
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot delete link.",
+      );
+    } finally {
+      setIsDeletingLink(false);
     }
   };
 
@@ -898,6 +936,15 @@ export function DocumentSharesPage() {
                               : "Disable"}
                           </button>
                         )}
+
+                        <button
+                          type="button"
+                          onClick={() => setDeleteLink(link)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1437,6 +1484,47 @@ export function DocumentSharesPage() {
           </div>
         </div>
       )}
+
+      {deleteLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Delete upload link
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Are you sure you want to delete "{deleteLink.title}"? This action
+              cannot be undone.
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteLink(null)}
+                disabled={isDeletingLink}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDeleteLink}
+                disabled={isDeletingLink}
+                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isDeletingLink ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                {isDeletingLink ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
