@@ -791,9 +791,7 @@ def convert_ppt_to_pdf(file_path: str) -> str:
 
     return pdf_path
 
-def extract_text_from_pptx(file_path: str) -> str:
-    """Backward-compatible wrapper for PPT/PPTX extraction."""
-    return extract_presentation_document(file_path)
+
 
 def extract_presentation_document(file_path: str) -> str:
     """
