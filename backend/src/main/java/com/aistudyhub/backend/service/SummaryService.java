@@ -10,6 +10,7 @@ import com.aistudyhub.backend.entity.DocumentChunk;
 import com.aistudyhub.backend.entity.DocumentProcessStatus;
 import com.aistudyhub.backend.entity.DocumentSummary;
 import com.aistudyhub.backend.entity.User;
+import com.aistudyhub.backend.enums.AiFeatureType;
 import com.aistudyhub.backend.enums.SummaryType;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
@@ -39,6 +40,7 @@ public class SummaryService {
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentSummaryRepository documentSummaryRepository;
     private final TokenUsageService tokenUsageService;
+    private final AiUsageAnalyticsService aiUsageAnalyticsService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
@@ -148,7 +150,16 @@ public class SummaryService {
 
         documentSummary = documentSummaryRepository.save(documentSummary);
 
-        // 10. Return response
+        // 11. Record one SUMMARY usage event — only after the summary is fully persisted.
+        // Wrapped in try-catch so analytics failure never rolls back a successful summary generation.
+        try {
+            aiUsageAnalyticsService.recordEvent(user, AiFeatureType.SUMMARY, document.getId());
+        } catch (Exception e) {
+            log.error("[AiUsageAnalytics] Failed to record SUMMARY event for userId={}: {}",
+                    user.getId(), e.getMessage());
+        }
+
+        // 12. Return response
         return mapToResponse(documentSummary);
     }
 

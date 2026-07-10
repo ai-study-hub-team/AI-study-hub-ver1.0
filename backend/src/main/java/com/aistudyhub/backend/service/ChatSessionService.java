@@ -5,6 +5,7 @@ import com.aistudyhub.backend.dto.request.ChatAskRequest;
 import com.aistudyhub.backend.dto.request.CreateChatSessionRequest;
 import com.aistudyhub.backend.dto.response.*;
 import com.aistudyhub.backend.entity.*;
+import com.aistudyhub.backend.enums.AiFeatureType;
 import com.aistudyhub.backend.repository.*;
 import lombok.*;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +53,7 @@ public class ChatSessionService {
     private final TokenUsageService tokenUsageService;
     private final CurrentUserService currentUserService;
     private final DocumentAccessService documentAccessService;
+    private final AiUsageAnalyticsService aiUsageAnalyticsService;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -318,6 +320,17 @@ public class ChatSessionService {
         // 12. Update session timestamp
         chatSession.setUpdatedAt(LocalDateTime.now());
         chatSessionRepository.save(chatSession);
+
+        // 13. Record one CHAT usage event for this successful request.
+        //     This is done AFTER the answer is saved and the session is updated,
+        //     so it only counts when the full operation completes.
+        //     Wrapped in try-catch — analytics failure must never crash the chat response.
+        try {
+            aiUsageAnalyticsService.recordEvent(user, AiFeatureType.CHAT, null);
+        } catch (Exception e) {
+            log.error("[AiUsageAnalytics] Failed to record CHAT event for userId={}: {}",
+                    user.getId(), e.getMessage());
+        }
 
         return ChatAskResponse.builder()
                 .sessionId(chatSession.getSessionId())

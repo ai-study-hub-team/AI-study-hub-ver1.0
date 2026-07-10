@@ -6,6 +6,7 @@ import com.aistudyhub.backend.dto.response.QuizGenerateResponse;
 import com.aistudyhub.backend.dto.response.QuizOptionResponse;
 import com.aistudyhub.backend.dto.response.QuizQuestionResponse;
 import com.aistudyhub.backend.entity.*;
+import com.aistudyhub.backend.enums.AiFeatureType;
 import com.aistudyhub.backend.enums.QuizDifficulty;
 import com.aistudyhub.backend.enums.QuizType;
 import com.aistudyhub.backend.repository.*;
@@ -36,6 +37,7 @@ public class QuizService {
     private final QuizQuestionRepository quizQuestionRepository;
     private final QuizOptionRepository quizOptionRepository;
     private final TokenUsageService tokenUsageService;
+    private final AiUsageAnalyticsService aiUsageAnalyticsService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
@@ -219,6 +221,15 @@ public class QuizService {
         }
 
         quiz.setQuestions(savedQuestions);
+
+        // Record one QUIZ usage event — only after the quiz is fully persisted.
+        // Wrapped in try-catch so analytics failure never rolls back a successful quiz generation.
+        try {
+            aiUsageAnalyticsService.recordEvent(user, AiFeatureType.QUIZ, document.getId());
+        } catch (Exception e) {
+            log.error("[AiUsageAnalytics] Failed to record QUIZ event for userId={}: {}",
+                    user.getId(), e.getMessage());
+        }
 
         log.info("Quiz saved successfully. quizId: {}, questionCount: {}", quiz.getId(), savedQuestions.size());
         return mapToResponse(quiz);

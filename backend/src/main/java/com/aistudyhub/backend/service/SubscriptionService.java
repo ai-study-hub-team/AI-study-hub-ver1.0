@@ -219,6 +219,8 @@ public class SubscriptionService {
             sub.setStatus(SubscriptionStatus.ACTIVE);
             userSubscriptionRepository.save(sub);
         }
+    }
+
     private SubscriptionResponse toResponse(UserSubscription subscription) {
         SubscriptionPlan plan = subscription.getPlan();
         PlanResponse planResponse = PlanResponse.builder()
