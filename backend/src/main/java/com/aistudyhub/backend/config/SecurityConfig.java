@@ -3,6 +3,7 @@ package com.aistudyhub.backend.config;
 import com.aistudyhub.backend.security.JwtAuthenticationFilter;
 import com.aistudyhub.backend.security.RestAccessDeniedHandler;
 import com.aistudyhub.backend.security.RestAuthenticationEntryPoint;
+import com.aistudyhub.backend.security.UserActivityTrackingFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -34,6 +35,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
+    private final UserActivityTrackingFilter userActivityTrackingFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -61,7 +63,10 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/register",
                                 "/api/auth/login",
+                                "/api/auth/google",
                                 "/api/auth/refresh",
+                                "/api/auth/verify-email",
+                                "/api/auth/resend-verification",
                                 "/api/payments/vnpay-return",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
@@ -77,6 +82,10 @@ public class SecurityConfig {
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class
+                )
+                .addFilterAfter(
+                        userActivityTrackingFilter,
+                        JwtAuthenticationFilter.class
                 );
 
         return http.build();
