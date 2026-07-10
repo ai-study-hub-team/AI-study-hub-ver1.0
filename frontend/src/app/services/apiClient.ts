@@ -4,42 +4,62 @@ export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:8080",
 });
 
-export const getAuthToken = () => {
+export const getAuthToken = (): string | null => {
   const token =
     localStorage.getItem("token") ||
     localStorage.getItem("accessToken") ||
     localStorage.getItem("jwt");
 
-  if (!token) return null;
+  if (!token) {
+    return null;
+  }
 
   return token.replace(/^Bearer\s+/i, "").trim();
 };
 
 export const getCurrentUserId = (): number | null => {
-  const userIdFromStorage = localStorage.getItem("userId");
+  const storedUserId = localStorage.getItem("userId");
 
-  if (userIdFromStorage) {
-    const userId = Number(userIdFromStorage);
-    if (Number.isInteger(userId) && userId > 0) return userId;
+  if (storedUserId) {
+    const userId = Number(storedUserId);
+
+    if (Number.isInteger(userId) && userId > 0) {
+      return userId;
+    }
   }
 
   try {
     const token = getAuthToken();
     const encodedPayload = token?.split(".")[1];
 
-    if (!encodedPayload) return null;
+    if (!encodedPayload) {
+      return null;
+    }
 
-    const payload = JSON.parse(
-      atob(encodedPayload.replace(/-/g, "+").replace(/_/g, "/")),
-    ) as {
+    const normalizedPayload = encodedPayload
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+    const paddedPayload = normalizedPayload.padEnd(
+      Math.ceil(normalizedPayload.length / 4) * 4,
+      "=",
+    );
+
+    const payload = JSON.parse(atob(paddedPayload)) as {
       id?: number | string;
       userId?: number | string;
       sub?: number | string;
     };
 
-    const userId = Number(payload.userId ?? payload.id ?? payload.sub);
+    const userId = Number(
+      payload.userId ??
+        payload.id ??
+        payload.sub,
+    );
 
-    return Number.isInteger(userId) && userId > 0 ? userId : null;
+    return Number.isInteger(userId) && userId > 0
+      ? userId
+      : null;
   } catch {
     return null;
   }
@@ -52,7 +72,6 @@ export const clearAuthStorage = () => {
   localStorage.removeItem("refreshToken");
   localStorage.removeItem("userId");
   localStorage.removeItem("user");
-  localStorage.removeItem("userId");
   localStorage.removeItem("role");
   localStorage.removeItem("email");
   localStorage.removeItem("fullName");
@@ -69,71 +88,78 @@ export const getAuthHeader = () => {
   };
 };
 
-const publicApis = [
-  "/api/auth/login",
-  "/api/auth/register",
-  "/api/auth/refresh",
-  "/api/auth/forgot-password",
-  "/api/auth/reset-password",
-  "/api/auth/verify-email",
-  "/api/auth/verify-reset-code",
-  "/auth/login",
-  "/auth/register",
-  "/auth/refresh",
-  "/auth/forgot-password",
-  "/auth/reset-password",
-  "/auth/verify-email",
-  "/auth/verify-reset-code",
-];
-
-const isPublicAuthApi = (url?: string) => {
-  if (!url) return false;
+const isPublicApi = (url?: string): boolean => {
+  if (!url) {
+    return false;
+  }
 
   return (
-    url.includes("/api/public/") ||
-    url.includes("/api/auth/login") ||
-    url.includes("/api/auth/register") ||
-    url.includes("/api/auth/refresh") ||
-    url.includes("/api/auth/forgot-password") ||
-    url.includes("/api/auth/reset-password") ||
-    url.includes("/api/auth/verify-email") ||
-    url.includes("/api/auth/verify-reset-code") ||
-    url.includes("/auth/login") ||
-    url.includes("/auth/register") ||
-    url.includes("/auth/refresh")
-  );
+  url.includes("/api/public/") ||
+  url.includes("/api/auth/login") ||
+  url.includes("/api/auth/google") ||
+  url.includes("/api/auth/register") ||
+  url.includes("/api/auth/refresh") ||
+  url.includes("/api/auth/forgot-password") ||
+  url.includes("/api/auth/reset-password") ||
+  url.includes("/api/auth/verify-email") ||
+  url.includes("/api/auth/resend-verification") ||
+  url.includes("/api/auth/verify-reset-code") ||
+  url.includes("/auth/login") ||
+  url.includes("/auth/register") ||
+  url.includes("/auth/refresh")
+);
 };
 
-apiClient.interceptors.request.use((config) => {
-  config.headers = AxiosHeaders.from(config.headers);
+apiClient.interceptors.request.use(
+  (config) => {
+    config.headers = AxiosHeaders.from(config.headers);
 
-  if (isPublicAuthApi(config.url)) {
-    config.headers.delete("Authorization");
+    // Không gửi access token cho API public.
+    if (isPublicApi(config.url)) {
+      config.headers.delete("Authorization");
+      return config;
+    }
+
+    const token = getAuthToken();
+
+    if (token) {
+      config.headers.set(
+        "Authorization",
+        `Bearer ${token}`,
+      );
+    }
+
     return config;
-  }
-
-  const token = getAuthToken();
-
-  if (token) {
-    config.headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  return config;
-});
+  },
+  (error) => Promise.reject(error),
+);
 
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
+    const requestUrl = String(error.config?.url || "");
 
-    if (status === 401) {
-      console.warn("Unauthorized - clearing local storage");
+    /*
+     * Không tự logout khi API login hoặc xác thực email trả 401.
+     * Chỉ logout khi một API cần đăng nhập trả 401.
+     */
+    if (
+      status === 401 &&
+      !isPublicApi(requestUrl)
+    ) {
+      console.warn(
+        "Access token không hợp lệ hoặc đã hết hạn.",
+      );
 
       clearAuthStorage();
 
+      const currentPath = window.location.pathname;
+
       if (
-        !window.location.pathname.includes("/login") &&
-        !window.location.pathname.includes("/auth")
+        !currentPath.includes("/login") &&
+        !currentPath.includes("/register") &&
+        !currentPath.includes("/verify-email")
       ) {
         window.location.href = "/login";
       }
