@@ -20,4 +20,7 @@ public class UserResponse {
     private LocalDateTime updatedAt;
     private int documentCount;
     private int categoryCount;
+    private Boolean emailVerified;
+    private String avatarUrl;
+    private String phone;
 }

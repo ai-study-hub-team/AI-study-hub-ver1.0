@@ -1,7 +1,7 @@
 package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.request.ChangePasswordRequest;
-import com.aistudyhub.backend.dto.request.UserUpdateRequest;
+import com.aistudyhub.backend.dto.request.UpdateProfileRequest;
 import com.aistudyhub.backend.dto.response.UserResponse;
 import com.aistudyhub.backend.service.UserService;
 import jakarta.validation.Valid;
@@ -29,15 +29,13 @@ public class AccountController {
     @PutMapping("/me")
     public ResponseEntity<UserResponse> updateMe(
             Authentication authentication,
-            @Valid @RequestBody UserUpdateRequest request
+            @Valid @RequestBody UpdateProfileRequest request
     ) {
         return ResponseEntity.ok(
-                userService.updateCurrentUser(
-                        authentication.getName(),
-                        request
-                )
+                userService.updateCurrentUser(authentication.getName(), request)
         );
     }
+
 
     @PutMapping("/change-password")
     public ResponseEntity<UserResponse> changePassword(
