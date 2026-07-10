@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.entity;
 
+import com.aistudyhub.backend.enums.UserAuthProvider;
 import com.aistudyhub.backend.enums.UserRole;
 import com.aistudyhub.backend.enums.UserStatus;
 import jakarta.persistence.*;
@@ -48,6 +49,34 @@ public class User {
     @Builder.Default
     private UserStatus status = UserStatus.ACTIVE;
 
+    @Column(name = "email_verified", nullable = false, columnDefinition = "boolean default false")
+    @Builder.Default
+    private boolean emailVerified = false;
+
+    @Column(name = "email_verified_at")
+    private LocalDateTime emailVerifiedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    @Builder.Default
+    private UserAuthProvider provider = UserAuthProvider.LOCAL;
+
+    @Column(length = 255)
+    private String providerId;
+
+    @Column(length = 500)
+    private String avatarUrl;
+
+    @Column(length = 30)
+    private String phone;
+
+    @Column(length = 1000)
+    private String bio;
+
+    private LocalDateTime lastLoginAt;
+
+    private LocalDateTime lastActiveAt;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -78,6 +107,11 @@ public class User {
         if (status == null) {
             status = UserStatus.ACTIVE;
         }
+
+        if (provider == null) {
+            provider = UserAuthProvider.LOCAL;
+        }
+
     }
     @PreUpdate
     void preUpdate() {
