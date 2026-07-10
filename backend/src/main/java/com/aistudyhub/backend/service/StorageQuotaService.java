@@ -1,10 +1,11 @@
 package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.entity.SubscriptionPlan;
+import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.UserSubscription;
 import com.aistudyhub.backend.exception.PlanRestrictionException;
 import com.aistudyhub.backend.exception.QuotaExceededException;
-import com.aistudyhub.backend.repository.DocumentRepository;
+import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class StorageQuotaService {
 
     private final SubscriptionService subscriptionService;
-    private final DocumentRepository documentRepository;
+    private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
     // check dung lượng theo gói
@@ -24,7 +25,11 @@ public class StorageQuotaService {
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
         SubscriptionPlan plan = subscription.getPlan();
 
-        Long currentStorageBytes = documentRepository.calculateTotalStorageUsedByUserId(userId);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+        Long currentStorageBytes = user.getTotalStorageUsedBytes() != null
+                ? user.getTotalStorageUsedBytes()
+                : 0L;
         Long limitBytes = plan.getStorageLimitMb() * 1024 * 1024;
 
         if (currentStorageBytes + newFileBytes > limitBytes) {
@@ -32,6 +37,38 @@ public class StorageQuotaService {
                     String.format("Storage quota exceeded. Limit: %d MB. Current usage plus new file exceeds limit.", plan.getStorageLimitMb())
             );
         }
+    }
+
+    @Transactional
+    public void addStorageUsage(Long userId, Long uploadedBytes) {
+        if (uploadedBytes == null || uploadedBytes <= 0) {
+            return;
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+        Long currentStorageBytes = user.getTotalStorageUsedBytes() != null
+                ? user.getTotalStorageUsedBytes()
+                : 0L;
+
+        user.setTotalStorageUsedBytes(currentStorageBytes + uploadedBytes);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void subtractStorageUsage(Long userId, Long removedBytes) {
+        if (removedBytes == null || removedBytes <= 0) {
+            return;
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+        Long currentStorageBytes = user.getTotalStorageUsedBytes() != null
+                ? user.getTotalStorageUsedBytes()
+                : 0L;
+
+        user.setTotalStorageUsedBytes(Math.max(0L, currentStorageBytes - removedBytes));
+        userRepository.save(user);
     }
 
     @Transactional(readOnly = true)

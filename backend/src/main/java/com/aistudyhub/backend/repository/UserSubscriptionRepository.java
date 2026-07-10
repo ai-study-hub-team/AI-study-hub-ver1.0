@@ -13,4 +13,10 @@ import java.util.Optional;
 public interface UserSubscriptionRepository extends JpaRepository<UserSubscription, Long> {
     Optional<UserSubscription> findByUserId(Long userId);
     List<UserSubscription> findAllByStatusAndEndDateBefore(SubscriptionStatus status, LocalDateTime date);
+    List<UserSubscription> findAllByStatusAndEndDateBetween(
+            SubscriptionStatus status,
+            LocalDateTime from,
+            LocalDateTime to
+    );
+
 }

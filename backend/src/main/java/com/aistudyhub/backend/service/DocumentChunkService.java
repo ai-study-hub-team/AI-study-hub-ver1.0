@@ -4,6 +4,7 @@ import com.aistudyhub.backend.dto.python.*;
 import com.aistudyhub.backend.dto.response.ChunkSearchResponse;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentChunk;
+import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,14 +25,16 @@ public class DocumentChunkService {
 
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentRepository documentRepository;
+    private final DocumentAccessService documentAccessService;
+    private final CurrentUserService currentUserService;
 
     public List<ChunkSearchResponse> searchInDocument(Long documentId, String keyword) {
         if (keyword == null || keyword.trim().isEmpty()) {
             throw new IllegalArgumentException("Keyword cannot be empty");
         }
 
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + documentId));
+        User currentUser = currentUserService.getCurrentUser();
+        Document document = documentAccessService.getAccessibleDocument(currentUser, documentId);
 
         List<DocumentChunk> chunks = documentChunkRepository.findByDocumentIdAndChunkTextContainingIgnoreCaseOrderByChunkIndexAsc(documentId, keyword);
 
@@ -43,9 +46,18 @@ public class DocumentChunkService {
             throw new IllegalArgumentException("Keyword cannot be empty");
         }
 
+        User currentUser = currentUserService.getCurrentUser();
+
         Page<DocumentChunk> chunks = documentChunkRepository.findByChunkTextContainingIgnoreCase(keyword, pageable);
 
-        return chunks.map(chunk -> toResponse(chunk, chunk.getDocument(), keyword));
+        List<ChunkSearchResponse> content = chunks.getContent()
+                .stream()
+                .filter(chunk -> chunk.getDocument() != null
+                        && documentAccessService.canViewDocument(currentUser, chunk.getDocument()))
+                .map(chunk -> toResponse(chunk, chunk.getDocument(), keyword))
+                .toList();
+
+        return new org.springframework.data.domain.PageImpl<>(content, pageable, content.size());
     }
 
     private ChunkSearchResponse toResponse(DocumentChunk chunk, Document document, String keyword) {

@@ -6,6 +6,14 @@ import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentProcessStatus;
 import com.aistudyhub.backend.entity.DocumentStatus;
 import com.aistudyhub.backend.entity.Folder;
+import com.aistudyhub.backend.entity.DocumentShare;
+import com.aistudyhub.backend.entity.DocumentShareStatus;
+import com.aistudyhub.backend.entity.FolderShare;
+import com.aistudyhub.backend.entity.FolderShareStatus;
+import com.aistudyhub.backend.entity.User;
+import com.aistudyhub.backend.enums.UserRole;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
@@ -16,7 +24,8 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-public class DocumentSpecification {
+public class
+DocumentSpecification {
 
     /**
      * Builds a combined Specification for document listing/search.
@@ -150,5 +159,83 @@ public class DocumentSpecification {
     ) {
         return filterDocuments(keyword, categoryId, processStatus,
                 fileType, tag, fromDate, toDate, null, null);
+    }
+
+    public static Specification<Document> filterVisibleDocuments(
+            String keyword,
+            Long categoryId,
+            DocumentProcessStatus processStatus,
+            String fileType,
+            String tag,
+            LocalDateTime fromDate,
+            LocalDateTime toDate,
+            Long folderId,
+            Boolean rootOnly,
+            User currentUser
+    ) {
+        return filterDocuments(
+                keyword,
+                categoryId,
+                processStatus,
+                fileType,
+                tag,
+                fromDate,
+                toDate,
+                folderId,
+                rootOnly
+        ).and(visibleTo(currentUser));
+    }
+
+    private static Specification<Document> visibleTo(User user) {
+        return (root, query, cb) -> {
+            if (user == null || user.getId() == null) {
+                return cb.disjunction();
+            }
+
+            if (user.getRole() == UserRole.ADMIN) {
+                return cb.conjunction();
+            }
+
+            Long userId = user.getId();
+
+            Predicate owner = cb.equal(root.get("user").get("id"), userId);
+
+            Subquery<Long> documentShareSubquery = query.subquery(Long.class);
+            Root<DocumentShare> documentShare = documentShareSubquery.from(DocumentShare.class);
+            documentShareSubquery.select(documentShare.get("id"))
+                    .where(
+                            cb.equal(documentShare.get("document").get("id"), root.get("id")),
+                            cb.equal(documentShare.get("sharedWith").get("id"), userId),
+                            cb.equal(documentShare.get("status"), DocumentShareStatus.ACTIVE),
+                            cb.or(
+                                    cb.isNull(documentShare.get("expiresAt")),
+                                    cb.greaterThan(documentShare.get("expiresAt"), LocalDateTime.now())
+                            )
+                    );
+
+            Subquery<Long> folderShareSubquery = query.subquery(Long.class);
+            Root<FolderShare> folderShare = folderShareSubquery.from(FolderShare.class);
+            folderShareSubquery.select(folderShare.get("id"))
+                    .where(
+                            cb.equal(folderShare.get("folder").get("id"), root.get("folder").get("id")),
+                            cb.equal(folderShare.get("sharedWith").get("id"), userId),
+                            cb.equal(folderShare.get("status"), FolderShareStatus.ACTIVE),
+                            cb.or(
+                                    cb.isNull(folderShare.get("expiresAt")),
+                                    cb.greaterThan(folderShare.get("expiresAt"), LocalDateTime.now())
+                            )
+                    );
+
+            Predicate sharedByFolder = cb.and(
+                    cb.isNotNull(root.get("folder")),
+                    cb.exists(folderShareSubquery)
+            );
+
+            return cb.or(
+                    owner,
+                    cb.exists(documentShareSubquery),
+                    sharedByFolder
+            );
+        };
     }
 }

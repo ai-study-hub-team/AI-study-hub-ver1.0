@@ -3,6 +3,7 @@ package com.aistudyhub.backend.config;
 import com.aistudyhub.backend.security.JwtAuthenticationFilter;
 import com.aistudyhub.backend.security.RestAccessDeniedHandler;
 import com.aistudyhub.backend.security.RestAuthenticationEntryPoint;
+import com.aistudyhub.backend.security.UserActivityTrackingFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,13 +21,6 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
-
-/**
- * Security configuration — allows ALL requests without authentication.
- *
- * This is intentional for the foundation/testing phase.
- * Real authentication (JWT / Google OAuth) will be added later.
- */
 @Configuration
 @RequiredArgsConstructor
 public class SecurityConfig {
@@ -34,6 +28,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
+    private final UserActivityTrackingFilter userActivityTrackingFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -46,10 +41,9 @@ public class SecurityConfig {
 
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session ->
-                        session.sessionCreationPolicy(
-                                SessionCreationPolicy.STATELESS
-                        )
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
@@ -61,7 +55,10 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/register",
                                 "/api/auth/login",
+                                "/api/auth/google",
                                 "/api/auth/refresh",
+                                "/api/auth/verify-email",
+                                "/api/auth/resend-verification",
                                 "/api/payments/vnpay-return",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
@@ -77,6 +74,10 @@ public class SecurityConfig {
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class
+                )
+                .addFilterAfter(
+                        userActivityTrackingFilter,
+                        JwtAuthenticationFilter.class
                 );
 
         return http.build();
@@ -85,13 +86,27 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
+
         configuration.setAllowedOrigins(List.of("http://localhost:5173"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedMethods(List.of(
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE",
+                "OPTIONS"
+        ));
+        configuration.setAllowedHeaders(List.of(
+                "Authorization",
+                "Content-Type"
+        ));
         configuration.setAllowCredentials(true);
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+
         source.registerCorsConfiguration("/**", configuration);
+
         return source;
     }
 }

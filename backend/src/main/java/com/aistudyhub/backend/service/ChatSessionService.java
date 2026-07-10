@@ -50,6 +50,8 @@ public class ChatSessionService {
     private final DocumentChunkRepository documentChunkRepository;
     private final SemanticSearchService semanticSearchService;
     private final TokenUsageService tokenUsageService;
+    private final CurrentUserService currentUserService;
+    private final DocumentAccessService documentAccessService;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -66,9 +68,7 @@ public class ChatSessionService {
 
     @Transactional
     public CreateChatSessionResponse createChatSession(CreateChatSessionRequest request) {
-        User user = userRepository.findById(request.getUserId())
-                .orElseThrow(() -> new RuntimeException(
-                        "User not found with id: " + request.getUserId()));
+        User user = currentUserService.getCurrentUser();
 
         String title = (request.getTitle() == null || request.getTitle().isBlank())
                 ? "New Chat"
@@ -100,9 +100,7 @@ public class ChatSessionService {
         log.info("Processing askChatbot for session: {}", request.getSessionId());
 
         // 1. Validate User
-        User user = userRepository.findById(request.getUserId())
-                .orElseThrow(() -> new RuntimeException(
-                        "User not found with id: " + request.getUserId()));
+        User user = currentUserService.getCurrentUser();
 
         // 2. Validate Session & ownership
         ChatSession chatSession = chatSessionRepository.findById(request.getSessionId())
@@ -128,8 +126,7 @@ public class ChatSessionService {
                 throw new RuntimeException("Cannot select more than 5 documents per question.");
             }
             for (Long docId : activeDocumentIds) {
-                Document doc = documentRepository.findById(docId)
-                        .orElseThrow(() -> new RuntimeException("Document not found with id: " + docId));
+                Document doc = documentAccessService.getAccessibleDocument(user, docId);
                 if (doc.isTrashed()) {
                     throw new RuntimeException("Document " + docId + " is in trash and cannot be used in chat.");
                 }
@@ -725,11 +722,9 @@ public class ChatSessionService {
     // ─── Get Sessions for User ──────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public List<ChatSessionResponse> getSessionsByUserId(Long userId) {
-        if (!userRepository.existsById(userId)) {
-            throw new RuntimeException("User not found with id: " + userId);
-        }
-        return chatSessionRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
+    public List<ChatSessionResponse> getSessionsForCurrentUser() {
+        User currentUser = currentUserService.getCurrentUser();
+        return chatSessionRepository.findByUserIdOrderByCreatedAtDesc(currentUser.getId()).stream()
                 .map(s -> ChatSessionResponse.builder()
                         .sessionId(s.getSessionId())
                         .userId(s.getUser().getId())
@@ -744,9 +739,15 @@ public class ChatSessionService {
 
     @Transactional(readOnly = true)
     public List<ChatMessageResponse> getSessionHistory(String sessionId) {
-        if (!chatSessionRepository.existsById(sessionId)) {
-            throw new RuntimeException("Chat session not found with id: " + sessionId);
+        User currentUser = currentUserService.getCurrentUser();
+
+        ChatSession session = chatSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("Chat session not found with id: " + sessionId));
+
+        if (session.getUser() == null || !session.getUser().getId().equals(currentUser.getId())) {
+            throw new RuntimeException("This chat session does not belong to the current user.");
         }
+
         List<ChatMessage> messages = chatMessageRepository
                 .findByChatSessionSessionIdOrderByCreatedAtAsc(sessionId);
         List<ChatMessageResponse> responses = new ArrayList<>();

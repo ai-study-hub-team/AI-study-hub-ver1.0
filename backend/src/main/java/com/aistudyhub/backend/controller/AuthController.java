@@ -7,8 +7,14 @@ import com.aistudyhub.backend.dto.request.RegisterRequest;
 import com.aistudyhub.backend.dto.response.AuthResponse;
 import com.aistudyhub.backend.dto.response.MessageResponse;
 import com.aistudyhub.backend.dto.response.UserResponse;
+import com.aistudyhub.backend.dto.request.GoogleLoginRequest;
+import com.aistudyhub.backend.dto.request.ResendVerificationEmailRequest;
+import com.aistudyhub.backend.dto.response.EmailVerificationResponse;
+import com.aistudyhub.backend.service.GoogleAuthService;
 import com.aistudyhub.backend.service.AuthService;
 import com.aistudyhub.backend.service.UserService;
+import com.aistudyhub.backend.service.EmailVerificationService;
+import jakarta.servlet.http.HttpServletRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,9 +30,11 @@ public class AuthController {
 
     private final AuthService authService;
     private final UserService userService;
+    private final GoogleAuthService googleAuthService;
+    private final EmailVerificationService emailVerificationService;
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(
+    public ResponseEntity<EmailVerificationResponse> register(
             @Valid @RequestBody RegisterRequest request
     ) {
         return ResponseEntity
@@ -39,6 +47,34 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request
     ) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    @GetMapping("/verify-email")
+    public ResponseEntity<EmailVerificationResponse> verifyEmail(
+            @RequestParam String token
+    ) {
+        return ResponseEntity.ok(emailVerificationService.verifyEmail(token));
+    }
+
+    @PostMapping("/resend-verification")
+    public ResponseEntity<EmailVerificationResponse> resendVerification(
+            @Valid @RequestBody ResendVerificationEmailRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(
+                emailVerificationService.resendVerificationEmail(
+                        request.getEmail(),
+                        httpRequest.getRemoteAddr(),
+                        httpRequest.getHeader("User-Agent")
+                )
+        );
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<AuthResponse> googleLogin(
+            @Valid @RequestBody GoogleLoginRequest request
+    ) {
+        return ResponseEntity.ok(googleAuthService.loginWithGoogle(request));
     }
 
     @PostMapping("/refresh")

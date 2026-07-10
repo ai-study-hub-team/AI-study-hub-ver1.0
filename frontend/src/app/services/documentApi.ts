@@ -17,6 +17,8 @@ export interface GetDocumentsParams {
   size?: number;
   keyword?: string;
   categoryId?: number;
+  folderId?: number | null;
+  rootOnly?: boolean;
   processStatus?: ProcessStatus;
   fileType?: string;
   tag?: string;
@@ -28,6 +30,7 @@ export interface UploadDocumentPayload {
   file: File;
   title: string;
   userId: number;
+  folderId?: number | null;
   description?: string;
   documentType?: string;
   visibility?: string;
@@ -39,6 +42,7 @@ export interface CreateDocumentPayload {
   description?: string;
   tags?: string;
   userId: number;
+  folderId?: number | null;
   categoryId?: number;
   originalName?: string;
   fileUrl?: string;
@@ -51,6 +55,7 @@ export interface UpdateDocumentPayload {
   description?: string;
   tags?: string;
   userId?: number;
+  folderId?: number | null;
   categoryId?: number | null;
   originalName?: string;
   fileUrl?: string;
@@ -95,6 +100,13 @@ export interface SemanticSearchResponse {
   error?: string;
 }
 
+type DocumentWithFolderMeta = DocumentResponse & {
+  folderId?: number | null;
+  folderName?: string | null;
+  folder?: string | { id?: number; name?: string | null } | null;
+  parentFolderName?: string | null;
+};
+
 const mapDocumentStatus = (status: string | undefined): DocumentStatus => {
   if (status === "DELETED") return "DELETED";
   return "ACTIVE";
@@ -107,6 +119,36 @@ const mapAiStatus = (status: string | undefined): AiStatus => {
   return "UPLOADED";
 };
 
+const getDocumentFolderName = (document: DocumentResponse): string => {
+  const item = document as DocumentWithFolderMeta;
+
+  if (typeof item.folderName === "string" && item.folderName.trim()) {
+    return item.folderName.trim();
+  }
+
+  if (typeof item.folder === "string" && item.folder.trim()) {
+    return item.folder.trim();
+  }
+
+  if (
+    typeof item.folder === "object" &&
+    item.folder !== null &&
+    typeof item.folder.name === "string" &&
+    item.folder.name.trim()
+  ) {
+    return item.folder.name.trim();
+  }
+
+  if (
+    typeof item.parentFolderName === "string" &&
+    item.parentFolderName.trim()
+  ) {
+    return item.parentFolderName.trim();
+  }
+
+  return "Root";
+};
+
 const mapDocumentResponse = (
   document: DocumentResponse,
 ): DocumentListItemResponse => ({
@@ -117,7 +159,7 @@ const mapDocumentResponse = (
   documentStatus: mapDocumentStatus(document.status),
   aiStatus: mapAiStatus(document.processStatus),
   uploadedAt: document.createdAt,
-  folder: document.categoryName || "Uncategorized",
+  folder: getDocumentFolderName(document),
 });
 
 const mapPageDocumentResponse = (
@@ -127,29 +169,71 @@ const mapPageDocumentResponse = (
   content: (page.content ?? []).map(mapDocumentResponse),
 });
 
-export const documentApi = {
-  // GET /api/documents/search-filter
-  getDocuments(params?: GetDocumentsParams) {
-    const { userId, ...safeParams } = params ?? {};
+const buildDocumentListParams = (params?: GetDocumentsParams) => {
+  const { userId, folderId, rootOnly, ...rest } = params ?? {};
 
-    return api
-      .get<PageDocumentResponse>("/api/documents/search-filter", {
-        params: safeParams,
-      })
-      .then((response) => ({
-        ...response,
-        data: mapPageDocumentResponse(response.data),
-      }));
-  },
+  const queryParams: Record<string, unknown> = {
+    page: rest.page ?? 0,
+    size: rest.size ?? 10,
+  };
+
+  if (rest.keyword) queryParams.keyword = rest.keyword;
+  if (rest.categoryId !== undefined) queryParams.categoryId = rest.categoryId;
+  if (rest.processStatus) queryParams.processStatus = rest.processStatus;
+  if (rest.fileType) queryParams.fileType = rest.fileType;
+  if (rest.tag) queryParams.tag = rest.tag;
+  if (rest.fromDate) queryParams.fromDate = rest.fromDate;
+  if (rest.toDate) queryParams.toDate = rest.toDate;
+
+  if (typeof folderId === "number") {
+    queryParams.folderId = folderId;
+  }
+
+  if (rootOnly === true) {
+    queryParams.rootOnly = true;
+  }
+
+  return queryParams;
+};
+
+export const documentApi = {
+  // GET /api/documents
+  // GET /api/documents?folderId=5
+  // GET /api/documents?rootOnly=true
+getDocuments(params?: GetDocumentsParams) {
+  const queryParams = buildDocumentListParams(params);
+
+  return api
+    .get<PageDocumentResponse>("/api/documents", {
+      params: queryParams,
+    })
+    .then((response) => ({
+      ...response,
+      data: mapPageDocumentResponse(response.data),
+    }))
+    .catch((error) => {
+      console.warn(
+        "GET /api/documents failed, fallback to /api/documents/search-filter",
+        error,
+      );
+
+      return api
+        .get<PageDocumentResponse>("/api/documents/search-filter", {
+          params: queryParams,
+        })
+        .then((response) => ({
+          ...response,
+          data: mapPageDocumentResponse(response.data),
+        }));
+    });
+},
 
   /**
    * Giữ lại hàm này để các page cũ không bị lỗi TypeScript.
-   * Nhưng không gửi userId nữa vì backend hiện tại lấy user từ JWT token.
+   * Không gửi userId vào GET /api/documents vì backend đang lỗi khi có userId.
    */
   getDocumentsByUserId(_userId: number, params?: GetDocumentsParams) {
-    const { userId, ...safeParams } = params ?? {};
-
-    return this.getDocuments(safeParams);
+    return this.getDocuments(params);
   },
 
   // GET /api/documents/{id}
@@ -174,14 +258,10 @@ export const documentApi = {
 
   // PUT /api/documents/{id}
   async updateDocument(id: number, payload: UpdateDocumentPayload) {
-    /**
-     * Backend hiện tại bắt buộc userId khi update.
-     * Nhưng nhiều màn hình FE chỉ gửi title/description/categoryId.
-     * Vì vậy mình lấy document hiện tại trước, rồi merge lại payload.
-     */
     const currentResponse = await api.get<DocumentResponse>(
       `/api/documents/${id}`,
     );
+
     const currentDocument = currentResponse.data;
 
     const updatePayload: UpdateDocumentPayload = {
@@ -189,6 +269,10 @@ export const documentApi = {
       description: payload.description ?? currentDocument.description ?? "",
       tags: payload.tags ?? currentDocument.tags ?? "",
       userId: payload.userId ?? currentDocument.userId,
+      folderId:
+        payload.folderId !== undefined
+          ? payload.folderId
+          : (currentDocument as DocumentWithFolderMeta).folderId,
       categoryId:
         payload.categoryId !== undefined
           ? payload.categoryId
@@ -217,17 +301,44 @@ export const documentApi = {
     const formData = new FormData();
     formData.append("file", payload.file);
 
+    const params: Record<string, unknown> = {
+      title: payload.title,
+      userId: payload.userId,
+    };
+
+    if (payload.description) params.description = payload.description;
+    if (payload.documentType) params.documentType = payload.documentType;
+    if (payload.visibility) params.visibility = payload.visibility;
+    if (payload.folderId !== undefined && payload.folderId !== null) {
+      params.folderId = payload.folderId;
+    }
+    if (payload.categoryId !== undefined) {
+      params.categoryId = payload.categoryId;
+    }
+
     return api
       .post<DocumentResponse>("/api/documents/upload", formData, {
-        params: {
-          title: payload.title,
-          description: payload.description,
-          documentType: payload.documentType,
-          visibility: payload.visibility,
-          userId: payload.userId,
-          categoryId: payload.categoryId,
+        params,
+        headers: {
+          "Content-Type": "multipart/form-data",
         },
       })
+      .then((response) => ({
+        ...response,
+        data: mapDocumentResponse(response.data),
+      }));
+  },
+
+  // PATCH /api/documents/{id}/folder
+  moveDocumentToFolder(
+    id: number,
+    payload: {
+      userId: number;
+      folderId: number | null;
+    },
+  ) {
+    return api
+      .patch<DocumentResponse>(`/api/documents/${id}/folder`, payload)
       .then((response) => ({
         ...response,
         data: mapDocumentResponse(response.data),
@@ -280,20 +391,28 @@ export const documentApi = {
   },
 
   // Dùng cho dropdown/select
-  getAllDocumentsForSelect(_userId?: number) {
-    const currentUserId = _userId ?? getCurrentUserId();
+getAllDocumentsForSelect(_userId?: number) {
+  const currentUserId = _userId ?? getCurrentUserId();
 
-    return api
-      .get<PageDocumentResponse>("/api/documents/search-filter", {
+  return api
+    .get<PageDocumentResponse>("/api/documents", {
+      params: {
+        page: 0,
+        size: 100,
+      },
+    })
+    .catch(() =>
+      api.get<PageDocumentResponse>("/api/documents/search-filter", {
         params: {
           page: 0,
           size: 100,
         },
-      })
-      .then((response) =>
-        filterMyDocuments(response.data.content ?? [], currentUserId).map(
-          mapDocumentResponse,
-        ),
-      );
-  },
+      }),
+    )
+    .then((response) =>
+      filterMyDocuments(response.data.content ?? [], currentUserId).map(
+        mapDocumentResponse,
+      ),
+    );
+},
 };

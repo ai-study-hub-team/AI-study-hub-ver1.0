@@ -4,6 +4,7 @@ import {
   Star,
   Download,
   RotateCcw,
+  Share2,
   Trash2,
   Grid3X3,
   List,
@@ -16,6 +17,8 @@ import { documentApi } from "../../services/documentApi";
 import { getCurrentUserId } from "../../services/apiClient";
 import { useTheme } from "../../../layouts/ThemeProvider";
 import { filterMyDocuments } from "../../utils/documentOwnership";
+import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
+import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
 
 interface LibraryCategoryDocument {
   id: number;
@@ -44,12 +47,16 @@ const getDocumentExtension = (document: LibraryCategoryDocument) =>
 function DocumentRow({
   document,
   onDelete,
+  onShare,
+  sharingDocumentId,
 }: {
   document: LibraryCategoryDocument;
   onDelete: (documentId: number) => void;
+  onShare: (documentId: number) => void | Promise<void>;
+  sharingDocumentId: number | null;
 }) {
   return (
-    <div className="grid gap-3 border-t border-slate-100 bg-white p-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70 md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)] md:items-center">
+    <div className="grid gap-3 border-t border-slate-100 bg-white p-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70 md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_72px] md:items-center">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
           <FileText className="h-5 w-5" />
@@ -91,25 +98,14 @@ function DocumentRow({
         {document.aiStatus || document.processStatus || "FAILED"}
       </span>
 
-      <div className="flex min-w-[120px] items-center justify-end gap-1">
-        <button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300">
-          <Star className="h-4 w-4" />
-        </button>
-
-        <button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300">
-          <Download className="h-4 w-4" />
-        </button>
-
-        <button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300">
-          <RotateCcw className="h-4 w-4" />
-        </button>
-
-        <button
-          onClick={() => onDelete(document.id)}
-          className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950/30 dark:hover:text-red-300"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+      <div className="flex min-w-[72px] items-center justify-center">
+        <RowActionMenu>
+          <ActionMenuItem icon={Star} label="Favorite" onClick={() => undefined} />
+          <ActionMenuItem icon={Download} label="Download" onClick={() => undefined} />
+          <ActionMenuItem icon={Share2} label="Share document" onClick={() => onShare(document.id)} disabled={sharingDocumentId === document.id} />
+          <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => undefined} />
+          <ActionMenuItem icon={Trash2} label="Delete" onClick={() => onDelete(document.id)} danger />
+        </RowActionMenu>
       </div>
     </div>
   );
@@ -122,6 +118,8 @@ export function LibraryCategoryDocumentsPage() {
   const [documents, setDocuments] = useState<LibraryCategoryDocument[]>([]);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const { createAndCopyPublicLink, loadingDocumentId } =
+    useCreatePublicLink();
 
   useEffect(() => {
     const loadDocuments = async () => {
@@ -290,35 +288,27 @@ export function LibraryCategoryDocumentsPage() {
                 </div>
               </div>
 
-              <div className="mt-5 flex items-center justify-end gap-1 border-t border-slate-100 pt-4 dark:border-slate-800">
-                <button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800">
-                  <Download className="h-4 w-4" />
-                </button>
-
-                <button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800">
-                  <RotateCcw className="h-4 w-4" />
-                </button>
-
-                <button
-                  onClick={() => setDeleteId(document.id)}
-                  className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+              <div className="mt-5 flex items-center justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
+                <RowActionMenu>
+                  <ActionMenuItem icon={Download} label="Download" onClick={() => undefined} />
+                  <ActionMenuItem icon={Share2} label="Share document" onClick={() => createAndCopyPublicLink(document.id)} disabled={loadingDocumentId === document.id} />
+                  <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => undefined} />
+                  <ActionMenuItem icon={Trash2} label="Delete" onClick={() => setDeleteId(document.id)} danger />
+                </RowActionMenu>
               </div>
             </div>
           ))}
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="hidden bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:bg-slate-950 md:grid md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,auto)]">
+          <div className="hidden bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:bg-slate-950 md:grid md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_72px]">
             <span>Document Name</span>
             <span>Category</span>
             <span>Date Added</span>
             <span>Size</span>
             <span>Upload Status</span>
             <span>AI Status</span>
-            <span className="text-right">Actions</span>
+            <span className="text-center">Actions</span>
           </div>
 
           {documents.map((document) => (
@@ -326,6 +316,8 @@ export function LibraryCategoryDocumentsPage() {
               key={document.id}
               document={document}
               onDelete={setDeleteId}
+              onShare={createAndCopyPublicLink}
+              sharingDocumentId={loadingDocumentId}
             />
           ))}
         </div>

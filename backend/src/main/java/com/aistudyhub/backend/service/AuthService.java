@@ -36,9 +36,10 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final SubscriptionService subscriptionService;
+    private final EmailVerificationService emailVerificationService;
 
     @Transactional
-    public AuthResponse register(RegisterRequest request) {
+    public com.aistudyhub.backend.dto.response.EmailVerificationResponse register(RegisterRequest request) {
         String email = normalizeEmail(request.getEmail());
 
         if (userRepository.existsByEmail(email)) {
@@ -51,6 +52,8 @@ public class AuthService {
                 .fullName(request.getFullName().trim())
                 .role(UserRole.USER)
                 .status(UserStatus.ACTIVE)
+                .emailVerified(false)
+                .provider(com.aistudyhub.backend.enums.UserAuthProvider.LOCAL)
                 .build();
 
         try {
@@ -59,10 +62,10 @@ public class AuthService {
             // Handles concurrent registration attempts for the same email.
             throw new EmailAlreadyUsedException();
         }
-        
+
         subscriptionService.assignFreePlan(user);
 
-        return issueTokenPair(user);
+        return emailVerificationService.createAndSendInitialVerification(user, null, null);
     }
 
     @Transactional
@@ -86,6 +89,14 @@ public class AuthService {
         if (!passwordMatches || user.getStatus() != UserStatus.ACTIVE) {
             throw new UnauthorizedException(INVALID_CREDENTIALS);
         }
+
+        if (!user.isEmailVerified()) {
+            throw new UnauthorizedException("Please verify your email before logging in");
+        }
+
+        user.setLastLoginAt(java.time.LocalDateTime.now());
+        user.setLastActiveAt(java.time.LocalDateTime.now());
+        userRepository.save(user);
 
         return issueTokenPair(user);
     }
@@ -112,6 +123,9 @@ public class AuthService {
             throw new UnauthorizedException(INVALID_REFRESH);
         }
 
+        if (!user.isEmailVerified()) {
+            throw new UnauthorizedException(INVALID_REFRESH);
+        }
         // Rotates the refresh token by revoking the old token first.
         stored.setRevoked(true);
         refreshTokenRepository.save(stored);
@@ -153,7 +167,7 @@ public class AuthService {
         refreshTokenRepository.revokeAllActiveByUserId(user.getId());
     }
 
-    private AuthResponse issueTokenPair(User user) {
+    public AuthResponse issueTokenPair(User user) {
         String accessToken = jwtService.generateAccessToken(user);
         String rawRefreshToken = jwtService.generateRefreshToken();
 
@@ -177,6 +191,7 @@ public class AuthService {
                 .email(user.getEmail())
                 .fullName(user.getFullName())
                 .role(user.getRole().name())
+                .emailVerified(user.isEmailVerified())
                 .build();
     }
 
