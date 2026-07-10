@@ -50,4 +50,18 @@ public interface DocumentRepository extends JpaRepository<Document, Long>, JpaSp
     @Query("UPDATE Document d SET d.folder = null, d.updatedAt = CURRENT_TIMESTAMP " +
            "WHERE d.folder.id = :folderId")
     int clearFolderForDocumentsInFolder(@Param("folderId") Long folderId);
+
+    // ─── Trash queries ─────────────────────────────────────────────────────────
+
+    /**
+     * Get all trashed documents for a given user (for the Trash list).
+     */
+    @Query("SELECT d FROM Document d WHERE d.user.id = :userId AND d.isTrashed = true ORDER BY d.trashedAt DESC")
+    List<Document> findTrashedByUserId(@Param("userId") Long userId);
+
+    /**
+     * Find all documents that have passed their delete_after deadline — used by the nightly scheduler.
+     */
+    @Query("SELECT d FROM Document d WHERE d.isTrashed = true AND d.deleteAfter <= :now")
+    List<Document> findExpiredTrashedDocuments(@Param("now") java.time.LocalDateTime now);
 }

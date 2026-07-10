@@ -130,6 +130,9 @@ public class ChatSessionService {
             for (Long docId : activeDocumentIds) {
                 Document doc = documentRepository.findById(docId)
                         .orElseThrow(() -> new RuntimeException("Document not found with id: " + docId));
+                if (doc.isTrashed()) {
+                    throw new RuntimeException("Document " + docId + " is in trash and cannot be used in chat.");
+                }
                 if (doc.getProcessStatus() != DocumentProcessStatus.PROCESSED) {
                     throw new RuntimeException("Document " + docId + " is not processed yet.");
                 }

@@ -6,13 +6,17 @@ import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
 
 @Configuration
 public class OpenApiConfig {
 
     @Bean
     public OpenAPI openAPI() {
+        /*
+         * Swagger uses HTTP Bearer auth, so users should paste the raw access token only. 
+         * Swagger adds the "Bearer " prefix automatically.
+         */
         return new OpenAPI()
                 .info(
                         new Info()
@@ -27,6 +31,7 @@ public class OpenApiConfig {
                                         .scheme("bearer")
                                         .bearerFormat("JWT")
                         )
-                );
+                )
+                .addSecurityItem(new SecurityRequirement().addList("bearerAuth"));
     }
 }

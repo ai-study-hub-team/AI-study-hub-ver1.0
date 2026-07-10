@@ -67,6 +67,7 @@ public class SharedDocumentSubmissionService {
         String mimeType = fileStorageService.detectMimeType(file);
 
         // 3. Build submission record
+        LocalDateTime now = LocalDateTime.now();
         SharedDocumentSubmission submission = SharedDocumentSubmission.builder()
                 .shareLink(link)
                 .ownerUserId(link.getOwner().getId())
@@ -81,7 +82,9 @@ public class SharedDocumentSubmissionService {
                 .title(title != null && !title.isBlank() ? title : file.getOriginalFilename())
                 .description(description)
                 .status(SharedSubmissionStatus.PENDING_REVIEW)
-                .submittedAt(LocalDateTime.now())
+                .submittedAt(now)
+                // 30-day retention: if still PENDING_REVIEW after this, the scheduler auto-purges
+                .deleteAfter(now.plusDays(30))
                 .build();
 
         SharedDocumentSubmission saved = submissionRepository.save(submission);
@@ -91,8 +94,8 @@ public class SharedDocumentSubmissionService {
         link.setUpdatedAt(LocalDateTime.now());
         shareLinkRepository.save(link);
 
-        log.info("[SharedUpload] Submission id={} created for shareLinkId={}, ownerUserId={}",
-                saved.getId(), link.getId(), link.getOwner().getId());
+        log.info("[SharedUpload] Submission id={} created for shareLinkId={}, ownerUserId={}, deleteAfter={}",
+                saved.getId(), link.getId(), link.getOwner().getId(), saved.getDeleteAfter());
 
         return toResponse(saved);
     }
@@ -225,14 +228,23 @@ public class SharedDocumentSubmissionService {
         submission.setApprovedDocumentId(savedDoc.getId());
         submission.setReviewedAt(now);
         submission.setReviewedBy(owner.getId());
+        // Clear deleteAfter so the pending-submission cleanup scheduler never touches this record
+        submission.setDeleteAfter(null);
         submissionRepository.save(submission);
 
-        // ── Trigger async AI processing AFTER COMMIT ────────────────────────
+        // ── Trigger async AI processing AFTER COMMIT ──────────────────────────────────
         // The async thread must not start until the current transaction commits;
         // otherwise it cannot see the new Document row in the database.
         Long savedDocId = savedDoc.getId();
         dispatchProcessingAfterCommit(savedDocId);
         log.info("[SharedUpload] Async processing scheduled after commit for document id={}", savedDocId);
+
+        // ── Delete staging file AFTER COMMIT ─────────────────────────────────────
+        // We only remove the old staged copy after the transaction successfully commits,
+        // guaranteeing the official file and Document record exist first.
+        // If the transaction rolls back for any reason, the staged file stays intact for retry.
+        String stagedFileName = submission.getStoredFileName();
+        dispatchStagingFileDeletionAfterCommit(stagedFileName, submissionId);
 
         return toDocumentResponse(savedDoc);
     }
@@ -258,6 +270,10 @@ public class SharedDocumentSubmissionService {
         submission.setRejectReason(request.getReason());
         submission.setReviewedAt(now);
         submission.setReviewedBy(request.getUserId());
+        // Clear deleteAfter: the 30-day auto-delete policy only applies to PENDING_REVIEW.
+        // Keeping a non-null deleteAfter on REJECTED submissions would mislead the frontend
+        // into showing a false "will be deleted at" date, since the scheduler never targets them.
+        submission.setDeleteAfter(null);
         SharedDocumentSubmission saved = submissionRepository.save(submission);
 
         log.info("[SharedUpload] Submission id={} rejected by userId={}", submissionId, request.getUserId());
@@ -346,7 +362,71 @@ public class SharedDocumentSubmissionService {
                 .reviewedAt(s.getReviewedAt())
                 .reviewedBy(s.getReviewedBy())
                 .rejectReason(s.getRejectReason())
+                .deleteAfter(s.getDeleteAfter())   // null once approved or for rejected submissions
                 .build();
+    }
+
+    // ─── Cleanup: permanently remove one expired pending submission ───────────────────────
+
+    /**
+     * Permanently cleans up one expired PENDING_REVIEW submission.
+     *
+     * <p>Called exclusively by {@code SharedSubmissionCleanupScheduler}.
+     * Validates that the submission is still PENDING_REVIEW and its deadline has passed
+     * before doing anything destructive.
+     *
+     * <p>Deletion order:
+     * <ol>
+     *   <li>Verify status is still PENDING_REVIEW (guard against concurrent approval).</li>
+     *   <li>Verify deleteAfter {@code <=} now (guard against clock drift / re-queried state).</li>
+     *   <li>Delete the staged file from {@code uploads/shared-submissions/}.</li>
+     *   <li>Delete the submission DB record.</li>
+     * </ol>
+     *
+     * <p>If file deletion fails, the method throws so the scheduler logs the failure
+     * and the DB record is NOT deleted, allowing a retry on the next run.
+     *
+     * @param submission the expired submission to purge
+     */
+    @Transactional
+    public void cleanupExpiredSubmission(SharedDocumentSubmission staleSubmission) {
+        Long id = staleSubmission.getId();
+        LocalDateTime now = LocalDateTime.now();
+
+        // ── Re-load fresh state from DB ───────────────────────────────────────────────
+        // The scheduler may have loaded the entity moments before User A clicked Approve.
+        // We reload here so we work from the current committed DB state, not a stale snapshot.
+        SharedDocumentSubmission submission = submissionRepository.findById(id).orElse(null);
+        if (submission == null) {
+            log.info("[SharedSubmissionCleanup] Skipping id={}: no longer exists in DB (already deleted?).", id);
+            return;
+        }
+
+        // Guard 1: must still be PENDING_REVIEW
+        if (submission.getStatus() != SharedSubmissionStatus.PENDING_REVIEW) {
+            log.info("[SharedSubmissionCleanup] Skipping id={}: status is now {} (approved or rejected concurrently).",
+                    id, submission.getStatus());
+            return;
+        }
+
+        // Guard 2: deleteAfter must be non-null and have actually passed
+        if (submission.getDeleteAfter() == null || submission.getDeleteAfter().isAfter(now)) {
+            log.info("[SharedSubmissionCleanup] Skipping id={}: deleteAfter={} is null or not yet expired.",
+                    id, submission.getDeleteAfter());
+            return;
+        }
+
+        // ── All guards passed: safely delete file then DB record ───────────────────
+        // If file deletion throws, the exception propagates to the scheduler which logs
+        // the failure and leaves the DB record intact so the next run can retry.
+        String fileName = submission.getStoredFileName();
+        if (fileName != null && !fileName.isBlank()) {
+            fileStorageService.deleteSharedSubmissionFile(fileName);
+        }
+
+        submissionRepository.delete(submission);
+        log.info("[SharedSubmissionCleanup] Permanently deleted expired submission id={}, title='{}'",
+                id, submission.getTitle());
     }
 
     private DocumentResponse toDocumentResponse(Document d) {
@@ -426,9 +506,55 @@ public class SharedDocumentSubmissionService {
                 }
             });
         } else {
-            // Fallback: synchronisation not active (e.g. unit-test context)
             documentProcessingAsyncService.processDocumentAsync(documentId);
             log.info("[SharedUpload] Async processing dispatched immediately for document id={}", documentId);
+        }
+    }
+
+    /**
+     * Schedules deletion of the old staged file in {@code uploads/shared-submissions/}
+     * to run only after the current transaction commits successfully.
+     *
+     * <p>This ensures the official document file (already copied to main uploads/) and the
+     * official Document DB record both exist and are committed before the staging copy is removed.
+     * If the approval transaction rolls back, the staged file is untouched — the operation can
+     * be retried safely.
+     *
+     * <p>If the staging-file deletion fails after a successful commit, only a warning is logged.
+     * The official Document is NOT rolled back — it is already committed and fully valid.
+     *
+     * @param stagedFileName  the UUID-based file name inside {@code uploads/shared-submissions/}
+     * @param submissionId    used for logging only
+     */
+    private void dispatchStagingFileDeletionAfterCommit(String stagedFileName, Long submissionId) {
+        if (stagedFileName == null || stagedFileName.isBlank()) return;
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        fileStorageService.deleteSharedSubmissionFile(stagedFileName);
+                        log.info("[SharedUpload] Staging file '{}' deleted after commit for submission id={}",
+                                stagedFileName, submissionId);
+                    } catch (Exception e) {
+                        // Do NOT throw here — the official Document is already committed and valid.
+                        // Log clearly so ops can manually clean up if needed.
+                        log.warn("[SharedUpload] Failed to delete staging file '{}' after approval of submission id={}: {}",
+                                stagedFileName, submissionId, e.getMessage());
+                    }
+                }
+            });
+        } else {
+            // Fallback (e.g. test context without active transaction synchronisation)
+            try {
+                fileStorageService.deleteSharedSubmissionFile(stagedFileName);
+                log.info("[SharedUpload] Staging file '{}' deleted immediately for submission id={}",
+                        stagedFileName, submissionId);
+            } catch (Exception e) {
+                log.warn("[SharedUpload] Failed to delete staging file '{}' for submission id={}: {}",
+                        stagedFileName, submissionId, e.getMessage());
+            }
         }
     }
 }

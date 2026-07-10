@@ -15,12 +15,14 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.util.List;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
@@ -42,7 +44,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String header = request.getHeader("Authorization");
 
-        System.out.println("Authorization = " + header);
+        log.debug("Authorization header present: {}", header != null);
         if (header == null || !header.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
@@ -50,27 +52,42 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String token = header.substring(7).trim();
 
+        // Tolerate double 'Bearer ' prefix (common mistake when pasting into Swagger UI)
+        if (token.toLowerCase().startsWith("bearer ")) {
+            token = token.substring(7).trim();
+            log.debug("Stripped extra Bearer prefix from token");
+        }
 
-        System.out.println("Token = " + token);
+        log.debug("Extracted token length: {}", token.length());
 
-        System.out.println("Validate = " + jwtService.validateAccessToken(token));
-        if (token.isEmpty() || !jwtService.validateAccessToken(token)) {
+        boolean isValid = false;
+        try {
+            isValid = jwtService.validateAccessToken(token);
+        } catch (Exception e) {
+            log.debug("Token validation threw exception: {}", e.getMessage());
+        }
+
+        log.debug("Token validation result: {}", isValid);
+        if (token.isEmpty() || !isValid) {
             authenticationEntryPoint.commence(
                     request,
                     response,
-                    new InsufficientAuthenticationException("Invalid JWT")
+                    new InsufficientAuthenticationException("Invalid or expired access token")
             );
             return;
         }
 
         String email = jwtService.extractEmail(token);
+        log.debug("Extracted email from token: {}", email);
+        
         User user = userRepository.findByEmail(email).orElse(null);
+        log.debug("User loaded from DB: {}", user != null);
 
         if (user == null || user.getStatus() != UserStatus.ACTIVE) {
             authenticationEntryPoint.commence(
                     request,
                     response,
-                    new InsufficientAuthenticationException("Inactive user")
+                    new InsufficientAuthenticationException("User not found or inactive")
             );
             return;
         }
@@ -92,6 +109,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder
                     .getContext()
                     .setAuthentication(authentication);
+            log.debug("Authentication set in SecurityContextHolder for email: {}", email);
         }
 
         filterChain.doFilter(request, response);

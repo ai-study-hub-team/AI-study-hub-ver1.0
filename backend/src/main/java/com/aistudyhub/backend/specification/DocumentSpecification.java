@@ -48,6 +48,9 @@ public class DocumentSpecification {
             // Chi lay document dang ACTIVE, khong lay document da soft delete.
             predicates.add(cb.equal(root.get("status"), DocumentStatus.ACTIVE));
 
+            // Exclude trashed documents from all normal listings (default: isTrashed = false).
+            predicates.add(cb.equal(root.get("isTrashed"), false));
+
             // Join voi category va cloudFile theo quan he trong Entity Document.
             Join<Document, Category>  categoryJoin  = root.join("category",  JoinType.LEFT);
             Join<Document, CloudFile> cloudFileJoin = root.join("cloudFile", JoinType.LEFT);
