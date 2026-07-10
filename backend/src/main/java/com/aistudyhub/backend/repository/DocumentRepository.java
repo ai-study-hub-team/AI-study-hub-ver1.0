@@ -41,6 +41,7 @@ public interface DocumentRepository extends JpaRepository<Document, Long>, JpaSp
      * Used by FolderService.toResponse() for the documentCount field.
      */
     long countByFolderIdAndStatusNot(Long folderId, DocumentStatus status);
+    long countByUserIdAndStatus(Long userId, DocumentStatus status);
 
     /**
      * Move all documents in a folder back to root (set folder = null).

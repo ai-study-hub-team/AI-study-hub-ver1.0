@@ -4,6 +4,7 @@ import com.aistudyhub.backend.dto.request.CategoryRequest;
 import com.aistudyhub.backend.dto.response.CategoryResponse;
 import com.aistudyhub.backend.entity.Category;
 import com.aistudyhub.backend.entity.User;
+import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.CategoryRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,31 +20,31 @@ public class CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final UserRepository userRepository;
+    private final CurrentUserService currentUserService;
 
     // ─── Create ────────────────────────────────────────────────────────────────
 
     public CategoryResponse create(CategoryRequest request) {
-        // 1. Find the user — throw if not found
-        User user = userRepository.findById(request.getUserId())
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + request.getUserId()));
+        User user = currentUserService.getCurrentUser();
 
-        // 2. Build and save the Category entity
         Category category = Category.builder()
-                .name(request.getName())
+                .name(request.getName().trim())
                 .description(request.getDescription())
                 .user(user)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
 
-        Category saved = categoryRepository.save(category);
-        return toResponse(saved);
+        return toResponse(categoryRepository.save(category));
     }
+
 
     // ─── Read All ──────────────────────────────────────────────────────────────
 
     public List<CategoryResponse> getAll() {
-        return categoryRepository.findAll()
+        User user = currentUserService.getCurrentUser();
+
+        return categoryRepository.findByUserId(user.getId())
                 .stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
@@ -52,28 +53,17 @@ public class CategoryService {
     // ─── Read One ──────────────────────────────────────────────────────────────
 
     public CategoryResponse getById(Long id) {
-        Category category = categoryRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Category not found with id: " + id));
-        return toResponse(category);
+        return toResponse(getOwnedCategory(id));
     }
 
     // ─── Update ────────────────────────────────────────────────────────────────
 
     public CategoryResponse update(Long id, CategoryRequest request) {
-        Category category = categoryRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Category not found with id: " + id));
+        Category category = getOwnedCategory(id);
 
-        // Update only provided fields
-        category.setName(request.getName());
+        category.setName(request.getName().trim());
         category.setDescription(request.getDescription());
         category.setUpdatedAt(LocalDateTime.now());
-
-        // Optionally re-assign user
-        if (request.getUserId() != null) {
-            User user = userRepository.findById(request.getUserId())
-                    .orElseThrow(() -> new RuntimeException("User not found with id: " + request.getUserId()));
-            category.setUser(user);
-        }
 
         return toResponse(categoryRepository.save(category));
     }
@@ -81,9 +71,7 @@ public class CategoryService {
     // ─── Delete ────────────────────────────────────────────────────────────────
 
     public void delete(Long id) {
-        Category category = categoryRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Category not found with id: " + id));
-        categoryRepository.delete(category);
+        categoryRepository.delete(getOwnedCategory(id));
     }
 
     // ─── Mapper ────────────────────────────────────────────────────────────────
@@ -97,5 +85,12 @@ public class CategoryService {
                 .createdAt(category.getCreatedAt())
                 .updatedAt(category.getUpdatedAt())
                 .build();
+    }
+
+    private Category getOwnedCategory(Long id) {
+        User user = currentUserService.getCurrentUser();
+
+        return categoryRepository.findByIdAndUserId(id, user.getId())
+                .orElseThrow(() -> new NotFoundException("Category not found"));
     }
 }

@@ -20,7 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.time.LocalDateTime;
+
 
 @Service
 @RequiredArgsConstructor
@@ -194,8 +194,18 @@ public class DocumentService {
     // ─── Read All (paginated, ACTIVE only) ─────────────────────────────────────
 
     public Page<DocumentResponse> getAll(Pageable pageable) {
-        return documentRepository.findByStatus(DocumentStatus.ACTIVE, pageable)
-                .map(this::toResponse);
+        return searchAndFilter(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                pageable
+        );
     }
 
     // ─── Read One ──────────────────────────────────────────────────────────────
@@ -348,8 +358,18 @@ public class DocumentService {
     // ─── Search ────────────────────────────────────────────────────────────────
 
     public Page<DocumentResponse> search(String keyword, Pageable pageable) {
-        return documentRepository.searchByKeyword(keyword, pageable)
-                .map(this::toResponse);
+        return searchAndFilter(
+                keyword,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                pageable
+        );
     }
 
     public Page<DocumentResponse> searchAndFilter(
@@ -384,8 +404,10 @@ public class DocumentService {
             Boolean rootOnly,
             Pageable pageable) {
 
+        User currentUser = currentUserService.getCurrentUser();
+
         return documentRepository.findAll(
-                DocumentSpecification.filterDocuments(
+                DocumentSpecification.filterVisibleDocuments(
                         keyword,
                         categoryId,
                         processStatus,
@@ -394,8 +416,11 @@ public class DocumentService {
                         fromDate,
                         toDate,
                         folderId,
-                        rootOnly),
-                pageable).map(this::toResponse);
+                        rootOnly,
+                        currentUser
+                ),
+                pageable
+        ).map(this::toResponse);
     }
 
     // ─── Move Document to Folder ───────────────────────────────────────────────
@@ -412,22 +437,15 @@ public class DocumentService {
      * </ul>
      */
     @Transactional
-    public DocumentResponse moveDocumentToFolder(Long documentId, Long userId, Long folderId) {
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + documentId));
+    public DocumentResponse moveDocumentToFolder(Long documentId, Long folderId) {
+        User currentUser = currentUserService.getCurrentUser();
 
-        if (document.getStatus() == DocumentStatus.DELETED) {
-            throw new RuntimeException("Cannot move a deleted document.");
-        }
-        if (!document.getUser().getId().equals(userId)) {
-            throw new RuntimeException("Document " + documentId + " does not belong to user " + userId);
-        }
+        Document document = documentAccessService.getOwnedActiveDocument(documentId);
 
         Folder folder = null;
         if (folderId != null) {
-            folder = folderRepository.findByIdAndUserId(folderId, userId)
-                    .orElseThrow(() -> new RuntimeException(
-                            "Folder not found or does not belong to user: " + folderId));
+            folder = folderRepository.findByIdAndUserId(folderId, currentUser.getId())
+                    .orElseThrow(() -> new NotFoundException("Folder not found"));
         }
 
         document.setFolder(folder);
@@ -435,7 +453,7 @@ public class DocumentService {
         Document saved = documentRepository.save(document);
 
         log.info("[Document] Moved document id={} to folder id={} for userId={}",
-                documentId, folderId, userId);
+                documentId, folderId, currentUser.getId());
         return toResponse(saved);
     }
 

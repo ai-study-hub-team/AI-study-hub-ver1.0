@@ -18,7 +18,4 @@ public class MoveDocumentRequest {
 
     /** Target folder ID; {@code null} means "move to root". */
     private Long folderId;
-
-    /** The user making the request — used to verify ownership of the document and folder. */
-    private Long userId;
 }

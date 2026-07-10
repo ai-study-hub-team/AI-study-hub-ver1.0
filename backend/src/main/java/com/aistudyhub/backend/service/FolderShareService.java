@@ -4,11 +4,7 @@ import com.aistudyhub.backend.dto.response.SharedItemResponse;
 import com.aistudyhub.backend.dto.response.SharedUserResponse;
 import com.aistudyhub.backend.dto.request.ShareRequest;
 import com.aistudyhub.backend.dto.response.ShareResultResponse;
-import com.aistudyhub.backend.entity.DocumentSharePermission;
-import com.aistudyhub.backend.entity.Folder;
-import com.aistudyhub.backend.entity.FolderShare;
-import com.aistudyhub.backend.entity.FolderShareStatus;
-import com.aistudyhub.backend.entity.User;
+import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.exception.BadRequestException;
 import com.aistudyhub.backend.exception.ForbiddenException;
 import com.aistudyhub.backend.exception.NotFoundException;
@@ -36,6 +32,7 @@ public class FolderShareService {
     private final CurrentUserService currentUserService;
     private final ShareValidationService shareValidationService;
     private final ResendEmailService resendEmailService;
+    private final NotificationService notificationService;
 
     @Transactional
     public ShareResultResponse shareFolder(Long folderId, ShareRequest request) {
@@ -89,6 +86,15 @@ public class FolderShareService {
             }
 
             folderShareRepository.save(share);
+            notificationService.create(
+                    receiver,
+                    NotificationType.FOLDER_SHARED,
+                    "Folder shared with you",
+                    currentUser.getFullName() + " shared folder \"" + folder.getName() + "\" with you",
+                    "FOLDER",
+                    folder.getId(),
+                    "/folders/" + folder.getId()
+            );
             sharedEmails.add(email);
             emailReceivers.add(receiver);
         }

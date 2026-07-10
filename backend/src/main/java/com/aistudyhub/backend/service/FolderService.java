@@ -5,6 +5,7 @@ import com.aistudyhub.backend.dto.request.FolderUpdateRequest;
 import com.aistudyhub.backend.dto.response.FolderResponse;
 import com.aistudyhub.backend.entity.Folder;
 import com.aistudyhub.backend.entity.User;
+import com.aistudyhub.backend.exception.BadRequestException;
 import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.FolderRepository;
@@ -62,11 +63,10 @@ public class FolderService {
     // ─── Read All (for a user) ─────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public List<FolderResponse> getFoldersByUser(Long userId) {
-        if (!userRepository.existsById(userId)) {
-            throw new RuntimeException("User not found with id: " + userId);
-        }
-        return folderRepository.findByUserId(userId)
+    public List<FolderResponse> getMyFolders() {
+        User user = currentUserService.getCurrentUser();
+
+        return folderRepository.findByUserId(user.getId())
                 .stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
@@ -75,10 +75,12 @@ public class FolderService {
     // ─── Read One ──────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public FolderResponse getFolderById(Long id, Long userId) {
-        Folder folder = folderRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new RuntimeException(
-                        "Folder not found with id: " + id + " for user: " + userId));
+    public FolderResponse getFolderById(Long id) {
+        User user = currentUserService.getCurrentUser();
+
+        Folder folder = folderRepository.findByIdAndUserId(id, user.getId())
+                .orElseThrow(() -> new NotFoundException("Folder not found"));
+
         return toResponse(folder);
     }
 
@@ -86,41 +88,39 @@ public class FolderService {
 
     @Transactional
     public FolderResponse updateFolder(Long id, FolderUpdateRequest request) {
-        Folder folder = folderRepository.findByIdAndUserId(id, request.getUserId())
-                .orElseThrow(() -> new RuntimeException(
-                        "Folder not found with id: " + id + " for user: " + request.getUserId()));
+        User user = currentUserService.getCurrentUser();
+        Long userId = user.getId();
 
-        // A folder cannot be its own parent
+        Folder folder = folderRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new NotFoundException("Folder not found"));
+
         if (request.getParentFolderId() != null
                 && request.getParentFolderId().equals(id)) {
-            throw new RuntimeException("A folder cannot be its own parent.");
+            throw new BadRequestException("A folder cannot be its own parent.");
         }
 
-        // Resolve new parent — must belong to the same user
         Folder newParent = null;
         if (request.getParentFolderId() != null) {
             newParent = folderRepository.findByIdAndUserId(
-                    request.getParentFolderId(), request.getUserId())
-                    .orElseThrow(() -> new RuntimeException(
-                            "Parent folder not found or does not belong to user: "
-                                    + request.getParentFolderId()));
+                            request.getParentFolderId(),
+                            userId
+                    )
+                    .orElseThrow(() -> new NotFoundException("Parent folder not found"));
 
-            // Basic circular-nesting guard: the new parent must not already
-            // be a descendant of this folder
             if (isDescendant(newParent, id)) {
-                throw new RuntimeException(
-                        "Cannot set a descendant folder as the parent (circular nesting).");
+                throw new BadRequestException("Cannot set a descendant folder as the parent.");
             }
         }
 
-        // Duplicate name check (exclude current folder)
         Long currentParentId = folder.getParentFolder() != null
-                ? folder.getParentFolder().getId() : null;
+                ? folder.getParentFolder().getId()
+                : null;
         Long targetParentId = request.getParentFolderId();
         boolean nameChanged = !folder.getName().equalsIgnoreCase(request.getName().trim());
         boolean parentChanged = !java.util.Objects.equals(currentParentId, targetParentId);
+
         if (nameChanged || parentChanged) {
-            checkDuplicateName(request.getName().trim(), request.getUserId(), targetParentId, id);
+            checkDuplicateName(request.getName().trim(), userId, targetParentId, id);
         }
 
         folder.setName(request.getName().trim());
@@ -128,10 +128,7 @@ public class FolderService {
         folder.setParentFolder(newParent);
         folder.setUpdatedAt(LocalDateTime.now());
 
-        Folder saved = folderRepository.save(folder);
-        log.info("[Folder] Updated folder id={}, name='{}', userId={}, newParentId={}",
-                saved.getId(), saved.getName(), request.getUserId(), request.getParentFolderId());
-        return toResponse(saved);
+        return toResponse(folderRepository.save(folder));
     }
 
     // ─── Delete ────────────────────────────────────────────────────────────────
@@ -143,12 +140,13 @@ public class FolderService {
      * Child sub-folders are also un-parented (moved to root level).
      */
     @Transactional
-    public void deleteFolder(Long id, Long userId) {
-        Folder folder = folderRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new RuntimeException(
-                        "Folder not found with id: " + id + " for user: " + userId));
+    public void deleteFolder(Long id) {
+        User user = currentUserService.getCurrentUser();
+        Long userId = user.getId();
 
-        // Move child folders to root so they are not deleted with the parent
+        Folder folder = folderRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new NotFoundException("Folder not found"));
+
         List<Folder> children = folderRepository.findByParentFolderIdAndUserId(id, userId);
         for (Folder child : children) {
             child.setParentFolder(null);
@@ -156,18 +154,10 @@ public class FolderService {
         }
         if (!children.isEmpty()) {
             folderRepository.saveAll(children);
-            log.info("[Folder] Moved {} child folder(s) to root before deleting folder id={}",
-                    children.size(), id);
         }
 
-        // Move documents in this folder back to root
-        int moved = documentRepository.clearFolderForDocumentsInFolder(id);
-        if (moved > 0) {
-            log.info("[Folder] Moved {} document(s) to root before deleting folder id={}", moved, id);
-        }
-
+        documentRepository.clearFolderForDocumentsInFolder(id);
         folderRepository.delete(folder);
-        log.info("[Folder] Deleted folder id={}, userId={}", id, userId);
     }
 
     // ─── Mapper ────────────────────────────────────────────────────────────────

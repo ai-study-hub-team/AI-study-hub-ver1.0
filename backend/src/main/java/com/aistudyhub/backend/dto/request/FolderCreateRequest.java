@@ -19,10 +19,6 @@ public class FolderCreateRequest {
 
     private String description;
 
-    /** The owning user's ID — required. */
-    @NotNull(message = "userId is required")
-    private Long userId;
-
     /** {@code null} creates a root-level folder; a value nests under that parent. */
     private Long parentFolderId;
 }

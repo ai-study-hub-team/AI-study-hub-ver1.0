@@ -4,12 +4,7 @@ import com.aistudyhub.backend.dto.response.ShareResultResponse;
 import com.aistudyhub.backend.dto.response.SharedItemResponse;
 import com.aistudyhub.backend.dto.response.SharedUserResponse;
 import com.aistudyhub.backend.dto.request.ShareRequest;
-import com.aistudyhub.backend.entity.Document;
-import com.aistudyhub.backend.entity.DocumentShare;
-import com.aistudyhub.backend.entity.DocumentSharePermission;
-import com.aistudyhub.backend.entity.DocumentShareStatus;
-import com.aistudyhub.backend.entity.DocumentStatus;
-import com.aistudyhub.backend.entity.User;
+import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.exception.BadRequestException;
 import com.aistudyhub.backend.exception.ForbiddenException;
 import com.aistudyhub.backend.exception.NotFoundException;
@@ -37,6 +32,7 @@ public class DocumentShareService {
     private final CurrentUserService currentUserService;
     private final ResendEmailService resendEmailService;
     private final ShareValidationService shareValidationService;
+    private final NotificationService notificationService;
 
     @Transactional
     public ShareResultResponse shareDocumentToUsers(Long documentId, ShareRequest request) {
@@ -91,6 +87,15 @@ public class DocumentShareService {
             }
 
             documentShareRepository.save(share);
+            notificationService.create(
+                    receiver,
+                    NotificationType.DOCUMENT_SHARED,
+                    "Document shared with you",
+                    currentUser.getFullName() + " shared document \"" + document.getTitle() + "\" with you",
+                    "DOCUMENT",
+                    document.getId(),
+                    "/documents/" + document.getId()
+            );
             sharedEmails.add(email);
             emailReceivers.add(receiver);
         }
