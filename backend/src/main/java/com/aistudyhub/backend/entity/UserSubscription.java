@@ -42,6 +42,12 @@ public class UserSubscription {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
+    @Column(name = "expiry_reminder_7_days_sent_at")
+    private LocalDateTime expiryReminder7DaysSentAt;
+
+    @Column(name = "expired_notification_sent_at")
+    private LocalDateTime expiredNotificationSentAt;
+
     @PrePersist
     void prePersist() {
         LocalDateTime now = LocalDateTime.now();
