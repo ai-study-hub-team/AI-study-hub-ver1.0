@@ -1,5 +1,6 @@
-import { FileText } from "lucide-react";
+import { FileText, Share2 } from "lucide-react";
 import { aiStatusFilters, aiStatusMeta, documentStatusMeta } from "../../../constants/documentStatus";
+import { useCreatePublicLink } from "../../../hooks/useCreatePublicLink";
 import type { RecentUpload, UploadFilter } from "../types";
 
 interface RecentUploadsCardProps {
@@ -20,6 +21,8 @@ interface UploadStatusBlockProps {
 
 interface RecentUploadItemProps {
   upload: RecentUpload;
+  onShare: (documentId: number) => void | Promise<void>;
+  sharingDocumentId: number | null;
 }
 
 function StatusBadge({ label, badgeClass }: StatusBadgeProps) {
@@ -39,7 +42,11 @@ function UploadStatusBlock({ title, status }: UploadStatusBlockProps) {
   );
 }
 
-function RecentUploadItem({ upload }: RecentUploadItemProps) {
+function RecentUploadItem({
+  upload,
+  onShare,
+  sharingDocumentId,
+}: RecentUploadItemProps) {
   const aiStatus = aiStatusMeta[upload.aiStatus];
   const documentStatus = documentStatusMeta[upload.documentStatus];
 
@@ -54,9 +61,26 @@ function RecentUploadItem({ upload }: RecentUploadItemProps) {
           <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{upload.name}</p>
         </div>
 
-        <time className="shrink-0 whitespace-nowrap pt-0.5 text-right text-xs font-bold text-slate-400 dark:text-slate-500">
-          {upload.uploadedAt}
-        </time>
+        <div className="flex shrink-0 items-center gap-1">
+          <time className="whitespace-nowrap pt-0.5 text-right text-xs font-bold text-slate-400 dark:text-slate-500">
+            {upload.uploadedAt}
+          </time>
+
+          <button
+            type="button"
+            onClick={() => onShare(upload.id)}
+            disabled={sharingDocumentId === upload.id}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-300"
+            title="Share document"
+            aria-label="Share document"
+          >
+            <Share2
+              className={`h-4 w-4 ${
+                sharingDocumentId === upload.id ? "animate-pulse" : ""
+              }`}
+            />
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-2">
@@ -68,6 +92,9 @@ function RecentUploadItem({ upload }: RecentUploadItemProps) {
 }
 
 export function RecentUploadsCard({ uploads, activeFilter, onFilterChange }: RecentUploadsCardProps) {
+  const { createAndCopyPublicLink, loadingDocumentId } =
+    useCreatePublicLink();
+
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <div className="mb-4">
@@ -90,7 +117,12 @@ export function RecentUploadsCard({ uploads, activeFilter, onFilterChange }: Rec
       </div>
       <div className="space-y-3">
         {uploads.map((upload) => (
-          <RecentUploadItem key={upload.id} upload={upload} />
+          <RecentUploadItem
+            key={upload.id}
+            upload={upload}
+            onShare={createAndCopyPublicLink}
+            sharingDocumentId={loadingDocumentId}
+          />
         ))}
         {uploads.length === 0 && (
           <p className="rounded-xl bg-slate-50 p-4 text-sm font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">

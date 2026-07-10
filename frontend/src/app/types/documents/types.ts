@@ -16,6 +16,10 @@ export interface DocumentResponse {
   userId: number;
   categoryId: number;
   categoryName: string;
+
+  folderId?: number | null;
+  folderName?: string | null;
+
   cloudFileId: number;
   fileName: string;
   originalName: string;

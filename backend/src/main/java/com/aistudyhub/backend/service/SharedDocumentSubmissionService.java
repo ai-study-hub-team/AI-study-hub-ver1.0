@@ -35,6 +35,7 @@ public class SharedDocumentSubmissionService {
     private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
     private final DocumentProcessingAsyncService documentProcessingAsyncService;
+    private final StorageQuotaService storageQuotaService;
 
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
@@ -147,6 +148,10 @@ public class SharedDocumentSubmissionService {
                 .orElseThrow(() -> new RuntimeException(
                         "User not found with id: " + request.getUserId()));
 
+        storageQuotaService.validateFileRestrictions(owner.getId(), submission.getFileType());
+        storageQuotaService.validateFileSize(owner.getId(), submission.getFileSize());
+        storageQuotaService.validateStorageLimit(owner.getId(), submission.getFileSize());
+
         // ── Resolve optional Category (must belong to User A) ─────────────────
         Category category = null;
         if (request.getCategoryId() != null) {
@@ -217,6 +222,7 @@ public class SharedDocumentSubmissionService {
                 .build();
 
         Document savedDoc = documentRepository.save(document);
+        storageQuotaService.addStorageUsage(owner.getId(), submission.getFileSize());
         log.info("[SharedUpload] Official Document id={} created from submission id={} for userId={}",
                 savedDoc.getId(), submissionId, owner.getId());
 

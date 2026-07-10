@@ -209,6 +209,11 @@ public class UserService {
                 .emailVerified(user.isEmailVerified())
                 .avatarUrl(user.getAvatarUrl())
                 .phone(user.getPhone())
+                .totalStorageUsedBytes(
+                        user.getTotalStorageUsedBytes() == null
+                                ? 0L
+                                : user.getTotalStorageUsedBytes()
+                )
                 .documentCount(
                         user.getDocuments() == null
                                 ? 0

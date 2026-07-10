@@ -22,6 +22,8 @@ import {
   UploadCloud,
   Folder,
   Trash2,
+  Tags,
+  Share2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
@@ -71,7 +73,9 @@ const getRoleFromToken = (): string | null => {
       authorities?: string[];
     };
 
-    return payload.role || payload.roles?.[0] || payload.authorities?.[0] || null;
+    return (
+      payload.role || payload.roles?.[0] || payload.authorities?.[0] || null
+    );
   } catch {
     return null;
   }
@@ -179,10 +183,14 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
 
   const studentLinks = [
     { to: "/app/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-    { to: "/app/categories", icon: Folder, label: "Categories" },
-    { to: "/app/upload", icon: UploadCloud, label: "Upload" },
     { to: "/app/library", icon: Library, label: "My Library" },
+    { to: "/app/folders", icon: Folder, label: "Folders" },
+    { to: "/app/categories", icon: Tags, label: "Categories" },
+    { to: "/app/upload", icon: UploadCloud, label: "Upload" },
     { to: "/app/trash", icon: Trash2, label: "Trash" },
+    { to: "/app/my-shared-documents", icon: Share2, label: "My Shared Documents" },
+    { to: "/app/shared-with-me", icon: Share2, label: "Shared With Me" },
+    { to: "/app/shares", icon: Share2, label: "Shared Upload" },
     { to: "/app/chat", icon: MessageSquare, label: "AI Chat" },
     { to: "/app/summary", icon: FileSearch, label: "AI Summary" },
     { to: "/app/quiz", icon: Puzzle, label: "Quiz Generator" },
@@ -405,14 +413,14 @@ export function DashboardLayout({ isAdmin = false }: DashboardLayoutProps) {
       </div>
 
       {!isAdmin && (
-  <div className="fixed bottom-3 right-3 z-[9999]">
-    <div className="relative w-[140px] h-[110px]">
-      <div className="absolute bottom-0 right-0 w-[85px] h-[85px]">
-        <Chatbot3D />
-      </div>
-    </div>
-  </div>
-)}
+        <div className="fixed bottom-6 right-6 z-[9999]">
+          <div className="relative w-[140px] h-[110px]">
+            <div className="absolute bottom-0 right-0 w-[85px] h-[85px]">
+              <Chatbot3D />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

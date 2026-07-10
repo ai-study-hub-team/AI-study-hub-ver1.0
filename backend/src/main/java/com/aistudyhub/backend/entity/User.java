@@ -76,6 +76,9 @@ public class User {
     private LocalDateTime lastLoginAt;
 
     private LocalDateTime lastActiveAt;
+    @Column(name = "total_storage_used_bytes", nullable = false)
+    @Builder.Default
+    private Long totalStorageUsedBytes = 0L;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -112,6 +115,9 @@ public class User {
             provider = UserAuthProvider.LOCAL;
         }
 
+        if (totalStorageUsedBytes == null) {
+            totalStorageUsedBytes = 0L;
+        }
     }
     @PreUpdate
     void preUpdate() {

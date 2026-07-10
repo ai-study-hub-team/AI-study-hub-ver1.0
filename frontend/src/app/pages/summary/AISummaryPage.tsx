@@ -9,6 +9,7 @@ import {
   Copy,
   RefreshCw,
   History,
+  Share2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
@@ -24,6 +25,7 @@ import {
   type SummaryType,
 } from "../../services/aiApi";
 import { getCurrentUserId } from "../../services/apiClient";
+import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 
 const DISPLAY_LIMIT = 6;
 
@@ -48,6 +50,8 @@ export function AISummaryPage() {
   const [summaryHistory, setSummaryHistory] = useState<any[]>([]);
 
   const [summaryType, setSummaryType] = useState<SummaryType>("SHORT");
+  const { createAndCopyPublicLink, loadingDocumentId } =
+    useCreatePublicLink();
 
   const visibleDocuments = showAllDocuments
     ? documents
@@ -295,9 +299,17 @@ const summaryTypeOptions: { value: SummaryType; label: string; desc: string }[] 
                       !processStatus || processStatus === "PROCESSED";
 
                     return (
-                      <button
+                      <div
                         key={doc.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => handleSelectDocument(doc)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            handleSelectDocument(doc);
+                          }
+                        }}
                         className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all ${
                           selectedDoc?.id === doc.id
                             ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
@@ -325,7 +337,27 @@ const summaryTypeOptions: { value: SummaryType; label: string; desc: string }[] 
                             </p>
                           )}
                         </div>
-                      </button>
+
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            createAndCopyPublicLink(doc.id);
+                          }}
+                          disabled={loadingDocumentId === doc.id}
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-300"
+                          title="Share document"
+                          aria-label="Share document"
+                        >
+                          <Share2
+                            className={`h-4 w-4 ${
+                              loadingDocumentId === doc.id
+                                ? "animate-pulse"
+                                : ""
+                            }`}
+                          />
+                        </button>
+                      </div>
                     );
                   })}
 

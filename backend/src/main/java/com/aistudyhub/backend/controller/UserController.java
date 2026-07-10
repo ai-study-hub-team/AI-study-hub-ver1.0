@@ -1,9 +1,13 @@
 package com.aistudyhub.backend.controller;
 
+import com.aistudyhub.backend.dto.request.UserPlanUpdateRequest;
 import com.aistudyhub.backend.dto.request.UserStatusUpdateRequest;
 import com.aistudyhub.backend.dto.request.UserUpdateRequest;
+import com.aistudyhub.backend.dto.response.SubscriptionResponse;
 import com.aistudyhub.backend.dto.response.UserResponse;
+import com.aistudyhub.backend.service.SubscriptionService;
 import com.aistudyhub.backend.service.UserService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -13,10 +17,13 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
+@SecurityRequirement(name = "bearerAuth")
+
 @RequiredArgsConstructor
 public class UserController {
 
     private final UserService userService;
+    private final SubscriptionService subscriptionService;
 
     @GetMapping
     public ResponseEntity<List<UserResponse>> getAll() {
@@ -40,6 +47,13 @@ public class UserController {
             @PathVariable Long id,
             @Valid @RequestBody UserStatusUpdateRequest request) {
         return ResponseEntity.ok(userService.updateStatus(id, request.getStatus()));
+    }
+
+    @PatchMapping("/{id}/subscription")
+    public ResponseEntity<SubscriptionResponse> updateUserSubscription(
+            @PathVariable Long id,
+            @Valid @RequestBody UserPlanUpdateRequest request) {
+        return ResponseEntity.ok(subscriptionService.updateUserPlanByAdmin(id, request.getPlanCode()));
     }
 
     @DeleteMapping("/{id}")
