@@ -1,137 +1,206 @@
-import { NavLink, useNavigate } from "react-router";
-import { Mail, ArrowRight, RefreshCw } from "lucide-react";
-import { useState, useRef } from "react";
-import { motion } from "motion/react";
-import { toast } from "sonner";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  LoaderCircle,
+  MailWarning,
+} from "lucide-react";
+import {
+  NavLink,
+  useNavigate,
+  useSearchParams,
+} from "react-router";
+import { verifyEmailApi } from "../../services/authApi";
+
+type VerificationStatus =
+  | "verifying"
+  | "success"
+  | "error";
 
 export function EmailVerificationPage() {
-  const [code, setCode] = useState(["", "", "", "", "", ""]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [resending, setResending] = useState(false);
-  const inputs = useRef<(HTMLInputElement | null)[]>([]);
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const handleChange = (index: number, value: string) => {
-    if (!/^[0-9]*$/.test(value)) return;
-    const newCode = [...code];
-    newCode[index] = value.slice(-1);
-    setCode(newCode);
-    if (value && index < 5) {
-      inputs.current[index + 1]?.focus();
-    }
-  };
+  /*
+   * React StrictMode có thể gọi effect hai lần
+   * trong môi trường development.
+   */
+  const requestStarted = useRef(false);
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === "Backspace" && !code[index] && index > 0) {
-      inputs.current[index - 1]?.focus();
-    }
-  };
+  const [status, setStatus] =
+    useState<VerificationStatus>("verifying");
 
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-    if (pasted.length === 6) {
-      setCode(pasted.split(""));
-      inputs.current[5]?.focus();
-    }
-  };
+  const [message, setMessage] = useState(
+    "Đang xác thực email của bạn...",
+  );
 
-  const handleVerify = () => {
-    const fullCode = code.join("");
-    if (fullCode.length < 6) {
-      toast.error("Please enter the complete 6-digit code");
+  useEffect(() => {
+    if (requestStarted.current) {
       return;
     }
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      if (fullCode === "123456") {
-        navigate("/verify-email-success");
-      } else {
-        toast.error("Invalid code. Use 123456 for demo.");
-      }
-    }, 1500);
-  };
 
-  const handleResend = () => {
-    setResending(true);
-    setTimeout(() => {
-      setResending(false);
-      toast.success("New verification code sent!");
-    }, 1500);
-  };
+    requestStarted.current = true;
+
+    const token =
+      searchParams.get("token")?.trim();
+
+    if (!token) {
+      setStatus("error");
+      setMessage(
+        "Đường link xác thực không chứa token.",
+      );
+      return;
+    }
+
+    let redirectTimer: number | undefined;
+
+    const verifyEmail = async () => {
+      try {
+        const response =
+          await verifyEmailApi(token);
+
+        const verifiedEmail =
+          response.data.email?.trim();
+
+        if (verifiedEmail) {
+          sessionStorage.setItem(
+            "pendingVerificationEmail",
+            verifiedEmail,
+          );
+        }
+
+        sessionStorage.removeItem(
+          "verificationResendAvailableAt",
+        );
+
+        setStatus("success");
+
+        setMessage(
+          response.data.message ||
+            "Xác thực email thành công.",
+        );
+
+        redirectTimer = window.setTimeout(() => {
+          navigate("/verify-email-success", {
+            replace: true,
+            state: {
+              email: verifiedEmail,
+              message: response.data.message,
+            },
+          });
+        }, 1200);
+      } catch (error: any) {
+        setStatus("error");
+
+        setMessage(
+          error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            "Không thể xác thực email. Đường link có thể đã hết hạn hoặc không hợp lệ.",
+        );
+      }
+    };
+
+    void verifyEmail();
+
+    return () => {
+      if (redirectTimer) {
+        window.clearTimeout(redirectTimer);
+      }
+    };
+  }, [navigate, searchParams]);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950">
-      <div className="max-w-md w-full">
-        <div className="text-center mb-10">
-          <NavLink to="/" className="inline-flex items-center gap-2 mb-8">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">A</div>
-            <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">AI Study Hub</span>
-          </NavLink>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+      <div className="w-full max-w-md text-center">
+        <NavLink
+          to="/"
+          className="inline-flex items-center gap-2 mb-8"
+        >
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
+            A
+          </div>
+
+          <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+            AI Study Hub
+          </span>
+        </NavLink>
+
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-xl border border-slate-200 dark:border-slate-700">
+          {status === "verifying" && (
+            <>
+              <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+                <LoaderCircle className="w-10 h-10 text-blue-600 animate-spin" />
+              </div>
+
+              <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-3">
+                Đang xác thực email
+              </h1>
+            </>
+          )}
+
+          {status === "success" && (
+            <>
+              <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
+                <CheckCircle2 className="w-10 h-10 text-emerald-600" />
+              </div>
+
+              <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-3">
+                Xác thực thành công
+              </h1>
+            </>
+          )}
+
+          {status === "error" && (
+            <>
+              <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center">
+                <MailWarning className="w-10 h-10 text-rose-600" />
+              </div>
+
+              <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-3">
+                Xác thực thất bại
+              </h1>
+            </>
+          )}
+
+          <p
+            className={`leading-6 ${
+              status === "error"
+                ? "text-rose-600 dark:text-rose-400"
+                : "text-slate-500 dark:text-slate-400"
+            }`}
           >
-            <div className="w-16 h-16 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
-              <Mail className="w-8 h-8 text-blue-600" />
+            {message}
+          </p>
+
+          {status === "success" && (
+            <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+              Đang chuyển sang trang đăng nhập...
+            </p>
+          )}
+
+          {status === "error" && (
+            <div className="mt-6 space-y-3">
+              <NavLink
+                to="/check-email"
+                className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2"
+              >
+                Gửi lại email xác thực
+                <ArrowRight className="w-5 h-5" />
+              </NavLink>
+
+              <NavLink
+                to="/register"
+                className="w-full py-3 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center"
+              >
+                Quay lại đăng ký
+              </NavLink>
             </div>
-            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2">Verify Your Email</h1>
-            <p className="text-slate-500 dark:text-slate-400">We sent a 6-digit code to</p>
-            <p className="font-bold text-slate-900 dark:text-white mt-1">alex.johnson@example.com</p>
-          </motion.div>
+          )}
         </div>
-
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 dark:shadow-slate-950/40 border border-slate-200 dark:border-slate-700">
-          <div className="flex justify-center gap-3 mb-8" onPaste={handlePaste}>
-            {code.map((digit, i) => (
-              <input
-                key={i}
-                ref={(el) => { inputs.current[i] = el; }}
-                type="text"
-                inputMode="numeric"
-                maxLength={1}
-                value={digit}
-                onChange={(e) => handleChange(i, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(i, e)}
-                className={`w-12 h-14 text-center text-2xl font-extrabold border-2 rounded-2xl outline-none transition-all ${
-                  digit
-                    ? "border-blue-500 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300"
-                    : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-500 focus:bg-blue-50/30 dark:focus:bg-blue-500/10"
-                }`}
-              />
-            ))}
-          </div>
-
-          <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/30 rounded-2xl p-3 mb-6">
-            <p className="text-xs text-amber-700 dark:text-amber-300 font-medium text-center">Demo: use code <span className="font-extrabold">123456</span></p>
-          </div>
-
-          <button
-            onClick={handleVerify}
-            disabled={isLoading || code.join("").length < 6}
-            className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? "Verifying..." : "Verify Email"}
-            {!isLoading && <ArrowRight className="w-5 h-5" />}
-          </button>
-
-          <div className="mt-6 text-center">
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">Didn't receive the code?</p>
-            <button
-              onClick={handleResend}
-              disabled={resending}
-              className="inline-flex items-center gap-2 text-blue-600 font-bold hover:text-blue-700 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${resending ? "animate-spin" : ""}`} />
-              {resending ? "Sending..." : "Resend Code"}
-            </button>
-          </div>
-        </div>
-
-        <p className="text-center mt-6 text-sm text-slate-500 dark:text-slate-400">
-          Wrong email?{" "}
-          <NavLink to="/register" className="text-blue-600 font-bold hover:underline">Change email address</NavLink>
-        </p>
       </div>
     </div>
   );
