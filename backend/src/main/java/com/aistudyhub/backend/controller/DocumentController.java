@@ -277,8 +277,7 @@ public class DocumentController {
     public ResponseEntity<DocumentResponse> moveToFolder(
             @PathVariable Long id,
             @RequestBody MoveDocumentRequest request) {
-        DocumentResponse response = documentService.moveDocumentToFolder(
-                id, request.getUserId(), request.getFolderId());
+        DocumentResponse response = documentService.moveDocumentToFolder(id, request.getFolderId());
         return ResponseEntity.ok(response);
     }
 

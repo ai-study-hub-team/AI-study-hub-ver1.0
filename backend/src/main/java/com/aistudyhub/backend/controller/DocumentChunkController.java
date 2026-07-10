@@ -19,15 +19,14 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class DocumentChunkController {
 
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentChunkService documentChunkService;
 
     @GetMapping("/documents/{id}/chunks")
-    public ResponseEntity<List<DocumentChunk>> getChunks(@PathVariable("id") Long documentId) {
-        List<DocumentChunk> chunks = documentChunkRepository.findByDocumentIdOrderByChunkIndexAsc(documentId);
+    public ResponseEntity<List<ChunkSearchResponse>> getChunks(@PathVariable("id") Long documentId) {
+        List<ChunkSearchResponse> chunks = documentChunkService.searchInDocument(documentId, "");
         return ResponseEntity.ok(chunks);
     }
 
