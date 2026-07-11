@@ -33,7 +33,7 @@ public class TokenUsageService {
         UserDailyUsage usage = userDailyUsageRepository.findByUserIdAndUsageDate(userId, today)
                 .orElse(null);
 
-        long used = (usage != null) ? usage.getTotalTokens() : 0L;
+        long used = (usage != null) ? safe(usage.getTotalTokens()) : 0L;
 
         log.info("[TokenQuota][{}] userId={}, date={}, used={}, limit={}",
                 featureType, userId, today, used, dailyLimit);
@@ -52,6 +52,11 @@ public class TokenUsageService {
     // ghi lại lịch sử token và tỏngo token
     public void recordUsage(User user, String featureType, String modelName, Long tokens, Long documentId, String requestId) {
         if (tokens == null || tokens <= 0) {
+            return;
+        }
+        if (requestId != null && !requestId.isBlank() && tokenUsageLogRepository.existsByRequestId(requestId)) {
+            log.warn("[TokenUsage][{}] duplicate requestId={} ignored for userId={}",
+                    featureType, requestId, user.getId());
             return;
         }
 
@@ -74,26 +79,38 @@ public class TokenUsageService {
                         .chatTokens(0L)
                         .summaryTokens(0L)
                         .quizTokens(0L)
+                        .extractTokens(0L)
                         .totalTokens(0L)
+                        .overallTokens(0L)
                         .build());
-
-        usage.setTotalTokens(usage.getTotalTokens() + tokens);
 
         switch (featureType.toUpperCase()) {
             case "CHAT":
-                usage.setChatTokens(usage.getChatTokens() + tokens);
+                usage.setChatTokens(safe(usage.getChatTokens()) + tokens);
+                usage.setTotalTokens(safe(usage.getTotalTokens()) + tokens);
                 break;
             case "SUMMARY":
-                usage.setSummaryTokens(usage.getSummaryTokens() + tokens);
+                usage.setSummaryTokens(safe(usage.getSummaryTokens()) + tokens);
+                usage.setTotalTokens(safe(usage.getTotalTokens()) + tokens);
                 break;
             case "QUIZ":
-                usage.setQuizTokens(usage.getQuizTokens() + tokens);
+                usage.setQuizTokens(safe(usage.getQuizTokens()) + tokens);
+                usage.setTotalTokens(safe(usage.getTotalTokens()) + tokens);
+                break;
+            case "EXTRACT":
+                usage.setExtractTokens(safe(usage.getExtractTokens()) + tokens);
                 break;
             default:
                 log.warn("Unknown feature type for token usage: {}", featureType);
         }
 
+        usage.setOverallTokens(safe(usage.getTotalTokens()) + safe(usage.getExtractTokens()));
+
         userDailyUsageRepository.save(usage);
         log.info("[TokenUsage][{}] recorded tokens={}, userId={}", featureType, tokens, user.getId());
+    }
+
+    private long safe(Long value) {
+        return value == null ? 0L : value;
     }
 }

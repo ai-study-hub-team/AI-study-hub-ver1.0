@@ -9,7 +9,6 @@ import com.aistudyhub.backend.repository.*;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,11 +33,9 @@ public class SharedDocumentSubmissionService {
     private final FolderRepository folderRepository;
     private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
+    private final CloudinaryStorageService cloudinaryStorageService;
     private final DocumentProcessingAsyncService documentProcessingAsyncService;
     private final StorageQuotaService storageQuotaService;
-
-    @Value("${app.upload.dir:uploads}")
-    private String uploadDir;
 
     // ─── Public upload (User B) ────────────────────────────────────────────────
 
@@ -180,18 +177,22 @@ public class SharedDocumentSubmissionService {
         }
 
         // ── Copy file from shared-submissions/ to main uploads/ ───────────────
-        String newFileName = fileStorageService.copySharedSubmissionToUploads(
+        Resource submissionResource = fileStorageService.loadSharedSubmissionFileAsResource(
                 submission.getStoredFileName());
-        String newFilePath = uploadDir + "/" + newFileName;
+        CloudinaryStorageService.UploadResult uploadResult = cloudinaryStorageService.upload(
+                submissionResource,
+                submission.getOriginalFileName(),
+                submission.getFileSize()
+        );
 
         // ── Build CloudFile record ────────────────────────────────────────────
         CloudFile cloudFile = CloudFile.builder()
-                .fileName(newFileName)
+                .fileName(uploadResult.getPublicId())
                 .originalName(submission.getOriginalFileName())
                 .fileType(submission.getFileType())
                 .fileSize(submission.getFileSize())
-                .fileUrl(newFilePath)
-                .storageProvider("LOCAL")
+                .fileUrl(uploadResult.getSecureUrl())
+                .storageProvider(uploadResult.getStorageProvider())
                 .uploadedAt(LocalDateTime.now())
                 .build();
 

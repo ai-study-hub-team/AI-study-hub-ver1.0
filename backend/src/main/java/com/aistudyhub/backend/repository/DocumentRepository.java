@@ -21,6 +21,15 @@ public interface DocumentRepository extends JpaRepository<Document, Long>, JpaSp
     // Get all ACTIVE documents for a user
     List<Document> findByUser_IdAndStatus(Long userId, DocumentStatus status);
 
+    @Query("SELECT d FROM Document d LEFT JOIN FETCH d.cloudFile LEFT JOIN FETCH d.user " +
+           "WHERE d.status = :status ORDER BY d.user.id ASC, d.createdAt DESC")
+    List<Document> findAllWithUserAndCloudFileByStatus(@Param("status") DocumentStatus status);
+
+    @Query("SELECT d FROM Document d LEFT JOIN FETCH d.cloudFile LEFT JOIN FETCH d.user " +
+           "WHERE d.user.id = :userId AND d.status = :status ORDER BY d.createdAt DESC")
+    List<Document> findByUserIdAndStatusWithCloudFile(@Param("userId") Long userId,
+                                                      @Param("status") DocumentStatus status);
+
     List<Document> findByFolderIdAndStatus(Long folderId, DocumentStatus status);
 
     // Calculate total storage used by a user for ACTIVE documents

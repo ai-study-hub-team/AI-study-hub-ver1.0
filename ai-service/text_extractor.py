@@ -10,7 +10,24 @@ import random
 from google.genai import errors
 from google.genai import types
 import concurrent.futures
+from pydantic import BaseModel, Field
+from schemas.usage_schema import UsageResponse
+from gemini_usage import extract_usage
 logger = logging.getLogger("ai-service.text_extractor")
+
+
+class ExtractResult(BaseModel):
+    text: str
+    usage: UsageResponse = Field(default_factory=UsageResponse)
+    page_char_map: list | None = None
+
+
+def _extract_result(text: str, usage: UsageResponse | None = None, page_char_map: list | None = None) -> ExtractResult:
+    return ExtractResult(
+        text=text or "",
+        usage=usage or UsageResponse(),
+        page_char_map=page_char_map,
+    )
 
 IMAGE_PROMPT = """Bạn hãy phân tích bức ảnh này và trả về kết quả bằng tiếng Việt theo cấu trúc sau:
 - Tổng quan nội dung ảnh
@@ -267,7 +284,7 @@ def wait_for_gemini_file_active(
         f"after {timeout_seconds} seconds."
     )
 
-def extract_media_with_gemini(file_path: str, mime_type: str) -> str:
+def extract_media_with_gemini(file_path: str, mime_type: str) -> ExtractResult:
     client = get_gemini_client()
     uploaded_file = None
     try:
@@ -289,12 +306,14 @@ def extract_media_with_gemini(file_path: str, mime_type: str) -> str:
             model=GEMINI_MODEL,
             contents=[uploaded_file, prompt]
         )
+        usage_context = "extract-video" if mime_type.startswith("video/") else "extract-audio"
+        usage = extract_usage(response, usage_context)
         
         text = response.text
         if not text or not text.strip():
             raise ValueError("Gemini returned empty text")
             
-        return text
+        return _extract_result(text, usage)
     finally:
         if uploaded_file:
             try:
@@ -303,7 +322,7 @@ def extract_media_with_gemini(file_path: str, mime_type: str) -> str:
             except Exception as delete_err:
                 logger.warning(f"Failed to delete uploaded Gemini file resource {uploaded_file.name}: {delete_err}")
 
-def extract_image_inline(file_path: str, mime_type: str, prompt: str = IMAGE_PROMPT) -> str:
+def extract_image_inline(file_path: str, mime_type: str, prompt: str = IMAGE_PROMPT) -> ExtractResult:
     client = get_gemini_client()
     try:
         logger.info(f"Sending inline image analysis request to Gemini (mime_type={mime_type})...")
@@ -319,17 +338,18 @@ def extract_image_inline(file_path: str, mime_type: str, prompt: str = IMAGE_PRO
             model=GEMINI_MODEL,
             contents=[image_part, prompt]
         )
+        usage = extract_usage(response, "extract-image")
         
         text = response.text
         if not text or not text.strip():
             raise ValueError("Gemini returned empty text")
             
-        return text
+        return _extract_result(text, usage)
     except Exception as e:
         logger.error(f"Failed to process inline image with Gemini: {e}")
         raise
 
-def extract_text(file_path: str, file_type: str) -> str:
+def extract_text(file_path: str, file_type: str) -> ExtractResult:
     """Extracts text from a local file based on its type."""
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
@@ -360,14 +380,14 @@ def extract_text(file_path: str, file_type: str) -> str:
     if 'pdf' in file_type or ext == 'pdf':
         return extract_pdf_auto(file_path)
     elif 'excel' in file_type or 'spreadsheet' in file_type or ext in ['xls', 'xlsx']:
-        return extract_text_from_excel(file_path, file_type)
+        return _extract_result(extract_text_from_excel(file_path, file_type))
     elif 'text' in file_type or 'txt' in file_type or ext == 'txt':
-        return extract_text_from_txt(file_path)
+        return _extract_result(extract_text_from_txt(file_path))
 
     elif 'powerpoint' in file_type or 'presentation' in file_type or ext in ['ppt', 'pptx']:
         return extract_presentation_document(file_path)
     elif 'document' in file_type or 'docx' in file_type or ext == 'docx':
-        return extract_text_from_docx(file_path)
+        return _extract_result(extract_text_from_docx(file_path))
     else:
         raise ValueError(f"Unsupported file type: {file_type} / {ext}")
 
@@ -422,7 +442,7 @@ def extract_text_from_pdf(file_path: str) -> dict:
                 "char_end": char_end,
             })
 
-    return {"text": full_text, "page_char_map": page_char_map}
+    return {"text": full_text, "page_char_map": page_char_map, "usage": UsageResponse()}
 
 
 def _sample_pdf_page_indexes(page_count: int, max_pages: int = 5) -> list:
@@ -568,7 +588,7 @@ def _extract_text_after_marker(gemini_text: str, marker: str = "EXTRACTED_TEXT:"
         return gemini_text.strip()
     return gemini_text[marker_index + len(marker):].strip()
 
-def extract_pdf_auto(file_path: str) -> str:
+def extract_pdf_auto(file_path: str) -> ExtractResult:
     """Main flow for directly uploaded PDF files."""
     if has_full_page_background_or_object(file_path):
         logger.info("background_detected=True -> slide_pdf_prompt_b")
@@ -583,25 +603,35 @@ def extract_pdf_auto(file_path: str) -> str:
 
     if ratio_result == "NORMAL_PDF_BY_RATIO":
         logger.info("normal_pdf_python_extract")
-        return extract_text_from_pdf(file_path)
+        pdf_result = extract_text_from_pdf(file_path)
+        return _extract_result(
+            pdf_result.get("text", ""),
+            page_char_map=pdf_result.get("page_char_map"),
+        )
 
     logger.info("uncertain_pdf_prompt_a")
-    gemini_text = call_gemini_for_pdf(file_path, PROMPT_A)
+    gemini_result = call_gemini_for_pdf(file_path, PROMPT_A)
+    gemini_text = gemini_result.text
     normalized = (gemini_text or "").upper()
 
     if "DOCUMENT_TYPE: NORMAL_PDF" in normalized:
         logger.info("PROMPT_A classified NORMAL_PDF -> normal_pdf_python_extract")
-        return extract_text_from_pdf(file_path)
+        pdf_result = extract_text_from_pdf(file_path)
+        return _extract_result(
+            pdf_result.get("text", ""),
+            gemini_result.usage,
+            pdf_result.get("page_char_map"),
+        )
 
     if "DOCUMENT_TYPE: GEMINI_PDF" in normalized:
         logger.info("PROMPT_A classified GEMINI_PDF -> using EXTRACTED_TEXT")
         extracted_text = _extract_text_after_marker(gemini_text)
         if not extracted_text:
             raise ValueError("Gemini classified PDF as GEMINI_PDF but returned empty EXTRACTED_TEXT")
-        return extracted_text
+        return _extract_result(extracted_text, gemini_result.usage)
 
     logger.warning("PROMPT_A returned unrecognized format; returning Gemini text as fallback.")
-    return gemini_text
+    return _extract_result(gemini_text, gemini_result.usage)
 
 def extract_text_from_docx(file_path: str) -> str:
     try:
@@ -793,7 +823,7 @@ def convert_ppt_to_pdf(file_path: str) -> str:
 
 
 
-def extract_presentation_document(file_path: str) -> str:
+def extract_presentation_document(file_path: str) -> ExtractResult:
     """
     Extract a confirmed presentation/slide document.
     PPT/PPTX are converted to PDF first; slide PDFs go directly to Gemini Prompt B.
@@ -811,7 +841,7 @@ def extract_presentation_document(file_path: str) -> str:
 
     raise ValueError(f"Unsupported presentation document type: {ext}")
 
-def call_gemini_for_pdf(file_path: str, prompt: str) -> str:
+def call_gemini_for_pdf(file_path: str, prompt: str) -> ExtractResult:
     """Call Gemini Inline API for a PDF with the provided prompt."""
     client = get_gemini_client()
     try:
@@ -829,17 +859,18 @@ def call_gemini_for_pdf(file_path: str, prompt: str) -> str:
             model=GEMINI_MODEL,
             contents=[pdf_part, prompt]
         )
+        usage = extract_usage(response, "extract-pdf")
         
         text = response.text
         if not text or not text.strip():
             raise ValueError("Gemini returned empty text for PDF extraction")
             
-        return text
+        return _extract_result(text, usage)
     except Exception as e:
         logger.error(f"Failed to process PDF with Gemini Inline API: {e}")
         raise
 
 def extract_text_from_pdf_gemini(file_path: str) -> str:
     """Backward-compatible wrapper for old call sites."""
-    return call_gemini_for_pdf(file_path, PROMPT_A)
+    return call_gemini_for_pdf(file_path, PROMPT_A).text
 
