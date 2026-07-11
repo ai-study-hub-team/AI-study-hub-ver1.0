@@ -2,6 +2,13 @@ package com.aistudyhub.backend.repository;
 
 import com.aistudyhub.backend.dto.response.AdminActiveUserResponse;
 import com.aistudyhub.backend.entity.User;
+import com.aistudyhub.backend.enums.UserRole;
+import com.aistudyhub.backend.enums.UserStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import java.time.LocalDateTime;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -30,4 +37,27 @@ public interface UserRepository extends JpaRepository<User, Long> {
             ORDER BY u.createdAt DESC
             """)
     List<AdminActiveUserResponse> findActiveUserResponses();
+    long countByRoleAndStatus(UserRole role, UserStatus status);
+    List<User> findByRoleAndStatus(UserRole role, UserStatus status);
+
+    @Query("""
+            select u
+            from User u
+            where (:keyword is null
+                   or lower(u.email) like lower(concat('%', :keyword, '%'))
+                   or lower(u.fullName) like lower(concat('%', :keyword, '%')))
+              and (:role is null or u.role = :role)
+              and (:status is null or u.status = :status)
+              and (:fromDate is null or u.lastActiveAt >= :fromDate or u.lastLoginAt >= :fromDate)
+              and (:toDate is null or u.lastActiveAt <= :toDate or u.lastLoginAt <= :toDate)
+            """)
+    Page<User> searchRecentUsers(
+            @Param("keyword") String keyword,
+            @Param("role") UserRole role,
+            @Param("status") UserStatus status,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            Pageable pageable
+    );
+
 }

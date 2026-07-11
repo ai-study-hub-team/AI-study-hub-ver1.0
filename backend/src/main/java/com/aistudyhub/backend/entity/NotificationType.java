@@ -1,0 +1,13 @@
+package com.aistudyhub.backend.entity;
+
+public enum NotificationType {
+    AI_PROCESSING_COMPLETED,
+    DOCUMENT_REPORTED,
+    REPORT_RESOLVED,
+    PAYMENT_SUCCESS,
+    PAYMENT_FAILED,
+    SUBSCRIPTION_EXPIRING_7_DAYS,
+    SUBSCRIPTION_EXPIRED,
+    DOCUMENT_SHARED,
+    FOLDER_SHARED
+}

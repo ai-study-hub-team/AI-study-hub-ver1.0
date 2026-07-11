@@ -162,6 +162,11 @@ public class DocumentAccessService {
             throw new NotFoundException("Document not found");
         }
 
+        // Trashed documents are inaccessible via normal document access
+        if (document.isTrashed()) {
+            throw new NotFoundException("Document not found");
+        }
+
         return document;
     }
 

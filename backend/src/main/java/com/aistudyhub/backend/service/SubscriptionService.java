@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.service;
 
+import com.aistudyhub.backend.entity.NotificationType;
 import com.aistudyhub.backend.dto.response.PlanResponse;
 import com.aistudyhub.backend.dto.response.SubscriptionResponse;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
@@ -24,6 +25,8 @@ public class SubscriptionService {
 
     private final UserSubscriptionRepository userSubscriptionRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final ResendEmailService resendEmailService;
+    private final NotificationService notificationService;
     private final UserRepository userRepository;
 
     @Transactional
@@ -104,6 +107,8 @@ public class SubscriptionService {
             log.info("Upgraded to {} plan for user ID: {}. End date: {}", planCode, userId, subscription.getEndDate());
         }
 
+        subscription.setExpiryReminder7DaysSentAt(null);
+        subscription.setExpiredNotificationSentAt(null);
         userSubscriptionRepository.save(subscription);
     }
 
@@ -129,6 +134,91 @@ public class SubscriptionService {
         }
     }
 
+    @Transactional
+    public void sendExpiryNotifications() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime start7 = now.plusDays(7).toLocalDate().atStartOfDay();
+        LocalDateTime end7 = start7.plusDays(1);
+
+        var expiringSoon = userSubscriptionRepository.findAllByStatusAndEndDateBetween(
+                SubscriptionStatus.ACTIVE,
+                start7,
+                end7
+        );
+
+        for (UserSubscription sub : expiringSoon) {
+            if (sub.getExpiryReminder7DaysSentAt() != null) {
+                continue;
+            }
+
+            resendEmailService.sendSubscriptionExpiryEmail(
+                    sub.getUser(),
+                    sub.getPlan().getName(),
+                    sub.getEndDate(),
+                    false
+            );
+
+
+            notificationService.create(
+                    sub.getUser(),
+                    NotificationType.SUBSCRIPTION_EXPIRING_7_DAYS,
+                    "Subscription expires soon",
+                    "Your " + sub.getPlan().getName() + " plan expires on " + sub.getEndDate(),
+                    "SUBSCRIPTION",
+                    sub.getId(),
+                    "/app/subscription"
+            );
+
+            sub.setExpiryReminder7DaysSentAt(now);
+            userSubscriptionRepository.save(sub);
+        }
+    }
+
+    @Transactional
+    public void sendExpiredNotificationsAndExpirePlans() {
+        LocalDateTime now = LocalDateTime.now();
+        var overdueSubscriptions =
+                userSubscriptionRepository.findAllByStatusAndEndDateBefore(
+                        SubscriptionStatus.ACTIVE,
+                        now
+                );
+
+        if (overdueSubscriptions.isEmpty()) {
+            return;
+        }
+
+        SubscriptionPlan freePlan = subscriptionPlanRepository.findByCode("FREE")
+                .orElseThrow(() -> new RuntimeException("Critical: FREE plan not found in database"));
+
+        for (UserSubscription sub : overdueSubscriptions) {
+            if (sub.getExpiredNotificationSentAt() == null) {
+                resendEmailService.sendSubscriptionExpiryEmail(
+                        sub.getUser(),
+                        sub.getPlan().getName(),
+                        sub.getEndDate(),
+                        true
+                );
+
+                notificationService.create(
+                        sub.getUser(),
+                        NotificationType.SUBSCRIPTION_EXPIRED,
+                        "Subscription expired",
+                        "Your " + sub.getPlan().getName() + " plan has expired",
+                        "SUBSCRIPTION",
+                        sub.getId(),
+                        "/app/subscription"
+                );
+
+                sub.setExpiredNotificationSentAt(now);
+            }
+
+            log.info("Subscription expired for user ID: {}. Reverting to FREE plan.",
+                    sub.getUser().getId());
+            sub.setPlan(freePlan);
+            sub.setEndDate(null);
+            sub.setStatus(SubscriptionStatus.ACTIVE);
+            userSubscriptionRepository.save(sub);
+        }
     private SubscriptionResponse toResponse(UserSubscription subscription) {
         SubscriptionPlan plan = subscription.getPlan();
         PlanResponse planResponse = PlanResponse.builder()

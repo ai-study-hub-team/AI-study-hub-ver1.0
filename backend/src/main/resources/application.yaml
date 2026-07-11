@@ -13,6 +13,14 @@ resend:
   from-email: "AI Study Hub <noreply@aistudyhub.com>"
   frontend-url: http://localhost:5173
 
+email-verification:
+  token-expiration-minutes: 30
+  resend-cooldown-seconds: 60
+
+google:
+  oauth:
+    client-id: ${GOOGLE_CLIENT_ID:}
+
 spring:
   application:
     name: backend

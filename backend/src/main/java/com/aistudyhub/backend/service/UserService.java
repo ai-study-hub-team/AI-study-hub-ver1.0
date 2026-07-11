@@ -3,12 +3,14 @@ package com.aistudyhub.backend.service;
 import com.aistudyhub.backend.dto.request.ChangePasswordRequest;
 import com.aistudyhub.backend.dto.request.UserUpdateRequest;
 import com.aistudyhub.backend.dto.response.UserResponse;
+import com.aistudyhub.backend.dto.request.UpdateProfileRequest;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.enums.UserRole;
 import com.aistudyhub.backend.enums.UserStatus;
 import com.aistudyhub.backend.exception.EmailAlreadyUsedException;
 import com.aistudyhub.backend.exception.ForbiddenException;
 import com.aistudyhub.backend.repository.UserRepository;
+import com.aistudyhub.backend.exception.BadRequestException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -52,15 +54,19 @@ public class UserService {
         user.setFullName(request.getFullName().trim());
 
         if (request.getRole() != null && !request.getRole().isBlank()) {
-            user.setRole(UserRole.valueOf(
+            UserRole newRole = UserRole.valueOf(
                     request.getRole().trim().toUpperCase(Locale.ROOT)
-            ));
+            );
+            ensureNotRemovingLastActiveAdmin(user, newRole, user.getStatus());
+            user.setRole(newRole);
         }
 
         if (request.getStatus() != null && !request.getStatus().isBlank()) {
-            user.setStatus(UserStatus.valueOf(
+            UserStatus newStatus = UserStatus.valueOf(
                     request.getStatus().trim().toUpperCase(Locale.ROOT)
-            ));
+            );
+            ensureNotRemovingLastActiveAdmin(user, user.getRole(), newStatus);
+            user.setStatus(newStatus);
         }
 
         user.setUpdatedAt(LocalDateTime.now());
@@ -73,16 +79,18 @@ public class UserService {
     @Transactional
     public UserResponse updateCurrentUser(
             String authenticatedEmail,
-            UserUpdateRequest request
+            UpdateProfileRequest request
     ) {
         User user = findUserByEmail(authenticatedEmail);
 
         user.setFullName(request.getFullName().trim());
+        user.setAvatarUrl(trimToNull(request.getAvatarUrl()));
+        user.setPhone(trimToNull(request.getPhone()));
         user.setUpdatedAt(LocalDateTime.now());
 
-        // Role, status, and email must not be updated from a current-user endpoint.
         return toResponse(userRepository.save(user));
     }
+
 
     @Transactional
     public UserResponse updateStatus(Long id, String status) {
@@ -91,6 +99,7 @@ public class UserService {
                 status.trim().toUpperCase(Locale.ROOT)
         );
 
+        ensureNotRemovingLastActiveAdmin(user, user.getRole(), newStatus);
         user.setStatus(newStatus);
         user.setUpdatedAt(LocalDateTime.now());
         return toResponse(userRepository.save(user));
@@ -99,6 +108,7 @@ public class UserService {
     @Transactional
     public void softDelete(Long id) {
         User user = findUserById(id);
+        ensureNotRemovingLastActiveAdmin(user, user.getRole(), UserStatus.INACTIVE);
         user.setStatus(UserStatus.INACTIVE);
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
@@ -176,6 +186,13 @@ public class UserService {
                 });
     }
 
+    private String trimToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+
     private String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
     }
@@ -189,6 +206,9 @@ public class UserService {
                 .status(user.getStatus().name())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
+                .emailVerified(user.isEmailVerified())
+                .avatarUrl(user.getAvatarUrl())
+                .phone(user.getPhone())
                 .totalStorageUsedBytes(
                         user.getTotalStorageUsedBytes() == null
                                 ? 0L
@@ -205,5 +225,32 @@ public class UserService {
                                 : user.getCategories().size()
                 )
                 .build();
+    }
+
+    private void ensureNotRemovingLastActiveAdmin(
+            User currentUser,
+            UserRole newRole,
+            UserStatus newStatus
+    ) {
+        boolean currentlyActiveAdmin =
+                currentUser.getRole() == UserRole.ADMIN
+                        && currentUser.getStatus() == UserStatus.ACTIVE;
+
+        boolean remainsActiveAdmin =
+                newRole == UserRole.ADMIN
+                        && newStatus == UserStatus.ACTIVE;
+
+        if (!currentlyActiveAdmin || remainsActiveAdmin) {
+            return;
+        }
+
+        long activeAdminCount = userRepository.countByRoleAndStatus(
+                UserRole.ADMIN,
+                UserStatus.ACTIVE
+        );
+
+        if (activeAdminCount <= 1) {
+            throw new BadRequestException("Cannot remove or disable the last active admin");
+        }
     }
 }

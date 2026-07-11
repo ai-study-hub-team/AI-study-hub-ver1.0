@@ -46,17 +46,14 @@ public class FolderController {
 
     // GET /api/folders?userId=1
     @GetMapping
-    public ResponseEntity<List<FolderResponse>> getAllByUser(
-            @RequestParam Long userId) {
-        return ResponseEntity.ok(folderService.getFoldersByUser(userId));
+    public ResponseEntity<List<FolderResponse>> getAllByCurrentUser() {
+        return ResponseEntity.ok(folderService.getMyFolders());
     }
 
     // GET /api/folders/{id}?userId=1
     @GetMapping("/{id}")
-    public ResponseEntity<FolderResponse> getById(
-            @PathVariable Long id,
-            @RequestParam Long userId) {
-        return ResponseEntity.ok(folderService.getFolderById(id, userId));
+    public ResponseEntity<FolderResponse> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(folderService.getFolderById(id));
     }
 
     // PUT /api/folders/{id}
@@ -69,11 +66,9 @@ public class FolderController {
 
     // DELETE /api/folders/{id}?userId=1
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(
-            @PathVariable Long id,
-            @RequestParam Long userId) {
-        folderService.deleteFolder(id, userId);
-        return ResponseEntity.noContent().build(); // 204 No Content
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        folderService.deleteFolder(id);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/documents")

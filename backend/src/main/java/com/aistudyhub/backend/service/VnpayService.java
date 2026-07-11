@@ -2,6 +2,7 @@ package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.config.VnpayConfig;
 import com.aistudyhub.backend.config.VnpayProperties;
+import com.aistudyhub.backend.entity.NotificationType;
 import com.aistudyhub.backend.entity.PaymentTransaction;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.User;
@@ -42,6 +43,8 @@ public class VnpayService {
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final UserRepository userRepository;
     private final SubscriptionService subscriptionService;
+    private final ResendEmailService resendEmailService;
+    private final NotificationService notificationService;
 
     /**
      * Create a VNPAY payment URL for a subscription plan purchase.
@@ -63,6 +66,7 @@ public class VnpayService {
      */
     @Transactional
     public String createPaymentUrl(Long userId, String planCode, HttpServletRequest request) {
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -250,11 +254,46 @@ public class VnpayService {
                     transaction.getPlanCode(),
                     transaction.getPurchasedDays()
             );
+
+            resendEmailService.sendPaymentResultEmail(
+                    transaction.getUser(),
+                    transaction.getPlanName(),
+                    transaction.getAmount() != null ? transaction.getAmount().toPlainString() : "",
+                    transaction.getPurchasedDays() != null ? transaction.getPurchasedDays() + " days" : "",
+                    true
+            );
+
+            notificationService.create(
+                    transaction.getUser(),
+                    NotificationType.PAYMENT_SUCCESS,
+                    "Payment successful",
+                    "Your payment for " + transaction.getPlanName() + " was successful",
+                    "PAYMENT",
+                    transaction.getId(),
+                    "/app/subscription"
+            );
         } else {
             transaction.setStatus(PaymentStatus.FAILED);
             transaction.setFailureReason("VNPAY Response Code: " + responseCode);
             paymentTransactionRepository.save(transaction);
             log.info("Payment FAILED for vnpTxnRef: {}. Reason: {}", vnpTxnRef, responseCode);
+            resendEmailService.sendPaymentResultEmail(
+                    transaction.getUser(),
+                    transaction.getPlanName(),
+                    transaction.getAmount() != null ? transaction.getAmount().toPlainString() : "",
+                    transaction.getPurchasedDays() != null ? transaction.getPurchasedDays() + " days" : "",
+                    false
+            );
+
+            notificationService.create(
+                    transaction.getUser(),
+                    NotificationType.PAYMENT_FAILED,
+                    "Payment failed",
+                    "Your payment for " + transaction.getPlanName() + " failed",
+                    "PAYMENT",
+                    transaction.getId(),
+                    "/app/subscription"
+            );
         }
     }
 }

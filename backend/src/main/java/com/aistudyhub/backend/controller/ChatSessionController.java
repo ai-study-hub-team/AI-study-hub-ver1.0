@@ -42,9 +42,8 @@ public class ChatSessionController {
 
     // GET /api/chat/sessions
     @GetMapping("/sessions")
-    public ResponseEntity<List<ChatSessionResponse>> getSessionsByUserId(
-            @RequestParam Long userId) {
-        List<ChatSessionResponse> responses = chatSessionService.getSessionsByUserId(userId);
+    public ResponseEntity<List<ChatSessionResponse>> getSessionsForCurrentUser() {
+        List<ChatSessionResponse> responses = chatSessionService.getSessionsForCurrentUser();
         return ResponseEntity.ok(responses);
     }
 

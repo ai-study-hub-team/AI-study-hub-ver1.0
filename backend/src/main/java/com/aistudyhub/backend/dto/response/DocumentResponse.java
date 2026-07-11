@@ -57,4 +57,10 @@ public class DocumentResponse {
     private Long contributedByUserId;
     private String contributedByName;
     private String contributedByEmail;
+
+    // Trash metadata
+    private boolean isTrashed;
+    private LocalDateTime trashedAt;
+    private LocalDateTime deleteAfter;
+    private Long trashedBy;
 }

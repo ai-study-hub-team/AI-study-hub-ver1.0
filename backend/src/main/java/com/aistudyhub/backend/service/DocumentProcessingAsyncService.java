@@ -2,6 +2,7 @@ package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentProcessStatus;
+import com.aistudyhub.backend.entity.NotificationType;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +38,7 @@ public class DocumentProcessingAsyncService {
 
     private final DocumentRepository documentRepository;
     private final AiIntegrationService aiIntegrationService;
+    private final NotificationService notificationService;
 
     /**
      * Runs document AI processing (text extraction → chunking → embedding → vector store)
@@ -96,6 +98,20 @@ public class DocumentProcessingAsyncService {
 
             log.info("[ASYNC] Background processing finished for document ID: {}. Final status: {}",
                     documentId, result);
+
+            if (result == DocumentProcessStatus.PROCESSED) {
+                documentRepository.findById(documentId).ifPresent(processedDocument ->
+                        notificationService.create(
+                                processedDocument.getUser(),
+                                NotificationType.AI_PROCESSING_COMPLETED,
+                                "Document is ready",
+                                "AI processing completed for \"" + processedDocument.getTitle() + "\"",
+                                "DOCUMENT",
+                                processedDocument.getId(),
+                                "/app/library/" + processedDocument.getId() + "/preview"
+                        )
+                );
+            }
 
         } catch (Exception e) {
             String errorMsg = (e.getMessage() != null)
