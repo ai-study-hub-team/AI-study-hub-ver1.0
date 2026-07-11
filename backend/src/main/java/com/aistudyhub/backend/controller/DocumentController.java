@@ -7,6 +7,7 @@ import com.aistudyhub.backend.dto.response.SemanticSearchResponse;
 import com.aistudyhub.backend.service.DocumentService;
 import com.aistudyhub.backend.service.FileStorageService;
 import com.aistudyhub.backend.service.SemanticSearchService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
@@ -28,11 +29,13 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api/documents")
 @RequiredArgsConstructor
+@SecurityRequirement(name = "bearerAuth")
 public class DocumentController {
 
     private final DocumentService documentService;
@@ -180,9 +183,14 @@ public class DocumentController {
     // ─── GET /api/documents/{id}/file ────────────────────────────────────────────
     // Streams the file inline so the browser can display/preview it directly.
     @GetMapping("/{id}/file")
-    public ResponseEntity<Resource> viewFile(@PathVariable Long id) {
+    public ResponseEntity<?> viewFile(@PathVariable Long id) {
         // 1. Load document metadata to get fileName and fileType
         var docResponse = documentService.getById(id);
+        if (isRemoteUrl(docResponse.getFileUrl())) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(URI.create(docResponse.getFileUrl()))
+                    .build();
+        }
         String fileName = docResponse.getFileName();
         if (fileName == null || fileName.isBlank()) {
             return ResponseEntity.notFound().build();
@@ -212,9 +220,14 @@ public class DocumentController {
     // Forces a browser download with the original file name.
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<Resource> downloadFile(@PathVariable Long id) {
+    public ResponseEntity<?> downloadFile(@PathVariable Long id) {
         // 1. Load document metadata
         var docResponse = documentService.getDownloadableById(id);
+        if (isRemoteUrl(docResponse.getFileUrl())) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(URI.create(docResponse.getFileUrl()))
+                    .build();
+        }
         String fileName     = docResponse.getFileName();       // stored on disk
         String originalName = docResponse.getOriginalName();   // shown to user
         if (fileName == null || fileName.isBlank()) {
@@ -280,6 +293,10 @@ public class DocumentController {
         DocumentResponse response = documentService.moveDocumentToFolder(
                 id, request.getUserId(), request.getFolderId());
         return ResponseEntity.ok(response);
+    }
+
+    private boolean isRemoteUrl(String value) {
+        return value != null && (value.startsWith("http://") || value.startsWith("https://"));
     }
 
 }

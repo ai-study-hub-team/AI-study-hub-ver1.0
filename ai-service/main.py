@@ -3,7 +3,9 @@ from pydantic import BaseModel
 import uvicorn
 import logging
 import os
+import tempfile
 from typing import Optional
+from urllib.parse import unquote, urlparse
 import requests
 
 from schemas.chat_schema import ChatRequest, ChatResponse, CitationResponse
@@ -13,6 +15,7 @@ from schemas.generate_answer_schema import GenerateAnswerRequest, GenerateAnswer
 from schemas.embed_schema import EmbedQueryRequest, EmbedQueryResponse
 from schemas.analyze_chat_query_schema import AnalyzeChatQueryRequest, AnalyzeChatQueryResponse
 from gemini_usage import extract_usage
+from schemas.usage_schema import UsageResponse
 
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
@@ -36,6 +39,41 @@ class DocumentRequest(BaseModel):
     fileType: str
 
 
+def is_remote_url(value: str) -> bool:
+    return value.startswith("http://") or value.startswith("https://")
+
+
+def extension_from_name(name: str) -> str:
+    _, ext = os.path.splitext(name or "")
+    return ext
+
+
+def download_to_temp_file(url: str, original_file_name: str, file_name: str) -> str:
+    parsed_path = unquote(urlparse(url).path)
+    extension = (
+        extension_from_name(original_file_name)
+        or extension_from_name(file_name)
+        or extension_from_name(parsed_path)
+    )
+
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=extension)
+    temp_path = temp_file.name
+    temp_file.close()
+
+    try:
+        with requests.get(url, stream=True, timeout=120) as response:
+            response.raise_for_status()
+            with open(temp_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+        return temp_path
+    except Exception:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
+
+
 # ─── POST /process-document ───────────────────────────────────────────────────
 
 @app.post("/process-document")
@@ -46,12 +84,22 @@ async def process_document(request: DocumentRequest):
     logger.info(f"File Path: {request.filePath}")
     logger.info(f"File Type: {request.fileType}")
 
+    temp_file_path = None
     try:
         from text_extractor import extract_text
         from text_chunker import chunk_text
 
         # ── 1. Resolve and validate file path ─────────────────────────────────
-        abs_file_path = os.path.abspath(request.filePath)
+        if is_remote_url(request.filePath):
+            logger.info(f"Downloading remote document to temp file: {request.filePath}")
+            abs_file_path = download_to_temp_file(
+                request.filePath,
+                request.originalFileName,
+                request.fileName,
+            )
+            temp_file_path = abs_file_path
+        else:
+            abs_file_path = os.path.abspath(request.filePath)
         logger.info(f"Resolved absolute path: {abs_file_path}")
         logger.info(f"File exists: {os.path.exists(abs_file_path)}")
 
@@ -61,17 +109,27 @@ async def process_document(request: DocumentRequest):
                 "documentId": request.documentId,
                 "status": "FAILED",
                 "message": "File not found",
+                "usage": UsageResponse().model_dump(),
             }
 
             # ── 2. Extract text ───────────────────────────────────────────────────
         raw_extract = extract_text(abs_file_path, request.fileType)
 
-        # PDF returns a structured dict with page_char_map for locator injection.
-        # All other file types return a plain string (or None).
+        # New extractor flow returns text + usage + optional page_char_map.
+        # Keep dict/string compatibility for older call sites and tests.
         page_char_map = None
-        if isinstance(raw_extract, dict):
+        usage = UsageResponse()
+        if hasattr(raw_extract, "model_dump"):
+            extract_data = raw_extract.model_dump()
+            text = extract_data.get("text", "")
+            page_char_map = extract_data.get("page_char_map")
+            usage_data = extract_data.get("usage") or {}
+            usage = UsageResponse(**usage_data) if isinstance(usage_data, dict) else (usage_data or UsageResponse())
+        elif isinstance(raw_extract, dict):
             text = raw_extract.get("text", "")
             page_char_map = raw_extract.get("page_char_map")  # list[{page_number, char_start, char_end}]
+            usage_data = raw_extract.get("usage") or {}
+            usage = UsageResponse(**usage_data) if isinstance(usage_data, dict) else (usage_data or UsageResponse())
         else:
             text = raw_extract
 
@@ -81,6 +139,7 @@ async def process_document(request: DocumentRequest):
                 "documentId": request.documentId,
                 "status": "FAILED",
                 "message": "Extracted text is empty. Cannot create chunks.",
+                "usage": usage.model_dump(),
             }
 
         text = str(text).strip()
@@ -109,6 +168,7 @@ async def process_document(request: DocumentRequest):
                 "documentId": request.documentId,
                 "status": "FAILED",
                 "message": "No chunks were created from extracted text.",
+                "usage": usage.model_dump(),
             }
 
         # ── 3a. Inject PDF page locators using page_char_map ────────────────
@@ -205,8 +265,10 @@ async def process_document(request: DocumentRequest):
                 "vectorStored": vector_stored,
                 "vectorCount": vector_count,
                 "vectorError": vector_error,
+                "usage": usage.model_dump(),
             }
 
+        from settings import GEMINI_MODEL
         return {
             "documentId": request.documentId,
             "status": "PROCESSED",
@@ -219,6 +281,8 @@ async def process_document(request: DocumentRequest):
             "vectorStored": vector_stored,
             "vectorCount": vector_count,
             "vectorError": vector_error,
+            "usage": usage.model_dump(),
+            "modelName": GEMINI_MODEL,
         }
 
     except Exception as e:
@@ -226,8 +290,16 @@ async def process_document(request: DocumentRequest):
         return {
             "documentId": request.documentId,
             "status": "FAILED",
-             "message": f"Extraction/chunking error: {type(e).__name__}: {repr(e)}",
+            "message": f"Extraction/chunking error: {type(e).__name__}: {repr(e)}",
+            "usage": UsageResponse().model_dump(),
         }
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+                logger.info(f"Deleted temp file: {temp_file_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"Could not delete temp file {temp_file_path}: {cleanup_error}")
 
 
 # ─── GET /semantic-search ─────────────────────────────────────────────────────

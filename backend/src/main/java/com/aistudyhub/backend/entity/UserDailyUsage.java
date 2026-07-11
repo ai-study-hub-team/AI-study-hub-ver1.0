@@ -45,7 +45,15 @@ public class UserDailyUsage {
 
     @Column(nullable = false)
     @Builder.Default
+    private Long extractTokens = 0L;
+
+    @Column(nullable = false)
+    @Builder.Default
     private Long totalTokens = 0L;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Long overallTokens = 0L;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

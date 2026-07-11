@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface TokenUsageLogRepository extends JpaRepository<TokenUsageLog, Long> {
+    boolean existsByRequestId(String requestId);
 }

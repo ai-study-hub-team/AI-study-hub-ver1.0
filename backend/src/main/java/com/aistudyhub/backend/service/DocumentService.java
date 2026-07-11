@@ -10,7 +10,6 @@ import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.FolderRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -19,7 +18,6 @@ import org.springframework.web.multipart.MultipartFile;
 import lombok.extern.slf4j.Slf4j;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import java.io.IOException;
-import java.time.LocalDateTime;
 import java.time.LocalDateTime;
 
 @Service
@@ -32,6 +30,7 @@ public class DocumentService {
     private final CategoryRepository categoryRepository;
     private final FolderRepository folderRepository;
     private final FileStorageService fileStorageService;
+    private final CloudinaryStorageService cloudinaryStorageService;
     private final AiIntegrationService aiIntegrationService;
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentProcessingAsyncService documentProcessingAsyncService;
@@ -39,9 +38,6 @@ public class DocumentService {
     private final StorageQuotaService storageQuotaService;
     private final CurrentUserService currentUserService;
 
-    // Read upload dir from config (same value used in FileStorageService)
-    @Value("${app.upload.dir:uploads}")
-    private String uploadDir;
     private final FolderAccessService folderAccessService;
 
     // ─── Create ────────────────────────────────────────────────────────────────
@@ -130,29 +126,24 @@ public class DocumentService {
                     .orElseThrow(() -> new NotFoundException("Folder not found"));
         }
 
-        // 3. Save the file to the local "uploads/" directory
         // 3. Validate quotas
         String mimeType = fileStorageService.detectMimeType(file);
         storageQuotaService.validateFileRestrictions(userId, mimeType);
         storageQuotaService.validateFileSize(userId, file.getSize());
         storageQuotaService.validateStorageLimit(userId, file.getSize());
 
-        // 4. Save the file to the local "uploads/" directory
-        // fileStorageService will throw IllegalArgumentException for unsupported file
-        // types
-        String savedFileName = fileStorageService.saveFile(file);
-
-        // 4. Build the relative file path (e.g. "uploads/a1b2c3_lecture1.pdf")
-        String filePath = uploadDir + "/" + savedFileName;
+        // 4. Upload the file to Cloudinary. The AI service will later download this
+        // URL to a temporary local file for extraction.
+        CloudinaryStorageService.UploadResult uploadResult = cloudinaryStorageService.upload(file);
 
         // 5. Build CloudFile record
         CloudFile cloudFile = CloudFile.builder()
-                .fileName(savedFileName) // stored name on disk
+                .fileName(uploadResult.getPublicId()) // Cloudinary public_id
                 .originalName(file.getOriginalFilename()) // name from user's computer
-                .fileType(fileStorageService.detectMimeType(file)) // MIME type
+                .fileType(mimeType) // MIME type
                 .fileSize(file.getSize()) // size in bytes
-                .fileUrl(filePath) // local path
-                .storageProvider("LOCAL") // storage type
+                .fileUrl(uploadResult.getSecureUrl()) // Cloudinary secure URL
+                .storageProvider(uploadResult.getStorageProvider())
                 .uploadedAt(LocalDateTime.now())
                 .build();
 
@@ -292,10 +283,13 @@ public class DocumentService {
             throw new RuntimeException("Document file metadata not found");
         }
 
-        java.nio.file.Path path = java.nio.file.Paths.get(cloudFile.getFileUrl()).toAbsolutePath();
-        if (!java.nio.file.Files.exists(path)) {
-            markFailed(document, "Physical file does not exist at path: " + path);
-            throw new RuntimeException("Physical file does not exist at path: " + path);
+        String fileLocation = cloudFile.getFileUrl();
+        if (!isRemoteUrl(fileLocation)) {
+            java.nio.file.Path path = java.nio.file.Paths.get(fileLocation).toAbsolutePath();
+            if (!java.nio.file.Files.exists(path)) {
+                markFailed(document, "Physical file does not exist at path: " + path);
+                throw new RuntimeException("Physical file does not exist at path: " + path);
+            }
         }
 
         // Set status to PROCESSING immediately so the UI reflects the in-progress state
@@ -305,8 +299,8 @@ public class DocumentService {
         documentRepository.save(document);
 
         long oldChunkCount = documentChunkRepository.countByDocumentId(id);
-        log.info("Reprocessing document ID: {}. Old chunk count: {}. File path sent: {}",
-                id, oldChunkCount, path);
+        log.info("Reprocessing document ID: {}. Old chunk count: {}. File location sent: {}",
+                id, oldChunkCount, fileLocation);
 
         // Delegate to AiIntegrationService which handles:
         // - calling the Python /process-document endpoint
@@ -509,6 +503,10 @@ public class DocumentService {
             sb.append(visibility.toUpperCase());
         }
         return sb.isEmpty() ? null : sb.toString();
+    }
+
+    private boolean isRemoteUrl(String value) {
+        return value != null && (value.startsWith("http://") || value.startsWith("https://"));
     }
 
     public DocumentResponse getDownloadableById(Long id) {
