@@ -75,4 +75,20 @@ export const sharedDocumentSubmissionApi = {
       payload,
     );
   },
+  viewSubmissionFile: async (id: number, userId: number): Promise<Blob> => {
+    const response = await apiClient.get(`/api/shared-document-submissions/${id}/file`, {
+      params: { userId },
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
+  downloadSubmissionFile: async (id: number, userId: number): Promise<Blob> => {
+    const response = await apiClient.get(`/api/shared-document-submissions/${id}/download`, {
+      params: { userId },
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
 };

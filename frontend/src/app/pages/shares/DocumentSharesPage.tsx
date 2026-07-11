@@ -5,6 +5,7 @@ import {
   ClipboardCopy,
   ExternalLink,
   Eye,
+  Download,
   Link2,
   Loader2,
   RefreshCcw,
@@ -500,6 +501,47 @@ export function DocumentSharesPage() {
       );
     } finally {
       setIsDeletingLink(false);
+    }
+  };
+
+  const handlePreviewSubmissionFile = async (submission: SharedDocumentSubmissionResponse) => {
+    const userId = getSafeUserId();
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
+    try {
+      const blob = await sharedDocumentSubmissionApi.viewSubmissionFile(submission.id, userId);
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.response?.data?.message || "Cannot preview submission file.");
+    }
+  };
+
+  const handleDownloadSubmissionFile = async (submission: SharedDocumentSubmissionResponse) => {
+    const userId = getSafeUserId();
+    if (!userId) {
+      toast.error("Please login again.");
+      return;
+    }
+
+    try {
+      const blob = await sharedDocumentSubmissionApi.downloadSubmissionFile(submission.id, userId);
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = submission.originalFileName || `submission-${submission.id}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.response?.data?.message || "Cannot download submission file.");
     }
   };
 
@@ -1060,11 +1102,20 @@ export function DocumentSharesPage() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => handleViewSubmission(submission)}
+                        onClick={() => void handlePreviewSubmissionFile(submission)}
                         className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700"
                       >
                         <Eye className="h-4 w-4" />
-                        View
+                        View file
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleDownloadSubmissionFile(submission)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-blue-200 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-300"
+                      >
+                        <Download className="h-4 w-4" />
+                        Download
                       </button>
 
                       <button
