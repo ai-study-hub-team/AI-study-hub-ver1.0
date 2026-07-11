@@ -6,8 +6,8 @@ export const apiClient = axios.create({
 
 export const getAuthToken = (): string | null => {
   const token =
-    localStorage.getItem("token") ||
     localStorage.getItem("accessToken") ||
+    localStorage.getItem("token") ||
     localStorage.getItem("jwt");
 
   if (!token) {
@@ -65,7 +65,7 @@ export const getCurrentUserId = (): number | null => {
   }
 };
 
-export const clearAuthStorage = () => {
+export const clearAuthStorage = (): void => {
   localStorage.removeItem("token");
   localStorage.removeItem("accessToken");
   localStorage.removeItem("jwt");
@@ -82,9 +82,11 @@ export const getAuthHeader = () => {
   const token = getAuthToken();
 
   return {
-    headers: {
-      Authorization: token ? `Bearer ${token}` : "",
-    },
+    headers: token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : {},
   };
 };
 
@@ -94,46 +96,52 @@ const isPublicApi = (url?: string): boolean => {
   }
 
   return (
-  url.includes("/api/public/") ||
-  url.includes("/api/auth/login") ||
-  url.includes("/api/auth/google") ||
-  url.includes("/api/auth/register") ||
-  url.includes("/api/auth/refresh") ||
-  url.includes("/api/auth/forgot-password") ||
-  url.includes("/api/auth/reset-password") ||
-  url.includes("/api/auth/verify-email") ||
-  url.includes("/api/auth/resend-verification") ||
-  url.includes("/api/auth/verify-reset-code") ||
-  url.includes("/auth/login") ||
-  url.includes("/auth/register") ||
-  url.includes("/auth/refresh")
-);
+    url.includes("/api/public/") ||
+    url.includes("/api/auth/login") ||
+    url.includes("/api/auth/google") ||
+    url.includes("/api/auth/register") ||
+    url.includes("/api/auth/refresh") ||
+    url.includes("/api/auth/forgot-password") ||
+    url.includes("/api/auth/reset-password") ||
+    url.includes("/api/auth/verify-email") ||
+    url.includes("/api/auth/resend-verification") ||
+    url.includes("/api/auth/verify-reset-code") ||
+    url.includes("/auth/login") ||
+    url.includes("/auth/register") ||
+    url.includes("/auth/refresh")
+  );
 };
+
 apiClient.interceptors.request.use(
   (config) => {
-    config.headers =
-      AxiosHeaders.from(
-        config.headers,
-      );
+    config.headers = AxiosHeaders.from(config.headers);
 
-    const token =
-      localStorage.getItem(
-        "accessToken",
-      ) ||
-      localStorage.getItem("token") ||
-      localStorage.getItem("jwt");
+    const requestUrl = String(config.url || "");
+
+    /*
+     * Public APIs must not include an access token stored
+     * in localStorage. This prevents an old login JWT from
+     * causing errors for verify-email, register, login, etc.
+     */
+    if (isPublicApi(requestUrl)) {
+      config.headers.delete("Authorization");
+      return config;
+    }
+
+    const token = getAuthToken();
 
     if (token) {
       config.headers.set(
         "Authorization",
         `Bearer ${token}`,
       );
+    } else {
+      config.headers.delete("Authorization");
     }
 
     return config;
   },
-  (error) =>
-    Promise.reject(error),
+  (error) => Promise.reject(error),
 );
 
 apiClient.interceptors.response.use(
@@ -143,15 +151,16 @@ apiClient.interceptors.response.use(
     const requestUrl = String(error.config?.url || "");
 
     /*
-     * Không tự logout khi API login hoặc xác thực email trả 401.
-     * Chỉ logout khi một API cần đăng nhập trả 401.
+     * Do not automatically log the user out when a public API
+     * returns 401. Only clear authentication data when a
+     * protected API returns 401.
      */
     if (
       status === 401 &&
       !isPublicApi(requestUrl)
     ) {
       console.warn(
-        "Access token không hợp lệ hoặc đã hết hạn.",
+        "The access token is invalid or has expired.",
       );
 
       clearAuthStorage();
