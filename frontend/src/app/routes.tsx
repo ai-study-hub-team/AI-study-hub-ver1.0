@@ -17,6 +17,7 @@ import { CheckEmailPage } from "./pages/auth/CheckEmailPage";
 import { EmailVerificationPage } from "./pages/auth/EmailVerificationPage";
 import { VerifyEmailSuccessPage } from "./pages/auth/VerifyEmailSuccessPage";
 import VerifyResetCodePage from "./pages/auth/VerifyResetCodePage";
+import { NotificationsPage } from "./components/notifications/NotificationsPage";
 
 // Student dashboard
 import { StudentDashboard } from "./pages/dashboard/StudentDashboard";
@@ -38,6 +39,7 @@ import { QuizGeneratorPage } from "./pages/quiz/QuizGeneratorPage";
 
 // User features
 import { ProfilePage } from "./pages/profile/ProfilePage";
+import { ChangePasswordPage } from "./pages/profile/ChangePasswordPage";
 import { StorageDashboard } from "./pages/storage/StorageDashboard";
 import { CategoriesPage } from "./pages/categories/CategoriesPage";
 import { CategoryDocumentsPage } from "./pages/categories/CategoryDocumentsPage";
@@ -241,6 +243,14 @@ export const router = createBrowserRouter([
           {
             path: "profile",
             element: <ProfilePage />,
+          },
+          {
+  path: "notifications",
+  element: <NotificationsPage />,
+},
+          {
+            path: "change-password",
+            element: <ChangePasswordPage />,
           },
 
           // Storage

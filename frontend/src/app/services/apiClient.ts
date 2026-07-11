@@ -109,18 +109,19 @@ const isPublicApi = (url?: string): boolean => {
   url.includes("/auth/refresh")
 );
 };
-
 apiClient.interceptors.request.use(
   (config) => {
-    config.headers = AxiosHeaders.from(config.headers);
+    config.headers =
+      AxiosHeaders.from(
+        config.headers,
+      );
 
-    // Không gửi access token cho API public.
-    if (isPublicApi(config.url)) {
-      config.headers.delete("Authorization");
-      return config;
-    }
-
-    const token = getAuthToken();
+    const token =
+      localStorage.getItem(
+        "accessToken",
+      ) ||
+      localStorage.getItem("token") ||
+      localStorage.getItem("jwt");
 
     if (token) {
       config.headers.set(
@@ -131,7 +132,8 @@ apiClient.interceptors.request.use(
 
     return config;
   },
-  (error) => Promise.reject(error),
+  (error) =>
+    Promise.reject(error),
 );
 
 apiClient.interceptors.response.use(
