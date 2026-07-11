@@ -108,6 +108,23 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handles business-state conflicts such as restoring a document that is not in trash,
+     * or permanently deleting a document that has not been trashed yet.
+     * Returns HTTP 409 Conflict.
+     */
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<Map<String, Object>>
+    handleConflictException(ConflictException ex, HttpServletRequest request) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now().toString());
+        body.put("status", HttpStatus.CONFLICT.value());
+        body.put("error", "Conflict");
+        body.put("message", ex.getMessage());
+        body.put("path", request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    /**
      * Handles invalid credentials and invalid refresh tokens.
      * Returns HTTP 401 Unauthorized.
      */
@@ -179,5 +196,19 @@ public class GlobalExceptionHandler {
         body.put("message", ex.getMessage());
         body.put("path", request.getRequestURI());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgumentException(
+            IllegalArgumentException ex,
+            HttpServletRequest request
+    ) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now().toString());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Bad Request");
+        body.put("message", ex.getMessage());
+        body.put("path", request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 }

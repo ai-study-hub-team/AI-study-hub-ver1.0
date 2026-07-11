@@ -1,9 +1,10 @@
 package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.request.ChangePasswordRequest;
-import com.aistudyhub.backend.dto.request.UserUpdateRequest;
+import com.aistudyhub.backend.dto.request.UpdateProfileRequest;
 import com.aistudyhub.backend.dto.response.UserResponse;
 import com.aistudyhub.backend.service.UserService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/account")
+@SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
 public class AccountController {
 
@@ -29,15 +31,13 @@ public class AccountController {
     @PutMapping("/me")
     public ResponseEntity<UserResponse> updateMe(
             Authentication authentication,
-            @Valid @RequestBody UserUpdateRequest request
+            @Valid @RequestBody UpdateProfileRequest request
     ) {
         return ResponseEntity.ok(
-                userService.updateCurrentUser(
-                        authentication.getName(),
-                        request
-                )
+                userService.updateCurrentUser(authentication.getName(), request)
         );
     }
+
 
     @PutMapping("/change-password")
     public ResponseEntity<UserResponse> changePassword(

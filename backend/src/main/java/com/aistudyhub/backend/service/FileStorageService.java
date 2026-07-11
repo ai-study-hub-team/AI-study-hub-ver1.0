@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -20,6 +21,7 @@ import java.util.UUID;
  * In the future, this can be swapped out for Firebase or S3 storage.
  */
 @Service
+@Slf4j
 public class FileStorageService {
 
     // Allowed file extensions
@@ -86,6 +88,22 @@ public class FileStorageService {
         Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
 
         return uniqueFileName;
+    }
+
+    /**
+     * Deletes a stored file from the main uploads directory.
+     * Silently returns if the file does not exist (idempotent).
+     *
+     * @param fileName the stored UUID-based file name (e.g. {@code "abc123.pdf"})
+     */
+    public void deleteFile(String fileName) {
+        if (fileName == null || fileName.isBlank()) return;
+        try {
+            Path filePath = Paths.get(uploadDir).resolve(fileName).normalize();
+            Files.deleteIfExists(filePath);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to delete file: " + fileName, e);
+        }
     }
 
     /**
@@ -286,6 +304,44 @@ public class FileStorageService {
             }
         } catch (MalformedURLException e) {
             throw new RuntimeException("Invalid shared submission file path: " + storedFileName, e);
+        }
+    }
+
+    /**
+     * Deletes a staged file from {@code uploads/shared-submissions/} directory.
+     *
+     * <p>Safety guarantees:</p>
+     * <ul>
+     *   <li>Only resolves paths inside {@code uploads/shared-submissions/} — never touches
+     *       files in the main uploads directory.</li>
+     *   <li>Normalizes the resolved path and verifies it starts with the expected base directory
+     *       to prevent path-traversal attacks.</li>
+     *   <li>Uses {@code Files.deleteIfExists} — if the file is already gone, this is a no-op.</li>
+     * </ul>
+     *
+     * @param storedFileName the UUID-based file name (e.g. {@code "abc123.pdf"})
+     */
+    public void deleteSharedSubmissionFile(String storedFileName) {
+        if (storedFileName == null || storedFileName.isBlank()) return;
+        try {
+            Path baseDir = Paths.get(uploadDir, "shared-submissions").toAbsolutePath().normalize();
+            Path targetPath = baseDir.resolve(storedFileName).normalize();
+
+            // Path-traversal guard: resolved path must stay inside shared-submissions/
+            if (!targetPath.startsWith(baseDir)) {
+                throw new SecurityException(
+                        "Path traversal attempt detected for shared submission file: " + storedFileName);
+            }
+
+            boolean deleted = Files.deleteIfExists(targetPath);
+            if (deleted) {
+                log.info("[SharedSubmissionCleanup] Deleted staged file: {}", targetPath);
+            } else {
+                log.warn("[SharedSubmissionCleanup] File already absent (no-op): {}", targetPath);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(
+                    "Failed to delete shared submission file: " + storedFileName, e);
         }
     }
 }

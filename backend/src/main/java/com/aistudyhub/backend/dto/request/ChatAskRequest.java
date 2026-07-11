@@ -13,7 +13,6 @@ import java.util.List;
 public class ChatAskRequest {
 
     private String sessionId;
-    private Long userId;
     private List<Long> documentIds;
     private String question;
 }

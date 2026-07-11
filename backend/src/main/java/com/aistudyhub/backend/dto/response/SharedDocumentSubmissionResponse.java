@@ -41,4 +41,11 @@ public class SharedDocumentSubmissionResponse {
     private LocalDateTime reviewedAt;
     private Long reviewedBy;
     private String rejectReason;
+
+    /**
+     * Deadline for automatic removal if still PENDING_REVIEW.
+     * Null once the submission is approved (scheduler will not touch it).
+     * Null for REJECTED submissions.
+     */
+    private LocalDateTime deleteAfter;
 }

@@ -16,6 +16,8 @@ import java.util.Optional;
 @Repository
 public interface DocumentShareRepository extends JpaRepository<DocumentShare, Long> {
 
+    long countBySharedWithIdAndStatus(Long sharedWithUserId, DocumentShareStatus status);
+
     Optional<DocumentShare> findByDocumentIdAndSharedWithId(
             Long documentId,
             Long sharedWithUserId

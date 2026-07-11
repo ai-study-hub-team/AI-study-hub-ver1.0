@@ -1,123 +1,111 @@
 import { NavLink, useNavigate } from "react-router";
-import { Mail, Lock, ArrowRight } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import {
+  Mail,
+  Lock,
+  ArrowRight,
+  Eye,
+  EyeOff,
+} from "lucide-react";
+import {
+  useState,
+  type FormEvent,
+} from "react";
 import { toast } from "sonner";
 import { registerApi } from "../../services/authApi";
 
+const PENDING_EMAIL_KEY = "pendingVerificationEmail";
+const RESEND_AVAILABLE_AT_KEY =
+  "verificationResendAvailableAt";
+
 export function RegisterPage() {
+  const navigate = useNavigate();
+
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] =
+    useState(false);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const navigate = useNavigate();
+  const handleRegister = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
 
-  const handleRegister = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+    const normalizedEmail = email
+      .trim()
+      .toLowerCase();
 
-    if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim()) {
-      toast.error("Please fill in all fields");
+    const fullName =
+      `${firstName.trim()} ${lastName.trim()}`.trim();
+
+    if (
+      !firstName.trim() ||
+      !lastName.trim() ||
+      !normalizedEmail ||
+      !password
+    ) {
+      toast.error("Vui lòng nhập đầy đủ thông tin.");
       return;
     }
 
     if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
+      toast.error(
+        "Mật khẩu phải có ít nhất 6 ký tự.",
+      );
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const fullName = `${firstName} ${lastName}`.trim();
-
-      const res = await registerApi({
+      const response = await registerApi({
         fullName,
-        email,
+        email: normalizedEmail,
         password,
       });
 
-      console.log("Register response:", res.data);
+      const verificationEmail =
+        response.data.email || normalizedEmail;
 
-      const accessToken =
-        res.data.accessToken ||
-        res.data.token ||
-        res.data.jwt;
-
-      const refreshToken = res.data.refreshToken;
-
-      const userId =
-        res.data.userId ||
-        res.data.id ||
-        res.data.user?.id;
-
-      const role =
-        res.data.role ||
-        res.data.user?.role ||
-        res.data.user?.roles?.[0];
-
-      const userEmail =
-        res.data.email ||
-        res.data.user?.email ||
-        email;
-
-      const userFullName =
-        res.data.fullName ||
-        res.data.user?.fullName ||
-        fullName;
-
-      if (accessToken) {
-        localStorage.setItem("token", accessToken);
-        localStorage.setItem("accessToken", accessToken);
-      }
-
-      if (refreshToken) {
-        localStorage.setItem("refreshToken", refreshToken);
-      }
-
-      if (userId) {
-        localStorage.setItem("userId", String(userId));
-      }
-
-      if (role) {
-        localStorage.setItem("role", role);
-      }
-
-      if (userEmail) {
-        localStorage.setItem("email", userEmail);
-      }
-
-      if (userFullName) {
-        localStorage.setItem("fullName", userFullName);
-      }
-
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          id: userId,
-          email: userEmail,
-          fullName: userFullName,
-          role,
-        })
+      /*
+       * API register không trả JWT.
+       * Chỉ lưu email tạm trong sessionStorage để
+       * sử dụng tại trang gửi lại email.
+       */
+      sessionStorage.setItem(
+        PENDING_EMAIL_KEY,
+        verificationEmail,
       );
 
-           toast.success("Account created successfully!");
+      // Backend có cooldown 60 giây.
+      sessionStorage.setItem(
+        RESEND_AVAILABLE_AT_KEY,
+        String(Date.now() + 60_000),
+      );
 
-      navigate("/verify-email", {
+      toast.success(
+        response.data.message ||
+          "Đăng ký thành công. Hãy kiểm tra email.",
+      );
+
+      navigate("/check-email", {
+        replace: true,
         state: {
-          email: userEmail,
-          fullName: userFullName,
+          email: verificationEmail,
         },
       });
     } catch (error: any) {
       console.error("Register error:", error);
 
-      toast.error(
+      const message =
         error?.response?.data?.message ||
-          error?.response?.data?.error ||
-          "Register failed"
-      );
+        error?.response?.data?.error ||
+        "Không thể đăng ký tài khoản.";
+
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -127,7 +115,10 @@ export function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-md w-full">
         <div className="text-center mb-10">
-          <NavLink to="/" className="inline-flex items-center gap-2 mb-8">
+          <NavLink
+            to="/"
+            className="inline-flex items-center gap-2 mb-8"
+          >
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
               A
             </div>
@@ -142,12 +133,15 @@ export function RegisterPage() {
           </h1>
 
           <p className="text-slate-500 dark:text-slate-400">
-            Join 10,000+ students studying smarter with AI
+            Create an account and verify your email
           </p>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 dark:shadow-slate-950/40 border border-slate-200 dark:border-slate-700">
-          <form onSubmit={handleRegister} className="space-y-6">
+          <form
+            onSubmit={handleRegister}
+            className="space-y-6"
+          >
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
@@ -158,9 +152,12 @@ export function RegisterPage() {
                   type="text"
                   required
                   value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
+                  onChange={(event) =>
+                    setFirstName(event.target.value)
+                  }
                   placeholder="Alex"
-                  className="w-full px-4 py-3 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  autoComplete="given-name"
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 />
               </div>
 
@@ -173,9 +170,12 @@ export function RegisterPage() {
                   type="text"
                   required
                   value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
+                  onChange={(event) =>
+                    setLastName(event.target.value)
+                  }
                   placeholder="Johnson"
-                  className="w-full px-4 py-3 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  autoComplete="family-name"
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 />
               </div>
             </div>
@@ -186,15 +186,18 @@ export function RegisterPage() {
               </label>
 
               <div className="relative group">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 dark:text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-blue-500" />
 
                 <input
                   type="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(event) =>
+                    setEmail(event.target.value)
+                  }
                   placeholder="name@example.com"
-                  className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  autoComplete="email"
+                  className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 />
               </div>
             </div>
@@ -205,38 +208,64 @@ export function RegisterPage() {
               </label>
 
               <div className="relative group">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 dark:text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-blue-500" />
 
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(event) =>
+                    setPassword(event.target.value)
+                  }
                   placeholder="At least 6 characters"
-                  className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  autoComplete="new-password"
+                  className="w-full pl-11 pr-12 py-3 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowPassword((previous) => !previous)
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-blue-600"
+                  aria-label={
+                    showPassword
+                      ? "Hide password"
+                      : "Show password"
+                  }
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-5 h-5" />
+                  ) : (
+                    <Eye className="w-5 h-5" />
+                  )}
+                </button>
               </div>
             </div>
 
             <div className="flex items-start gap-3">
               <input
+                id="accept-terms"
                 type="checkbox"
                 required
-                className="mt-1 w-4 h-4 rounded bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500"
+                className="mt-1 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
 
-              <label className="text-sm text-slate-700 dark:text-slate-300">
+              <label
+                htmlFor="accept-terms"
+                className="text-sm text-slate-700 dark:text-slate-300"
+              >
                 I agree to the{" "}
                 <a
                   href="#"
-                  className="text-blue-600 dark:text-blue-400 font-semibold hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+                  className="text-blue-600 font-semibold hover:underline"
                 >
                   Terms of Service
                 </a>{" "}
                 and{" "}
                 <a
                   href="#"
-                  className="text-blue-600 dark:text-blue-400 font-semibold hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+                  className="text-blue-600 font-semibold hover:underline"
                 >
                   Privacy Policy
                 </a>
@@ -247,10 +276,15 @@ export function RegisterPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              {isLoading ? "Creating account..." : "Create Free Account"}
-              {!isLoading && <ArrowRight className="w-5 h-5" />}
+              {isLoading
+                ? "Creating account..."
+                : "Create Free Account"}
+
+              {!isLoading && (
+                <ArrowRight className="w-5 h-5" />
+              )}
             </button>
           </form>
         </div>
@@ -259,7 +293,7 @@ export function RegisterPage() {
           Already have an account?{" "}
           <NavLink
             to="/login"
-            className="text-blue-600 dark:text-blue-400 font-bold hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+            className="text-blue-600 font-bold hover:underline"
           >
             Log in
           </NavLink>

@@ -3,6 +3,7 @@ package com.aistudyhub.backend.controller;
 import com.aistudyhub.backend.dto.request.AdminPlanRequest;
 import com.aistudyhub.backend.dto.response.PlanResponse;
 import com.aistudyhub.backend.service.AdminPlanService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -13,6 +14,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/plans")
+@SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
 public class AdminPlanController {
 

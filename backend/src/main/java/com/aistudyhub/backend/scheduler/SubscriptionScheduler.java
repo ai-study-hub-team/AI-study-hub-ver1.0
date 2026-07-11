@@ -15,9 +15,10 @@ public class SubscriptionScheduler {
 
     // Run every hour
     @Scheduled(cron = "0 0 0 * * *")
-    public void checkOverdueSubscriptions() {
-        log.info("Running scheduled task to check for overdue subscriptions...");
-        subscriptionService.expireOverdueSubscriptions();
-        log.info("Finished checking overdue subscriptions.");
+    public void checkSubscriptions() {
+        log.info("Running scheduled task to send subscription notifications...");
+        subscriptionService.sendExpiryNotifications();
+        subscriptionService.sendExpiredNotificationsAndExpirePlans();
+        log.info("Finished subscription scheduled task.");
     }
 }

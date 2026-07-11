@@ -41,19 +41,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         String header = request.getHeader("Authorization");
-
-        System.out.println("Authorization = " + header);
         if (header == null || !header.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
 
         String token = header.substring(7).trim();
-
-
-        System.out.println("Token = " + token);
-
-        System.out.println("Validate = " + jwtService.validateAccessToken(token));
         if (token.isEmpty() || !jwtService.validateAccessToken(token)) {
             authenticationEntryPoint.commence(
                     request,
@@ -75,11 +68,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
+        if (!user.isEmailVerified()) {
+            authenticationEntryPoint.commence(
+                    request,
+                    response,
+                    new InsufficientAuthenticationException("Email is not verified")
+            );
+            return;
+        }
+
         if (SecurityContextHolder.getContext().getAuthentication() == null) {
             SimpleGrantedAuthority authority =
-                    new SimpleGrantedAuthority(
-                            "ROLE_" + user.getRole().name()
-                    );
+                    new SimpleGrantedAuthority("ROLE_" + user.getRole().name());
 
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
@@ -89,12 +89,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     );
 
             authentication.setDetails(user.getId());
-            SecurityContextHolder
-                    .getContext()
-                    .setAuthentication(authentication);
+            SecurityContextHolder.getContext().setAuthentication(authentication);
         }
 
         filterChain.doFilter(request, response);
-
     }
 }

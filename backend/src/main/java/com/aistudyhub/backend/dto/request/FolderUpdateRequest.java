@@ -20,12 +20,6 @@ public class FolderUpdateRequest {
     private String description;
 
     /**
-     * The user who owns this folder — used for ownership validation.
-     */
-    @NotNull(message = "userId is required")
-    private Long userId;
-
-    /**
      * New parent folder ID. {@code null} moves the folder to root.
      * Cannot be the folder's own ID (circular check in service).
      */

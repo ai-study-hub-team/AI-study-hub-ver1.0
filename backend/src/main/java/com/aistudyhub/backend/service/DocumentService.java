@@ -2,6 +2,8 @@ package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.dto.request.DocumentRequest;
 import com.aistudyhub.backend.dto.response.DocumentResponse;
+import com.aistudyhub.backend.exception.ConflictException;
+import com.aistudyhub.backend.exception.ForbiddenException;
 import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.specification.DocumentSpecification;
 import com.aistudyhub.backend.entity.*;
@@ -9,6 +11,8 @@ import com.aistudyhub.backend.repository.CategoryRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.FolderRepository;
 import com.aistudyhub.backend.repository.UserRepository;
+import com.aistudyhub.backend.repository.AiCitationRepository;
+import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
@@ -20,7 +24,9 @@ import lombok.extern.slf4j.Slf4j;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+
 
 @Service
 @RequiredArgsConstructor
@@ -38,6 +44,8 @@ public class DocumentService {
     private final DocumentAccessService documentAccessService;
     private final StorageQuotaService storageQuotaService;
     private final CurrentUserService currentUserService;
+    private final AiCitationRepository aiCitationRepository;
+    private final PgvectorSearchService pgvectorSearchService;
 
     // Read upload dir from config (same value used in FileStorageService)
     @Value("${app.upload.dir:uploads}")
@@ -91,12 +99,14 @@ public class DocumentService {
      * AI processing (text extraction, chunking, embedding, vector storage)
      * continues in the background via {@link DocumentProcessingAsyncService}.
      *
-     * @param file        the actual file from the multipart request
-     * @param title       document title
-     * @param description short description
-     * @param documentType type label (e.g. "LECTURE", "EXERCISE") — stored in tags for now
-     * @param visibility  visibility label (e.g. "PUBLIC", "PRIVATE") — stored in tags for now
-     * @param categoryId  optional category ID
+     * @param file         the actual file from the multipart request
+     * @param title        document title
+     * @param description  short description
+     * @param documentType type label (e.g. "LECTURE", "EXERCISE") — stored in tags
+     *                     for now
+     * @param visibility   visibility label (e.g. "PUBLIC", "PRIVATE") — stored in
+     *                     tags for now
+     * @param categoryId   optional category ID
      */
     public DocumentResponse uploadDocument(
             MultipartFile file,
@@ -137,7 +147,8 @@ public class DocumentService {
         storageQuotaService.validateStorageLimit(userId, file.getSize());
 
         // 4. Save the file to the local "uploads/" directory
-        //    fileStorageService will throw IllegalArgumentException for unsupported file types
+        // fileStorageService will throw IllegalArgumentException for unsupported file
+        // types
         String savedFileName = fileStorageService.saveFile(file);
 
         // 4. Build the relative file path (e.g. "uploads/a1b2c3_lecture1.pdf")
@@ -145,19 +156,21 @@ public class DocumentService {
 
         // 5. Build CloudFile record
         CloudFile cloudFile = CloudFile.builder()
-                .fileName(savedFileName)                                  // stored name on disk
-                .originalName(file.getOriginalFilename())                 // name from user's computer
-                .fileType(fileStorageService.detectMimeType(file))        // MIME type
-                .fileSize(file.getSize())                                 // size in bytes
-                .fileUrl(filePath)                                        // local path
-                .storageProvider("LOCAL")                                 // storage type
+                .fileName(savedFileName) // stored name on disk
+                .originalName(file.getOriginalFilename()) // name from user's computer
+                .fileType(fileStorageService.detectMimeType(file)) // MIME type
+                .fileSize(file.getSize()) // size in bytes
+                .fileUrl(filePath) // local path
+                .storageProvider("LOCAL") // storage type
                 .uploadedAt(LocalDateTime.now())
                 .build();
 
-        // 6. Combine documentType and visibility into tags field (simple approach for now)
+        // 6. Combine documentType and visibility into tags field (simple approach for
+        // now)
         String tags = buildTags(documentType, visibility);
 
-        // 7. Build Document record with PROCESSING status (ready for background AI work)
+        // 7. Build Document record with PROCESSING status (ready for background AI
+        // work)
         Document document = Document.builder()
                 .title(title)
                 .description(description)
@@ -176,8 +189,11 @@ public class DocumentService {
         log.info("Document metadata saved — id={}, title='{}', processStatus=PROCESSING",
                 saved.getId(), saved.getTitle());
 
+        storageQuotaService.addStorageUsage(userId, file.getSize());
+        log.info("Storage usage increased for userId={} by {} bytes", userId, file.getSize());
+
         // 8. Fire-and-forget: AI processing runs in a background thread.
-        //    The upload response is returned immediately to the frontend.
+        // The upload response is returned immediately to the frontend.
         documentProcessingAsyncService.processDocumentAsync(saved.getId());
         log.info("Background processing dispatched for document ID: {}", saved.getId());
 
@@ -187,8 +203,18 @@ public class DocumentService {
     // ─── Read All (paginated, ACTIVE only) ─────────────────────────────────────
 
     public Page<DocumentResponse> getAll(Pageable pageable) {
-        return documentRepository.findByStatus(DocumentStatus.ACTIVE, pageable)
-                .map(this::toResponse);
+        return searchAndFilter(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                pageable
+        );
     }
 
     // ─── Read One ──────────────────────────────────────────────────────────────
@@ -222,23 +248,197 @@ public class DocumentService {
         // Update file metadata if provided
         if (document.getCloudFile() != null) {
             CloudFile cf = document.getCloudFile();
-            if (request.getOriginalName() != null) cf.setOriginalName(request.getOriginalName());
-            if (request.getFileUrl() != null) cf.setFileUrl(request.getFileUrl());
-            if (request.getFileType() != null) cf.setFileType(request.getFileType());
-            if (request.getFileSize() != null) cf.setFileSize(request.getFileSize());
+            if (request.getOriginalName() != null)
+                cf.setOriginalName(request.getOriginalName());
+            if (request.getFileUrl() != null)
+                cf.setFileUrl(request.getFileUrl());
+            if (request.getFileType() != null)
+                cf.setFileType(request.getFileType());
+            if (request.getFileSize() != null)
+                cf.setFileSize(request.getFileSize());
         }
 
         return toResponse(documentRepository.save(document));
     }
 
-    // ─── Soft Delete ───────────────────────────────────────────────────────────
+    // ─── Move to Trash ─────────────────────────────────────────────────────────
 
-    public void delete(Long id) {
-        Document document = documentAccessService.getOwnedActiveDocument(id);
-        // Soft delete: change status to DELETED instead of removing from DB
-        document.setStatus(DocumentStatus.DELETED);
+    /**
+     * Moves a document to trash instead of hard-deleting it.
+     * Chunks, vectors, and the file are NOT touched here.
+     * Permanent deletion happens either via the scheduler (30 days) or explicit DELETE /permanent.
+     *
+     * Idempotent: if already trashed, returns a clear message instead of re-trashing.
+     */
+    @Transactional
+    public DocumentResponse delete(Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Document not found with id: " + id));
+
+        if (!documentAccessService.isOwner(currentUser, document)) {
+            throw new ForbiddenException("Only the document owner can move it to trash");
+        }
+
+        if (document.isTrashed()) {
+            // Idempotent: already in trash — just return current state
+            log.info("[Trash] Document id={} is already in trash, no-op.", id);
+            return toResponse(document);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        document.setTrashed(true);
+        document.setTrashedAt(now);
+        document.setDeleteAfter(now.plusDays(30));
+        document.setTrashedBy(currentUser.getId());
+        document.setUpdatedAt(now);
+        Document saved = documentRepository.save(document);
+        log.info("[Trash] Document id={} moved to trash by userId={}, deleteAfter={}",
+                id, currentUser.getId(), saved.getDeleteAfter());
+        return toResponse(saved);
+    }
+
+    // ─── Restore from Trash ────────────────────────────────────────────────────
+
+    /**
+     * Restores a trashed document to active state. No reprocessing needed.
+     * Only the owner can restore their document.
+     */
+    @Transactional
+    public DocumentResponse restore(Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Document not found with id: " + id));
+
+        if (!documentAccessService.isOwner(currentUser, document)) {
+            throw new ForbiddenException("Only the document owner can restore it");
+        }
+
+        if (!document.isTrashed()) {
+            throw new ConflictException("Document is not currently in trash.");
+        }
+
+        document.setTrashed(false);
+        document.setTrashedAt(null);
+        document.setDeleteAfter(null);
+        document.setTrashedBy(null);
         document.setUpdatedAt(LocalDateTime.now());
-        documentRepository.save(document);
+        Document saved = documentRepository.save(document);
+        log.info("[Trash] Document id={} restored by userId={}", id, currentUser.getId());
+        return toResponse(saved);
+    }
+
+    // ─── Get Trash List ────────────────────────────────────────────────────────
+
+    /**
+     * Returns all trashed documents owned by the currently authenticated user.
+     * userId is resolved from the JWT via {@link CurrentUserService} — never trusted from the client.
+     */
+    @Transactional(readOnly = true)
+    public List<DocumentResponse> getTrashedDocuments() {
+        User currentUser = currentUserService.getCurrentUser();
+        return documentRepository.findTrashedByUserId(currentUser.getId())
+                .stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    // ─── Permanent Delete ──────────────────────────────────────────────────────
+
+    /**
+     * Permanently deletes a document — removes chunks, pgvector embeddings,
+     * citations, file from disk, and the document record.
+     *
+     * Only the owner can call this.
+     * The document must already be in trash (use DELETE /api/documents/{id} first).
+     * Also called internally by the scheduler.
+     */
+    @Transactional
+    public void permanentDelete(Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Document not found with id: " + id));
+
+        if (!documentAccessService.isOwner(currentUser, document)) {
+            throw new ForbiddenException("Only the document owner can permanently delete it");
+        }
+
+        if (!document.isTrashed()) {
+            throw new ConflictException("Document is not currently in trash.");
+        }
+
+        permanentDeleteInternal(document);
+    }
+
+    /**
+     * Internal permanent delete — shared by explicit delete endpoint and nightly scheduler.
+     * Deletes in FK-safe order: citations → chunks → pgvector → file → document record.
+     */
+    @Transactional
+    public void permanentDeleteInternal(Document document) {
+        Long id = document.getId();
+        Long ownerId = document.getUser() != null
+                ? document.getUser().getId()
+                : null;
+
+        Long fileSize = document.getCloudFile() != null
+                ? document.getCloudFile().getFileSize()
+                : null;
+        log.info("[Trash] Permanently deleting document id={}, title='{}'", id, document.getTitle());
+
+        // 1. Delete AI citations referencing this document
+        try {
+            aiCitationRepository.deleteByDocumentId(id);
+            log.info("[Trash] Deleted citations for document id={}", id);
+        } catch (Exception e) {
+            log.warn("[Trash] Could not delete citations for document id={}: {}", id, e.getMessage());
+        }
+
+        // 2. Delete document chunks from PostgreSQL
+        try {
+            documentChunkRepository.deleteByDocumentId(id);
+            log.info("[Trash] Deleted chunks for document id={}", id);
+        } catch (Exception e) {
+            log.warn("[Trash] Could not delete chunks for document id={}: {}", id, e.getMessage());
+        }
+
+        // 3. Delete pgvector embeddings
+        try {
+            pgvectorSearchService.deleteEmbeddingsByDocumentId(id);
+            log.info("[Trash] Deleted pgvector embeddings for document id={}", id);
+        } catch (Exception e) {
+            log.warn("[Trash] Could not delete pgvector embeddings for document id={}: {}", id, e.getMessage());
+        }
+
+        // 4. Delete the file from disk
+        if (document.getCloudFile() != null && document.getCloudFile().getFileName() != null) {
+            try {
+                fileStorageService.deleteFile(document.getCloudFile().getFileName());
+                log.info("[Trash] Deleted file '{}' for document id={}",
+                        document.getCloudFile().getFileName(), id);
+            } catch (Exception e) {
+                log.warn("[Trash] Could not delete file for document id={}: {}", id, e.getMessage());
+            }
+        }
+
+        // 5. Delete document record (CloudFile deleted via CascadeType.ALL)
+        documentRepository.delete(document);
+        log.info("[Trash] Document id={} permanently deleted.", id);
+        // 6. Update storage quota only after permanent deletion
+        if (ownerId != null && fileSize != null) {
+            storageQuotaService.subtractStorageUsage(ownerId, fileSize);
+
+            log.info(
+                    "[Trash] Storage usage decreased for userId={} by {} bytes",
+                    ownerId,
+                    fileSize
+            );
+        }
+
+        log.info(
+                "[Trash] Document id={} permanently deleted.",
+                id
+        );
     }
 
     // ─── Reprocess Document ────────────────────────────────────────────────────
@@ -247,12 +447,16 @@ public class DocumentService {
      * Synchronously reprocesses an existing document through the full AI pipeline:
      * text extraction → chunking → embedding → pgvector upsert → chunk save.
      *
-     * <p>Unlike upload (which is async), reprocess is synchronous so the caller
-     * receives the final {@code PROCESSED} or {@code FAILED} status immediately.</p>
+     * <p>
+     * Unlike upload (which is async), reprocess is synchronous so the caller
+     * receives the final {@code PROCESSED} or {@code FAILED} status immediately.
+     * </p>
      *
-     * <p>Pre-flight validation errors (document deleted, missing file, etc.) mark
+     * <p>
+     * Pre-flight validation errors (document deleted, missing file, etc.) mark
      * the document as {@code FAILED} before re-throwing, so the status is never
-     * left stuck on {@code PROCESSING}.</p>
+     * left stuck on {@code PROCESSING}.
+     * </p>
      */
     public DocumentResponse reprocessDocument(Long id) {
         Document document = documentAccessService.getOwnedActiveDocument(id);
@@ -284,17 +488,16 @@ public class DocumentService {
                 id, oldChunkCount, path);
 
         // Delegate to AiIntegrationService which handles:
-        //  - calling the Python /process-document endpoint
-        //  - deleting old document_chunks + pgvector embeddings
-        //  - inserting new chunks
-        //  - setting final status (PROCESSED or FAILED)
+        // - calling the Python /process-document endpoint
+        // - deleting old document_chunks + pgvector embeddings
+        // - inserting new chunks
+        // - setting final status (PROCESSED or FAILED)
         DocumentProcessStatus processStatus = aiIntegrationService.processDocument(
                 document.getId(),
                 cloudFile.getFileName(),
                 cloudFile.getOriginalName(),
                 cloudFile.getFileUrl(),
-                cloudFile.getFileType()
-        );
+                cloudFile.getFileType());
 
         document = documentRepository.findById(id).orElseThrow();
         long newChunkCount = documentChunkRepository.countByDocumentId(id);
@@ -304,7 +507,10 @@ public class DocumentService {
         return toResponse(document);
     }
 
-    /** Marks a document as FAILED with an error message (pre-flight validation helper). */
+    /**
+     * Marks a document as FAILED with an error message (pre-flight validation
+     * helper).
+     */
     private void markFailed(Document document, String errorMessage) {
         try {
             document.setProcessStatus(DocumentProcessStatus.FAILED);
@@ -321,8 +527,18 @@ public class DocumentService {
     // ─── Search ────────────────────────────────────────────────────────────────
 
     public Page<DocumentResponse> search(String keyword, Pageable pageable) {
-        return documentRepository.searchByKeyword(keyword, pageable)
-                .map(this::toResponse);
+        return searchAndFilter(
+                keyword,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                pageable
+        );
     }
 
     public Page<DocumentResponse> searchAndFilter(
@@ -341,8 +557,9 @@ public class DocumentService {
     /**
      * Extended search with optional folder filtering.
      *
-     * @param folderId  when non-null, return only documents in this folder
-     * @param rootOnly  when {@code true}, return only root-level documents (folder = null)
+     * @param folderId when non-null, return only documents in this folder
+     * @param rootOnly when {@code true}, return only root-level documents (folder =
+     *                 null)
      */
     public Page<DocumentResponse> searchAndFilter(
             String keyword,
@@ -356,8 +573,10 @@ public class DocumentService {
             Boolean rootOnly,
             Pageable pageable) {
 
+        User currentUser = currentUserService.getCurrentUser();
+
         return documentRepository.findAll(
-                DocumentSpecification.filterDocuments(
+                DocumentSpecification.filterVisibleDocuments(
                         keyword,
                         categoryId,
                         processStatus,
@@ -366,7 +585,8 @@ public class DocumentService {
                         fromDate,
                         toDate,
                         folderId,
-                        rootOnly
+                        rootOnly,
+                        currentUser
                 ),
                 pageable
         ).map(this::toResponse);
@@ -375,31 +595,26 @@ public class DocumentService {
     // ─── Move Document to Folder ───────────────────────────────────────────────
 
     /**
-     * Moves a document into a folder, or back to root when {@code folderId} is null.
+     * Moves a document into a folder, or back to root when {@code folderId} is
+     * null.
      *
-     * <p>Security rules enforced:
+     * <p>
+     * Security rules enforced:
      * <ul>
-     *   <li>Document must belong to {@code userId}.</li>
-     *   <li>Target folder (if non-null) must belong to {@code userId}.</li>
+     * <li>Document must belong to {@code userId}.</li>
+     * <li>Target folder (if non-null) must belong to {@code userId}.</li>
      * </ul>
      */
     @Transactional
-    public DocumentResponse moveDocumentToFolder(Long documentId, Long userId, Long folderId) {
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + documentId));
+    public DocumentResponse moveDocumentToFolder(Long documentId, Long folderId) {
+        User currentUser = currentUserService.getCurrentUser();
 
-        if (document.getStatus() == DocumentStatus.DELETED) {
-            throw new RuntimeException("Cannot move a deleted document.");
-        }
-        if (!document.getUser().getId().equals(userId)) {
-            throw new RuntimeException("Document " + documentId + " does not belong to user " + userId);
-        }
+        Document document = documentAccessService.getOwnedActiveDocument(documentId);
 
         Folder folder = null;
         if (folderId != null) {
-            folder = folderRepository.findByIdAndUserId(folderId, userId)
-                    .orElseThrow(() -> new RuntimeException(
-                            "Folder not found or does not belong to user: " + folderId));
+            folder = folderRepository.findByIdAndUserId(folderId, currentUser.getId())
+                    .orElseThrow(() -> new NotFoundException("Folder not found"));
         }
 
         document.setFolder(folder);
@@ -407,7 +622,7 @@ public class DocumentService {
         Document saved = documentRepository.save(document);
 
         log.info("[Document] Moved document id={} to folder id={} for userId={}",
-                documentId, folderId, userId);
+                documentId, folderId, currentUser.getId());
         return toResponse(saved);
     }
 
@@ -426,7 +641,12 @@ public class DocumentService {
                 .updatedAt(document.getUpdatedAt())
                 .processedAt(document.getProcessedAt())
                 .processErrorMessage(document.getProcessErrorMessage())
-                .chunkCount(document.getChunkCount());
+                .chunkCount(document.getChunkCount())
+                // Trash fields
+                .isTrashed(document.isTrashed())
+                .trashedAt(document.getTrashedAt())
+                .deleteAfter(document.getDeleteAfter())
+                .trashedBy(document.getTrashedBy());
 
         // Category info
         if (document.getCategory() != null) {
@@ -476,7 +696,8 @@ public class DocumentService {
             sb.append(documentType.toUpperCase());
         }
         if (visibility != null && !visibility.isBlank()) {
-            if (!sb.isEmpty()) sb.append(",");
+            if (!sb.isEmpty())
+                sb.append(",");
             sb.append(visibility.toUpperCase());
         }
         return sb.isEmpty() ? null : sb.toString();
