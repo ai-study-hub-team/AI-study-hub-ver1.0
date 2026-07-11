@@ -11,11 +11,13 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
-import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 
 import { documentApi } from "../../services/documentApi";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { DocumentInformationModal } from "../../components/ui/DocumentInformationModal";
+import { DocumentPreviewModal } from "../../components/ui/DocumentPreviewModal";
 import { userApi, type UserResponse } from "../../services/userApi";
 import type { DocumentListItemResponse } from "../../types/documents/types";
 
@@ -67,16 +69,53 @@ const getAiStatus = (document: AdminDocument) =>
   document.aiStatus || "UPLOADED";
 
 const getFileType = (document: AdminDocument) =>
-  document.type || document.fileType || "application/octet-stream";
+  document.fileType || document.type || "application/octet-stream";
+
+const FILE_TYPE_LABELS: Array<[RegExp, string]> = [
+  [/wordprocessingml|msword|docx/i, "DOCX"],
+  [/spreadsheetml|ms-excel|xlsx/i, "XLSX"],
+  [/presentationml|ms-powerpoint|pptx/i, "PPTX"],
+  [/application\/pdf|\bpdf\b/i, "PDF"],
+  [/text\/plain|\btxt\b/i, "TXT"],
+  [/text\/csv|\bcsv\b/i, "CSV"],
+  [/image\/png|\bpng\b/i, "PNG"],
+  [/image\/jpe?g|\bjpe?g\b/i, "JPG"],
+  [/image\/gif|\bgif\b/i, "GIF"],
+  [/video\/mp4|\bmp4\b/i, "MP4"],
+  [/audio\/mpeg|\bmp3\b/i, "MP3"],
+  [/application\/zip|\bzip\b/i, "ZIP"],
+];
 
 const getFileExtension = (document: AdminDocument) => {
-  const name = getDocumentName(document);
-  const extensionFromName = name.split(".").pop()?.toUpperCase();
-  const extensionFromType = getFileType(document).split("/").pop()?.toUpperCase();
+  const candidateNames = [
+    document.originalName,
+    document.fileName,
+    document.name,
+    document.title,
+    document.fileUrl,
+  ].filter(Boolean) as string[];
 
-  return extensionFromName && extensionFromName !== name.toUpperCase()
-    ? extensionFromName
-    : extensionFromType || "FILE";
+  for (const candidate of candidateNames) {
+    const cleanName = candidate.split(/[?#]/)[0];
+    const match = cleanName.match(/\.([a-z0-9]{1,10})$/i);
+
+    if (match) return match[1].toUpperCase();
+  }
+
+  const rawType = getFileType(document);
+  const mappedType = FILE_TYPE_LABELS.find(([pattern]) =>
+    pattern.test(rawType),
+  );
+
+  if (mappedType) return mappedType[1];
+
+  const subtype = rawType.split("/").pop()?.split(/[.;+]/)[0]?.trim();
+
+  if (subtype && subtype.length <= 12 && subtype !== "octet-stream") {
+    return subtype.toUpperCase();
+  }
+
+  return "FILE";
 };
 
 const getAvatar = (name: string) => {
@@ -146,9 +185,10 @@ const StatusBadge = ({ status }: { status: string }) => {
 };
 
 export function DocumentAdmin() {
-  const navigate = useNavigate();
 
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const [docs, setDocs] = useState<AdminDocument[]>([]);
   const [usersById, setUsersById] = useState<Record<number, AdminUser>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -158,6 +198,8 @@ export function DocumentAdmin() {
     useState<ActionMenuPosition | null>(null);
 
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [informationDoc, setInformationDoc] = useState<AdminDocument | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<AdminDocument | null>(null);
 
   const [editDoc, setEditDoc] = useState<AdminDocument | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({
@@ -225,6 +267,7 @@ export function DocumentAdmin() {
     loadUsers();
   }, []);
 
+
   const getOwnerUser = (document: AdminDocument) => {
     if (!document.userId) return undefined;
     return usersById[document.userId];
@@ -278,6 +321,22 @@ export function DocumentAdmin() {
     );
   });
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginatedDocuments = filtered.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   const toggleActionMenu = (
     event: MouseEvent<HTMLButtonElement>,
     documentId: number,
@@ -314,7 +373,22 @@ export function DocumentAdmin() {
 
   const handlePreview = (document: AdminDocument) => {
     closeActionMenu();
-    navigate(`/app/library/${document.id}/preview`);
+    setPreviewDoc(document);
+  };
+
+  const handleViewInformation = async (document: AdminDocument) => {
+    closeActionMenu();
+
+    try {
+      const response = await documentApi.getDocumentById(document.id);
+      setInformationDoc(response.data as AdminDocument);
+    } catch (error) {
+      console.error(error);
+      // The list response already contains the main metadata, so still show it
+      // when the detail endpoint is temporarily unavailable.
+      setInformationDoc(document);
+      toast.error("Cannot load the latest document detail.");
+    }
   };
 
   const handleDownload = async (document: AdminDocument) => {
@@ -526,14 +600,23 @@ export function DocumentAdmin() {
             <tbody>
               <AnimatePresence>
                 {!isLoading &&
-                  filtered.map((document) => (
+                  paginatedDocuments.map((document) => (
                     <motion.tr
                       key={document.id}
                       layout
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="group bg-white transition-colors hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handlePreview(document)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          handlePreview(document);
+                        }
+                      }}
+                      className="group cursor-pointer bg-white transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500/30 dark:bg-slate-900 dark:hover:bg-slate-800"
                     >
                       <td className="rounded-l-2xl px-4 py-3">
                         <div className="flex max-w-[460px] items-center gap-2">
@@ -597,7 +680,7 @@ export function DocumentAdmin() {
                         {formatDate(document.uploadedAt || document.createdAt)}
                       </td>
 
-                      <td className="rounded-r-2xl px-4 py-3 text-right">
+                      <td className="rounded-r-2xl px-4 py-3 text-right" onClick={(event) => event.stopPropagation()}>
                         <button
                           onClick={(event) =>
                             toggleActionMenu(event, document.id)
@@ -630,6 +713,15 @@ export function DocumentAdmin() {
             </div>
           )}
         </div>
+
+        {!isLoading && filtered.length > 0 && (
+          <PaginationControls
+            currentPage={currentPage}
+            totalItems={filtered.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
+        )}
       </div>
 
       <AnimatePresence>
@@ -649,11 +741,11 @@ export function DocumentAdmin() {
               className="fixed z-50 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 text-left shadow-xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/30"
             >
               <button
-                onClick={() => handlePreview(selectedDocument)}
+                onClick={() => handleViewInformation(selectedDocument)}
                 className="flex w-full items-center gap-2 rounded-lg px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 <Eye className="h-4 w-4" />
-                Preview
+                View information
               </button>
 
               <button
@@ -696,6 +788,28 @@ export function DocumentAdmin() {
           </>
         )}
       </AnimatePresence>
+
+      <DocumentPreviewModal
+        document={previewDoc}
+        onClose={() => setPreviewDoc(null)}
+      />
+
+      {informationDoc && (
+        <DocumentInformationModal
+          document={{
+            ...informationDoc,
+            name: getDocumentName(informationDoc),
+            fileType: getFileExtension(informationDoc),
+            categoryName:
+              informationDoc.categoryName || informationDoc.folder || "Uncategorized",
+            folderName: informationDoc.folder || "Root",
+            createdAt: informationDoc.createdAt || informationDoc.uploadedAt,
+            documentStatus: getUploadStatus(informationDoc),
+            aiStatus: getAiStatus(informationDoc),
+          }}
+          onClose={() => setInformationDoc(null)}
+        />
+      )}
 
       {editDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Eye, Loader2, RefreshCw, Search, XCircle } from "lucide-react";
+import { Eye, Loader2, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -8,6 +8,8 @@ import {
   type DocumentReportResponse,
   type DocumentReportStatus,
 } from "../../services/adminDocumentReportApi";
+import { DocumentPreviewModal, type PreviewDocument } from "../../components/ui/DocumentPreviewModal";
+import { ReportDetailModal } from "./components/ReportDetailModal";
 
 const statuses: Array<{ label: string; value: "ALL" | DocumentReportStatus }> = [
   { label: "All statuses", value: "ALL" },
@@ -49,6 +51,7 @@ export function ReportManagement() {
   const [selected, setSelected] = useState<DocumentReportResponse | null>(null);
   const [adminNote, setAdminNote] = useState("");
   const [hideDocument, setHideDocument] = useState(false);
+  const [previewDocument, setPreviewDocument] = useState<PreviewDocument | null>(null);
 
   const loadReports = useCallback(async () => {
     try {
@@ -150,7 +153,21 @@ export function ReportManagement() {
               <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-800"><tr><th className="p-4">Document</th><th className="p-4">Reporter</th><th className="p-4">Reason</th><th className="p-4">Status</th><th className="p-4">Created</th><th className="p-4" /></tr></thead>
               <tbody>{filtered.map((report) => (
                 <tr key={report.id} className="border-t">
-                  <td className="p-4 font-semibold">{report.documentTitle || `Document #${report.documentId}`}</td>
+                  <td className="max-w-[36rem] p-4 font-semibold">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPreviewDocument({
+                          id: report.documentId,
+                          title: report.documentTitle || `Document #${report.documentId}`,
+                        })
+                      }
+                      className="block max-w-full truncate text-left transition hover:text-blue-600 hover:underline dark:hover:text-blue-400"
+                      title={report.documentTitle || `Document #${report.documentId}`}
+                    >
+                      {report.documentTitle || `Document #${report.documentId}`}
+                    </button>
+                  </td>
                   <td className="p-4">{report.reporterEmail}</td>
                   <td className="p-4">{report.reason}</td>
                   <td className="p-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${badgeClass[report.status] ?? "bg-slate-100"}`}>{report.status}</span></td>
@@ -164,21 +181,28 @@ export function ReportManagement() {
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={() => setSelected(null)}>
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="mb-4 flex items-start justify-between gap-4"><div><h2 className="text-xl font-extrabold">{selected.documentTitle}</h2><p className="text-sm text-slate-500">Report #{selected.id}</p></div><button onClick={() => setSelected(null)}>✕</button></div>
-            <div className="grid gap-3 text-sm md:grid-cols-2"><p><b>Reporter:</b> {selected.reporterEmail}</p><p><b>Owner:</b> {selected.ownerEmail}</p><p><b>Reason:</b> {selected.reason}</p><p><b>Status:</b> {selected.status}</p></div>
-            <div className="mt-4 rounded-xl bg-slate-50 p-4 dark:bg-slate-800"><b>Description</b><p className="mt-1 whitespace-pre-wrap text-sm">{selected.description || "No description"}</p></div>
-            <textarea value={adminNote} onChange={(e) => setAdminNote(e.target.value)} placeholder="Admin note" className="mt-4 min-h-24 w-full rounded-xl border p-3" />
-            <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={hideDocument} onChange={(e) => setHideDocument(e.target.checked)} /> Hide document when resolving</label>
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button disabled={updatingId === selected.id} onClick={() => void updateStatus("REVIEWING")} className="rounded-xl border px-4 py-2 font-bold"><AlertTriangle className="mr-2 inline h-4 w-4" />Reviewing</button>
-              <button disabled={updatingId === selected.id} onClick={() => void updateStatus("REJECTED")} className="rounded-xl border px-4 py-2 font-bold"><XCircle className="mr-2 inline h-4 w-4" />Reject</button>
-              <button disabled={updatingId === selected.id} onClick={() => void updateStatus("RESOLVED")} className="rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white"><CheckCircle2 className="mr-2 inline h-4 w-4" />Resolve</button>
-            </div>
-          </div>
-        </div>
+        <ReportDetailModal
+          report={selected}
+          adminNote={adminNote}
+          hideDocument={hideDocument}
+          updating={updatingId === selected.id}
+          onAdminNoteChange={setAdminNote}
+          onHideDocumentChange={setHideDocument}
+          onPreviewDocument={() =>
+            setPreviewDocument({
+              id: selected.documentId,
+              title: selected.documentTitle || `Document #${selected.documentId}`,
+            })
+          }
+          onUpdateStatus={(nextStatus) => void updateStatus(nextStatus)}
+          onClose={() => setSelected(null)}
+        />
       )}
+
+      <DocumentPreviewModal
+        document={previewDocument}
+        onClose={() => setPreviewDocument(null)}
+      />
     </div>
   );
 }

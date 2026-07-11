@@ -30,6 +30,8 @@ import { getCurrentUserId } from "../../services/apiClient";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { DocumentInformationModal } from "../../components/ui/DocumentInformationModal";
 
 interface FavoriteLibraryDocument {
   favoriteId: number;
@@ -239,6 +241,7 @@ function FavoriteDocumentRow({
   onShare,
   sharingDocumentId,
   onViewFile,
+  onViewInfo,
   onEdit,
 }: {
   document: FavoriteLibraryDocument;
@@ -249,11 +252,16 @@ function FavoriteDocumentRow({
   onShare: (documentId: number) => void | Promise<void>;
   sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
+  onViewInfo: (document: FavoriteLibraryDocument) => void;
   onEdit: (document: FavoriteLibraryDocument) => void;
 }) {
   return (
     <div
-      className={`${favoriteListGridClass} border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70`}
+      role="button"
+      tabIndex={0}
+      onClick={() => onViewFile(document.id)}
+      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onViewFile(document.id); }}
+      className={`${favoriteListGridClass} cursor-pointer border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70`}
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
@@ -300,7 +308,7 @@ function FavoriteDocumentRow({
       <div className="flex min-w-[72px] items-center justify-center">
         <RowActionMenu>
           <ActionMenuItem icon={Star} label="Remove from favorites" onClick={() => onToggleFavorite(document.id)} />
-          <ActionMenuItem icon={Eye} label="View file" onClick={() => onViewFile(document.id)} />
+          <ActionMenuItem icon={Eye} label="View information" onClick={() => onViewInfo(document)} />
           <ActionMenuItem icon={Pencil} label="Rename" onClick={() => onEdit(document)} />
           <ActionMenuItem icon={Download} label="Download" onClick={() => onDownload(document.id, document.name)} />
           <ActionMenuItem icon={Share2} label="Share document" onClick={() => onShare(document.id)} disabled={sharingDocumentId === document.id} />
@@ -321,6 +329,7 @@ function FavoriteDocumentCard({
   onShare,
   sharingDocumentId,
   onViewFile,
+  onViewInfo,
   onEdit,
 }: {
   document: FavoriteLibraryDocument;
@@ -331,10 +340,11 @@ function FavoriteDocumentCard({
   onShare: (documentId: number) => void | Promise<void>;
   sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
+  onViewInfo: (document: FavoriteLibraryDocument) => void;
   onEdit: (document: FavoriteLibraryDocument) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+    <div role="button" tabIndex={0} onClick={() => onViewFile(document.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onViewFile(document.id); }} className="cursor-pointer rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-start justify-between gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
           <FileText className="h-6 w-6" />
@@ -410,7 +420,7 @@ function FavoriteDocumentCard({
 
       <div className="mt-5 flex items-center justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
         <RowActionMenu>
-          <ActionMenuItem icon={Eye} label="View file" onClick={() => onViewFile(document.id)} />
+          <ActionMenuItem icon={Eye} label="View information" onClick={() => onViewInfo(document)} />
           <ActionMenuItem icon={Pencil} label="Rename" onClick={() => onEdit(document)} />
           <ActionMenuItem icon={Download} label="Download" onClick={() => onDownload(document.id, document.name)} />
           <ActionMenuItem icon={Share2} label="Share document" onClick={() => onShare(document.id)} disabled={sharingDocumentId === document.id} />
@@ -443,14 +453,28 @@ export function FavoriteDocumentsPage() {
   const { theme } = useTheme();
 
   const [documents, setDocuments] = useState<FavoriteLibraryDocument[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const [isLoading, setIsLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [viewingDocumentInfo, setViewingDocumentInfo] = useState<FavoriteLibraryDocument | null>(null);
+
   const [editingDocument, setEditingDocument] =
     useState<FavoriteLibraryDocument | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const { createAndCopyPublicLink, loadingDocumentId } =
     useCreatePublicLink();
+
+  const totalPages = Math.max(1, Math.ceil(documents.length / pageSize));
+  const paginatedDocuments = documents.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   const loadFavorites = async () => {
     try {
@@ -694,7 +718,7 @@ export function FavoriteDocumentsPage() {
                 </p>
               </div>
             ) : documents.length > 0 ? (
-              documents.map((document) => (
+              paginatedDocuments.map((document) => (
                 <FavoriteDocumentRow
                   key={document.favoriteId}
                   document={document}
@@ -705,6 +729,7 @@ export function FavoriteDocumentsPage() {
                   onShare={createAndCopyPublicLink}
                   sharingDocumentId={loadingDocumentId}
                   onViewFile={handleViewFile}
+                  onViewInfo={setViewingDocumentInfo}
                   onEdit={handleOpenEdit}
                 />
               ))
@@ -723,7 +748,7 @@ export function FavoriteDocumentsPage() {
             </div>
           ) : documents.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {documents.map((document) => (
+              {paginatedDocuments.map((document) => (
                 <FavoriteDocumentCard
                   key={document.favoriteId}
                   document={document}
@@ -734,6 +759,7 @@ export function FavoriteDocumentsPage() {
                   onShare={createAndCopyPublicLink}
                   sharingDocumentId={loadingDocumentId}
                   onViewFile={handleViewFile}
+                  onViewInfo={setViewingDocumentInfo}
                   onEdit={handleOpenEdit}
                 />
               ))}
@@ -785,6 +811,17 @@ export function FavoriteDocumentsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      <PaginationControls
+        currentPage={currentPage}
+        totalItems={documents.length}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+      />
+
+      {viewingDocumentInfo && (
+        <DocumentInformationModal document={viewingDocumentInfo} onClose={() => setViewingDocumentInfo(null)} />
       )}
 
       {editingDocument && (
