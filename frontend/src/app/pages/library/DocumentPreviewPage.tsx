@@ -206,7 +206,7 @@ const highlightHtml = (html: string, keyword: string) => {
 };
 
 type ChatMode = "collapsed" | "floating" | "docked";
-type StudyPanel = "notes" | "split";
+type StudyPanel = "document" | "notes" | "split";
 
 type SummaryType = "SHORT" | "DETAILED" | "BULLET_POINTS";
 
@@ -1450,16 +1450,16 @@ export function DocumentPreviewPage() {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto px-6 py-8">
-          <div className="mx-auto flex w-full max-w-[360px] flex-col items-center text-center">
-            <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm ring-1 ring-slate-200">
-              <Bot className="h-11 w-11" />
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-5 sm:px-5 sm:py-6">
+          <div className="mx-auto flex w-full max-w-[420px] flex-col items-center text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm ring-1 ring-slate-200">
+              <Bot className="h-9 w-9" />
             </div>
-            <h2 className="text-2xl font-extrabold text-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-900 sm:text-2xl">
               Hello, I'm AI Study Hub
             </h2>
 
-            <div className="mt-6 flex flex-col items-center gap-3">
+            <div className="mt-4 flex flex-col items-center gap-2">
               {quickPrompts.map((prompt) => (
                 <button
                   key={prompt.label}
@@ -1473,7 +1473,7 @@ export function DocumentPreviewPage() {
               ))}
             </div>
 
-            <div className="mt-6 w-full space-y-3 text-left">
+            <div className="mt-4 w-full space-y-3 text-left">
               {chatMessages.map((message) => (
                 <div
                   key={message.id}
@@ -1669,18 +1669,26 @@ export function DocumentPreviewPage() {
     return renderNotesPanel();
   };
 
-  const notesPanelWidth =
-    activePanel === "notes" ? "minmax(0, 1fr)" : "minmax(360px, 0.72fr)";
-  const previewPanelWidth = "minmax(0, 1.5fr)";
-  const chatPanelWidth = "minmax(360px, 0.82fr)";
-  const pageGridColumns =
-    activePanel === "notes"
-      ? chatMode === "docked"
-        ? `${notesPanelWidth} ${chatPanelWidth}`
-        : notesPanelWidth
-      : chatMode === "docked"
-        ? `${previewPanelWidth} ${notesPanelWidth} ${chatPanelWidth}`
-        : `${previewPanelWidth} ${notesPanelWidth}`;
+  const notesPanelWidth = "minmax(280px, 0.8fr)";
+  const previewPanelWidth = "minmax(0, 1.55fr)";
+  const chatPanelWidth = "minmax(300px, 0.9fr)";
+  const pageGridColumns = (() => {
+    if (activePanel === "document") {
+      return chatMode === "docked"
+        ? `${previewPanelWidth} ${chatPanelWidth}`
+        : previewPanelWidth;
+    }
+
+    if (activePanel === "notes") {
+      return chatMode === "docked"
+        ? `minmax(0, 1fr) ${chatPanelWidth}`
+        : "minmax(0, 1fr)";
+    }
+
+    return chatMode === "docked"
+      ? `${previewPanelWidth} ${notesPanelWidth} ${chatPanelWidth}`
+      : `${previewPanelWidth} ${notesPanelWidth}`;
+  })();
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white text-slate-900">
@@ -1732,7 +1740,7 @@ export function DocumentPreviewPage() {
           gridTemplateColumns: pageGridColumns,
         }}
       >
-        {activePanel === "split" && (
+        {activePanel !== "notes" && (
           <section className="relative min-w-0 min-h-0 overflow-hidden border-r border-slate-100 bg-white">
             <div className="h-full min-h-0">
               {isLoading ? (
@@ -1746,9 +1754,11 @@ export function DocumentPreviewPage() {
           </section>
         )}
 
-        <section className="relative min-w-0 min-h-0 overflow-hidden border-r border-slate-100 bg-white">
-          {renderStudyPanel()}
-        </section>
+        {activePanel !== "document" && (
+          <section className="relative min-w-0 min-h-0 overflow-hidden border-r border-slate-100 bg-white">
+            {renderStudyPanel()}
+          </section>
+        )}
 
         {chatMode === "docked" && (
           <aside className="min-w-0 min-h-0 overflow-hidden bg-slate-50">
@@ -1761,6 +1771,7 @@ export function DocumentPreviewPage() {
         <div className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-200/80">
           {(
             [
+              ["document", "Document"],
               ["notes", "Notes"],
               ["split", "Split Screen"],
             ] as const
@@ -1787,7 +1798,7 @@ export function DocumentPreviewPage() {
             setIsShareModalOpen(true);
             loadSharedUsers();
           }}
-          className="fixed right-5 top-24 z-40 flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-extrabold text-white shadow-xl shadow-blue-200 hover:bg-blue-700"
+          className="fixed right-6 top-[78px] z-40 flex items-center gap-2 rounded-xl bg-blue-600 px-3.5 py-2.5 text-sm font-extrabold text-white shadow-lg shadow-blue-200/70 hover:bg-blue-700"
           title="Share document"
         >
           <Share2 className="h-4 w-4" />
@@ -1808,7 +1819,7 @@ export function DocumentPreviewPage() {
       )}
 
       {chatMode === "floating" && (
-        <div className="fixed bottom-24 right-10 z-40 h-[600px] w-[440px] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-300/70">
+        <div className="fixed bottom-20 right-6 top-24 z-40 w-[min(440px,calc(100vw-3rem))] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-300/70">
           {renderChatContent(false)}
         </div>
       )}

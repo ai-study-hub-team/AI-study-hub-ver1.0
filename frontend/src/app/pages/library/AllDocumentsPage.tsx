@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router";
 
 import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 import type { AiStatus } from "../../constants/documentStatus";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 import { documentApi } from "../../services/documentApi";
@@ -31,6 +32,7 @@ import { favoriteApi, type FavoriteDocument } from "../../services/favoriteApi";
 import { folderApi, type FolderResponse } from "../../services/folderApi";
 import { getCurrentUserId } from "../../services/apiClient";
 import { filterMyDocuments } from "../../utils/documentOwnership";
+import { DocumentInformationModal as DocumentInfoModal } from "../../components/ui/DocumentInformationModal";
 
 interface LibraryDocument {
   id: number;
@@ -199,69 +201,6 @@ const mapLibraryDocument = (
   fav: Boolean(favoriteMap[document.id]),
 });
 
-function DocumentInfoModal({
-  document,
-  onClose,
-}: {
-  document: LibraryDocument;
-  onClose: () => void;
-}) {
-  const infoItems = [
-    { label: "Title", value: document.name },
-    { label: "File type", value: getFileExtension(document) },
-    { label: "Category", value: document.categoryName || "Uncategorized" },
-    { label: "Folder", value: document.folderName || "Root" },
-    { label: "Date added", value: formatDocumentDateTime(document.createdAt) },
-    { label: "File size", value: formatFileSize(document.fileSize) },
-    { label: "Status", value: document.documentStatus || "Unknown" },
-    { label: "AI status", value: document.aiStatus || "Unknown" },
-    { label: "Favorite", value: document.fav ? "Yes" : "No" },
-    { label: "Document ID", value: String(document.id) },
-  ];
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
-      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
-        <div className="mb-7 flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-extrabold text-slate-950 dark:text-white">
-              Document detail
-            </h2>
-            <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">
-              Information loaded from the document list. Click the document
-              name or card to open preview.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-extrabold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-          {infoItems.map((item) => (
-            <div
-              key={item.label}
-              className="rounded-3xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-950"
-            >
-              <p className="text-sm font-extrabold uppercase text-slate-400 dark:text-slate-500">
-                {item.label}
-              </p>
-              <p className="mt-3 break-words text-lg font-extrabold text-slate-900 dark:text-slate-100">
-                {item.value}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function DocumentActions({
   document,
   onToggleFavorite,
@@ -270,7 +209,6 @@ function DocumentActions({
   onDownload,
   onShare,
   sharingDocumentId,
-  onViewFile,
   onViewInfo,
   onEdit,
   onMove,
@@ -282,7 +220,6 @@ function DocumentActions({
   onDownload: (documentId: number, fileName: string) => void;
   onShare: (documentId: number) => void | Promise<void>;
   sharingDocumentId: number | null;
-  onViewFile: (documentId: number) => void;
   onViewInfo: (document: LibraryDocument) => void;
   onEdit: (document: LibraryDocument) => void;
   onMove: (document: LibraryDocument) => void;
@@ -293,11 +230,6 @@ function DocumentActions({
         icon={Eye}
         label="View information"
         onClick={() => onViewInfo(document)}
-      />
-      <ActionMenuItem
-        icon={FileText}
-        label="Open / Preview document"
-        onClick={() => onViewFile(document.id)}
       />
       <ActionMenuItem
         icon={Star}
@@ -423,7 +355,6 @@ function DocumentRow({
           onDownload={onDownload}
           onShare={onShare}
           sharingDocumentId={sharingDocumentId}
-          onViewFile={onViewFile}
           onViewInfo={onViewInfo}
           onEdit={onEdit}
           onMove={onMove}
@@ -482,7 +413,6 @@ function DocumentCard({
             onDownload={onDownload}
             onShare={onShare}
             sharingDocumentId={sharingDocumentId}
-            onViewFile={onViewFile}
             onViewInfo={onViewInfo}
             onEdit={onEdit}
             onMove={onMove}
@@ -548,6 +478,8 @@ function EmptyDocuments() {
 export function AllDocumentsPage() {
   const navigate = useNavigate();
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const [folders, setFolders] = useState<FolderResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -640,6 +572,16 @@ export function AllDocumentsPage() {
     loadFolders();
     loadDocuments();
   }, []);
+
+  const totalPages = Math.max(1, Math.ceil(documents.length / pageSize));
+  const paginatedDocuments = documents.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   const toggleFavorite = async (documentId: number) => {
     const currentDocument = documents.find(
@@ -923,7 +865,7 @@ export function AllDocumentsPage() {
                 </p>
               </div>
             ) : documents.length > 0 ? (
-              documents.map((document) => (
+              paginatedDocuments.map((document) => (
                 <DocumentRow
                   key={document.id}
                   document={document}
@@ -954,7 +896,7 @@ export function AllDocumentsPage() {
             </div>
           ) : documents.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {documents.map((document) => (
+              {paginatedDocuments.map((document) => (
                 <DocumentCard
                   key={document.id}
                   document={document}
@@ -978,6 +920,13 @@ export function AllDocumentsPage() {
           )}
         </div>
       )}
+
+      <PaginationControls
+        currentPage={currentPage}
+        totalItems={documents.length}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+      />
 
       {viewingDocumentInfo && (
         <DocumentInfoModal

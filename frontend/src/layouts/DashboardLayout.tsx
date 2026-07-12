@@ -559,8 +559,16 @@ export function DashboardLayout({
         }}
         className="relative z-20 flex flex-col h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-sm"
       >
-        <div className="flex items-center h-16 px-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-          <div className="flex items-center gap-2 min-w-0 overflow-hidden whitespace-nowrap">
+        <div
+          className={`flex items-center h-16 border-b border-slate-100 dark:border-slate-800 shrink-0 ${
+            isSidebarOpen ? "px-4" : "px-2"
+          }`}
+        >
+          <div
+            className={`flex items-center min-w-0 overflow-hidden whitespace-nowrap ${
+              isSidebarOpen ? "gap-2" : "gap-0"
+            }`}
+          >
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-600 text-white shrink-0">
               <span className="font-bold text-lg">
                 A
@@ -590,7 +598,9 @@ export function DashboardLayout({
                   !previous,
               )
             }
-            className="ml-auto p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors shrink-0"
+            className={`ml-auto text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors shrink-0 ${
+              isSidebarOpen ? "p-1.5" : "p-1"
+            }`}
             aria-label={
               isSidebarOpen
                 ? "Collapse sidebar"

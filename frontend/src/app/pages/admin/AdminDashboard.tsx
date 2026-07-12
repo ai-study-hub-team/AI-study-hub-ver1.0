@@ -1,259 +1,362 @@
-import { 
-  Users, 
-  FileText, 
-  Activity, 
-  ShieldAlert, 
-  Search, 
-  MoreHorizontal, 
-  ArrowUpRight, 
-  ArrowDownRight,
+import { useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
   Database,
-  Server,
-  Cpu,
-  Bell,
-  CheckCircle2,
-  AlertTriangle
+  FileText,
+  RefreshCcw,
+  ShieldAlert,
+  Users,
 } from "lucide-react";
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  LineChart,
-  Line
-} from "recharts";
 import { motion } from "motion/react";
+import { useNavigate } from "react-router";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { toast } from "sonner";
 
-const stats = [
-  { label: "Total Users", value: "12,482", growth: "+14%", positive: true, icon: Users, color: "blue" },
-  { label: "AI Processed Docs", value: "48,291", growth: "+22%", positive: true, icon: FileText, color: "purple" },
-  { label: "System Uptime", value: "99.98%", growth: "0%", positive: true, icon: Activity, color: "emerald" },
-  { label: "Support Tickets", value: "24", growth: "-5%", positive: true, icon: ShieldAlert, color: "amber" },
-];
+import {
+  adminAnalyticsApi,
+  type AdminActiveUserItem,
+  type RevenueReportResponse,
+  type StorageReportResponse,
+} from "../../services/adminAnalyticsApi";
+import {
+  adminDocumentReportApi,
+  type DocumentReportResponse,
+} from "../../services/adminDocumentReportApi";
 
-const usageData = [
-  { name: '00:00', users: 400, load: 240 },
-  { name: '04:00', users: 200, load: 150 },
-  { name: '08:00', users: 800, load: 500 },
-  { name: '12:00', users: 1200, load: 900 },
-  { name: '16:00', users: 1500, load: 1100 },
-  { name: '20:00', users: 1300, load: 950 },
-];
+const formatBytes = (bytes = 0) => {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1,
+  );
+  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+};
+
+const formatMoney = (value = 0, currency = "VND") =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(value);
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "Unknown";
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 export function AdminDashboard() {
+  const navigate = useNavigate();
+  const [activeUsers, setActiveUsers] = useState<AdminActiveUserItem[]>([]);
+  const [revenue, setRevenue] = useState<RevenueReportResponse | null>(null);
+  const [storage, setStorage] = useState<StorageReportResponse | null>(null);
+  const [pendingReports, setPendingReports] = useState<DocumentReportResponse[]>([]);
+  const [pendingReportTotal, setPendingReportTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  const loadDashboard = async () => {
+    try {
+      setLoading(true);
+
+      const [usersResponse, revenueResponse, storageResponse, reportsResponse] =
+        await Promise.all([
+          adminAnalyticsApi.getActiveUsers(),
+          adminAnalyticsApi.getRevenue({ period: "WEEK" }),
+          adminAnalyticsApi.getStorage(),
+          adminDocumentReportApi.getReports({
+            status: "PENDING",
+            page: 0,
+            size: 5,
+          }),
+        ]);
+
+      setActiveUsers(usersResponse.data ?? []);
+      setRevenue(revenueResponse.data);
+      setStorage(storageResponse.data);
+      setPendingReports(reportsResponse.data?.content ?? []);
+      setPendingReportTotal(reportsResponse.data?.totalElements ?? 0);
+    } catch (error) {
+      console.error("Failed to load admin dashboard", error);
+      toast.error("Unable to load dashboard data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadDashboard();
+  }, []);
+
+  const chartData = useMemo(
+    () =>
+      (revenue?.dailyRevenue ?? []).map((item) => ({
+        date: new Date(`${item.date}T00:00:00`).toLocaleDateString("en-US", {
+          weekday: "short",
+        }),
+        revenue: Number(item.totalRevenue ?? 0),
+      })),
+    [revenue],
+  );
+
+  const stats = [
+    {
+      label: "Active Users",
+      value: activeUsers.length.toLocaleString("en-US"),
+      helper: "Currently active accounts",
+      icon: Users,
+    },
+    {
+      label: "Stored Documents",
+      value: (storage?.documentCount ?? 0).toLocaleString("en-US"),
+      helper: `${storage?.userCount ?? 0} users with stored files`,
+      icon: FileText,
+    },
+    {
+      label: "Storage Used",
+      value: formatBytes(storage?.totalStorageBytes ?? 0),
+      helper: "Across all users",
+      icon: Database,
+    },
+    {
+      label: "Weekly Revenue",
+      value: formatMoney(
+        Number(revenue?.totalRevenue ?? 0),
+        revenue?.currency ?? "VND",
+      ),
+      helper: `${revenue?.successfulTransactionCount ?? 0} successful payments`,
+      icon: Activity,
+    },
+    {
+      label: "Pending Reports",
+      value: pendingReportTotal.toLocaleString("en-US"),
+      helper: "Requires administrator review",
+      icon: ShieldAlert,
+    },
+  ];
+
+  const quickActions = [
+    { label: "Manage Users", path: "/admin/users", icon: Users },
+    { label: "Review Reports", path: "/admin/reports", icon: ShieldAlert },
+    { label: "Manage Documents", path: "/admin/documents", icon: FileText },
+    { label: "View Analytics", path: "/admin/analytics", icon: BarChart3 },
+  ];
+
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Admin Dashboard</h1>
-          <p className="text-slate-500 dark:text-slate-400">System monitoring and user management</p>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
+            Admin Dashboard
+          </h1>
+          <p className="text-slate-500 dark:text-slate-400">
+            Monitor users, content, storage, reports, and revenue.
+          </p>
         </div>
-        <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 rounded-xl border border-emerald-100 dark:border-emerald-500/30">
-          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-          <span className="text-xs font-bold uppercase tracking-widest">System Healthy</span>
-        </div>
+
+        <button
+          type="button"
+          onClick={() => void loadDashboard()}
+          disabled={loading}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+        >
+          <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
       </div>
 
-      {/* Stats Grid */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, idx) => (
-          <motion.div 
-            key={idx}
-            initial={{ opacity: 0, y: 20 }}
+      <section className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-5">
+        {stats.map((stat, index) => (
+          <motion.div
+            key={stat.label}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.1 }}
-            className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm"
+            transition={{ delay: index * 0.05 }}
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900"
           >
-            <div className="flex items-start justify-between mb-4">
-              <div className={`w-12 h-12 rounded-xl bg-${stat.color}-50 dark:bg-slate-800 text-${stat.color}-600 flex items-center justify-center`}>
-                <stat.icon className="w-6 h-6" />
-              </div>
-              <div className={`flex items-center gap-1 text-xs font-bold ${stat.positive ? 'text-emerald-500' : 'text-red-500'}`}>
-                {stat.positive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                {stat.growth}
-              </div>
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+              <stat.icon className="h-5 w-5" />
             </div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">{stat.label}</p>
-            <h3 className="text-2xl font-bold text-slate-900 dark:text-white">{stat.value}</h3>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              {stat.label}
+            </p>
+            <h3 className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">
+              {loading ? "..." : stat.value}
+            </h3>
+            <p className="mt-2 text-xs text-slate-400">{stat.helper}</p>
           </motion.div>
         ))}
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Chart */}
-        <section className="lg:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm">
-          <div className="flex items-center justify-between mb-8">
+      <div className="grid grid-cols-1 gap-8 xl:grid-cols-3">
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-700 dark:bg-slate-900 xl:col-span-2">
+          <div className="mb-6 flex items-center justify-between">
             <div>
-              <h3 className="text-xl font-bold text-slate-900 dark:text-white">Platform Traffic</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Concurrent users vs Server load</p>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                Weekly Revenue
+              </h3>
+              <p className="text-sm text-slate-500">
+                Successful payment revenue by day
+              </p>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Users</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-purple-400 rounded-full"></div>
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Load</span>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => navigate("/admin/analytics")}
+              className="text-sm font-bold text-blue-600 hover:underline"
+            >
+              View analytics
+            </button>
           </div>
-          <div className="h-80 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={usageData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                />
-                <Line type="monotone" dataKey="users" stroke="#2563EB" strokeWidth={3} dot={false} />
-                <Line type="monotone" dataKey="load" stroke="#A855F7" strokeWidth={3} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+
+          <div className="h-72">
+            {chartData.length === 0 && !loading ? (
+              <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                No revenue data available for this week.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip
+                    formatter={(value) =>
+                      formatMoney(Number(value), revenue?.currency ?? "VND")
+                    }
+                  />
+                  <Bar
+                    dataKey="revenue"
+                    fill="#2563eb"
+                    radius={[6, 6, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </section>
 
-        {/* System Health */}
-        <section className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm space-y-8">
-          <h3 className="text-xl font-bold text-slate-900 dark:text-white">System Monitoring</h3>
-          
-          <div className="space-y-6">
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <Database className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                  <span className="font-bold text-slate-700 dark:text-slate-300">Database Storage</span>
-                </div>
-                <span className="font-bold text-slate-900 dark:text-white">74%</span>
-              </div>
-              <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                <div className="bg-blue-600 h-full w-[74%]" />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <Cpu className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                  <span className="font-bold text-slate-700 dark:text-slate-300">AI Inference Load</span>
-                </div>
-                <span className="font-bold text-slate-900 dark:text-white">42%</span>
-              </div>
-              <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                <div className="bg-purple-500 h-full w-[42%]" />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <Server className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                  <span className="font-bold text-slate-700 dark:text-slate-300">Memory Usage</span>
-                </div>
-                <span className="font-bold text-slate-900 dark:text-white">18%</span>
-              </div>
-              <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                <div className="bg-emerald-500 h-full w-[18%]" />
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
-            <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-4">Incidents</h4>
-            <div className="space-y-4">
-              <div className="flex gap-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl">
-                <div className="w-8 h-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white">API Gateway Resolved</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">2 hours ago • Duration: 14m</p>
-                </div>
-              </div>
-              <div className="flex gap-4 p-4 bg-amber-50 dark:bg-amber-500/10 rounded-2xl border border-amber-100 dark:border-amber-500/30">
-                <div className="w-8 h-8 bg-white dark:bg-slate-900 border border-amber-100 dark:border-amber-500/30 rounded-lg flex items-center justify-center shrink-0">
-                  <AlertTriangle className="w-4 h-4 text-amber-500" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white">Storage Warning</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Node 4-B approaching 85% capacity</p>
-                </div>
-              </div>
-            </div>
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+            Quick Actions
+          </h3>
+          <p className="mb-5 text-sm text-slate-500">Common administration tasks</p>
+          <div className="space-y-3">
+            {quickActions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                onClick={() => navigate(action.path)}
+                className="flex w-full items-center gap-3 rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50/50 dark:border-slate-700 dark:hover:bg-slate-800"
+              >
+                <action.icon className="h-5 w-5 text-blue-600" />
+                <span className="font-semibold text-slate-800 dark:text-slate-100">
+                  {action.label}
+                </span>
+              </button>
+            ))}
           </div>
         </section>
       </div>
 
-      {/* User Management Table */}
-      <section className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-700 shadow-sm">
-        <div className="flex items-center justify-between mb-8">
-          <h3 className="text-xl font-bold text-slate-900 dark:text-white">Recent User Activity</h3>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search users..."
-              className="pl-10 pr-4 py-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl text-sm outline-none"
-            />
+      <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                Active Users
+              </h3>
+              <p className="text-sm text-slate-500">Latest active accounts</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate("/admin/users")}
+              className="text-sm font-bold text-blue-600 hover:underline"
+            >
+              View all
+            </button>
           </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="text-left text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-widest border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-                <th className="px-4 py-4">User</th>
-                <th className="px-4 py-4">Plan</th>
-                <th className="px-4 py-4">Status</th>
-                <th className="px-4 py-4">Last Active</th>
-                <th className="px-4 py-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {[
-                { name: "Alex Johnson", email: "alex.j@example.com", plan: "Pro", status: "Active", active: "2 mins ago" },
-                { name: "Sarah Miller", email: "smiller@university.edu", plan: "Basic", status: "Inactive", active: "1 day ago" },
-                { name: "David Chen", email: "d.chen@gmail.com", plan: "Pro", status: "Active", active: "1 hour ago" },
-                { name: "Emma Wilson", email: "emma.w@school.org", plan: "Basic", status: "Active", active: "15 mins ago" },
-              ].map((user, idx) => (
-                <tr key={idx} className="group bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 text-sm">
-                        {user.name.split(' ').map(n => n[0]).join('')}
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-900 dark:text-white text-sm">{user.name}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-lg ${user.plan === 'Pro' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
-                      {user.plan}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-full ${user.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
-                      <span className={`text-xs font-bold ${user.status === 'Active' ? 'text-slate-700 dark:text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>{user.status}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-xs font-medium text-slate-500 dark:text-slate-400">{user.active}</td>
-                  <td className="px-4 py-4 text-right">
-                    <button className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
-                      <MoreHorizontal className="w-5 h-5" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+
+          <div className="space-y-4">
+            {activeUsers.slice(0, 6).map((user) => (
+              <div
+                key={user.id}
+                className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3 last:border-0 dark:border-slate-800"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-slate-900 dark:text-white">
+                    {user.fullName || "Unnamed user"}
+                  </p>
+                  <p className="truncate text-xs text-slate-500">{user.email}</p>
+                </div>
+                <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  {user.status}
+                </span>
+              </div>
+            ))}
+            {!loading && activeUsers.length === 0 && (
+              <p className="text-sm text-slate-500">No active users found.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                Reports Requiring Review
+              </h3>
+              <p className="text-sm text-slate-500">Newest pending document reports</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate("/admin/reports")}
+              className="text-sm font-bold text-blue-600 hover:underline"
+            >
+              Review all
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {pendingReports.map((report) => (
+              <button
+                key={report.id}
+                type="button"
+                onClick={() => navigate("/admin/reports")}
+                className="flex w-full items-start gap-3 border-b border-slate-100 pb-4 text-left last:border-0 dark:border-slate-800"
+              >
+                <div className="mt-0.5 rounded-lg bg-amber-50 p-2 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold text-slate-900 dark:text-white">
+                    {report.documentTitle || "Untitled document"}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {report.reason.replace(/_/g, " ")} • {formatDateTime(report.createdAt)}
+                  </p>
+                </div>
+              </button>
+            ))}
+            {!loading && pendingReports.length === 0 && (
+              <p className="text-sm text-slate-500">No pending reports.</p>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

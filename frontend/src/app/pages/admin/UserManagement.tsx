@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { userApi, type UserResponse } from "../../services/userApi";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 type Status = "all" | "active" | "inactive" | "banned" | "locked";
 
@@ -87,6 +88,8 @@ const PlanBadge = ({ plan }: { plan: "Free" | "Pro" }) => {
 
 export function UserManagement() {
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const [statusFilter, setStatusFilter] = useState<Status>("all");
   const [openMenu, setOpenMenu] = useState<number | null>(null);
   const [users, setUsers] = useState<UserView[]>([]);
@@ -173,6 +176,20 @@ export function UserManagement() {
     });
   }, [users, search, statusFilter]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginatedUsers = filtered.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
   const handleUserStatusAction = async (id: number) => {
     const user = users.find((u) => u.id === id);
     if (!user) return;
@@ -250,29 +267,16 @@ export function UserManagement() {
     if (!editUser) return false;
 
     const fullName = editForm.fullName.trim();
-    const email = editForm.email.trim();
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!fullName) {
       toast.error("Full Name is required.");
       return false;
     }
 
-    if (!email) {
-      toast.error("Email is required.");
-      return false;
-    }
-
-    if (!emailPattern.test(email)) {
-      toast.error("Please enter a valid email address.");
-      return false;
-    }
-
     try {
       await userApi.updateUser(editUser.id, {
         fullName,
-        email,
-        // The current API payload requires a role; preserve the existing one.
+        // Preserve fields supported by the current backend update API.
         role: editUser.role,
         status: editForm.status.toUpperCase(),
       });
@@ -436,7 +440,7 @@ export function UserManagement() {
 
               <tbody>
                 <AnimatePresence>
-                  {filtered.map((user) => (
+                  {paginatedUsers.map((user) => (
                     <motion.tr
                       key={user.id}
                       layout
@@ -682,14 +686,13 @@ export function UserManagement() {
                 <input
                   type="email"
                   value={editForm.email}
-                  onChange={(e) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      email: e.target.value,
-                    }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  readOnly
+                  title="The current backend API does not support changing a user's email."
+                  className="mt-1 w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500 outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
                 />
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Email cannot be changed with the current backend API.
+                </p>
               </div>
 
               <div>
