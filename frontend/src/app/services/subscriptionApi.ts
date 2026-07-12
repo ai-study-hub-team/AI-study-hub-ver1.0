@@ -7,7 +7,7 @@ export type PlanResponse = {
   storageLimitMb?: number;
   maxUploadSizePerFileMb?: number;
   dailyTokenLimit?: number;
-  price?: number;
+  price?: number | string;
   description?: string;
   allowImageUpload?: boolean;
   allowDocumentUpload?: boolean;
@@ -23,8 +23,29 @@ export type SubscriptionResponse = {
   status?: string | null;
 };
 
+export type VnpayCreateResponse = {
+  paymentUrl?: string | null;
+  orderCode?: string | null;
+};
+
 export const subscriptionApi = {
+  /** GET /api/subscriptions/current */
   getCurrentSubscription: () => {
-    return apiClient.get<SubscriptionResponse>("/api/subscriptions/current");
+    return apiClient.get<SubscriptionResponse>(
+      "/api/subscriptions/current",
+    );
+  },
+
+  /** GET /api/plans */
+  getActivePlans: () => {
+    return apiClient.get<PlanResponse[]>("/api/plans");
+  },
+
+  /** POST /api/payments/vnpay/create */
+  createVnpayPayment: (planCode: string) => {
+    return apiClient.post<VnpayCreateResponse>(
+      "/api/payments/vnpay/create",
+      { planCode },
+    );
   },
 };

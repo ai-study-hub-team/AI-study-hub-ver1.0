@@ -1,283 +1,924 @@
 import {
-  HardDrive, Upload, FileText, Image, Film, Archive, Trash2,
-  ChevronRight, Plus, X, CheckCircle2, Clock, AlertCircle
+  AlertCircle,
+  Bot,
+  CheckCircle2,
+  FileText,
+  FolderTree,
+  HardDrive,
+  RefreshCw,
+  Upload,
+  Zap,
 } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useNavigate } from "react-router";
-import { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
+import {
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+} from "recharts";
 import { toast } from "sonner";
-import { RadialBarChart, RadialBar, PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 
-const fileCategories = [
-  { name: "PDFs", size: "3.2 GB", count: 47, color: "#EF4444", pct: 36 },
-  { name: "Documents", size: "1.8 GB", count: 23, color: "#8B5CF6", pct: 20 },
-  { name: "Images", size: "1.2 GB", count: 89, color: "#10B981", pct: 13 },
-  { name: "Videos", size: "2.0 GB", count: 8, color: "#F59E0B", pct: 22 },
-  { name: "Other", size: "0.8 GB", count: 31, color: "#6B7280", pct: 9 },
-];
+import {
+  userApi,
+  type UserResponse,
+} from "../../services/userApi";
+import {
+  subscriptionApi,
+  type SubscriptionResponse,
+} from "../../services/subscriptionApi";
 
-const uploadQueue = [
-  { id: 1, name: "Quantum_Mechanics_Notes.pdf", size: "4.2 MB", status: "uploading", progress: 68 },
-  { id: 2, name: "Data_Structures_Lecture_12.pdf", size: "2.1 MB", status: "processing", progress: 100 },
-  { id: 3, name: "Organic_Chemistry_Ch8.pdf", size: "5.8 MB", status: "queued", progress: 0 },
-  { id: 4, name: "AI_Ethics_Essay.docx", size: "0.8 MB", status: "done", progress: 100 },
-];
-
-const recentFiles = [
-  { id: 1, name: "Advanced Thermodynamics.pdf", type: "pdf", size: "4.5 MB", modified: "2 hours ago" },
-  { id: 2, name: "History of Computing.pdf", type: "pdf", size: "8.2 MB", modified: "Yesterday" },
-  { id: 3, name: "Research Photo Dataset", type: "image", size: "234 MB", modified: "2 days ago" },
-  { id: 4, name: "Physics Lab Video.mp4", type: "video", size: "1.2 GB", modified: "3 days ago" },
-  { id: 5, name: "Project Archive.zip", type: "archive", size: "156 MB", modified: "1 week ago" },
-];
-
-const USED_GB = 9.0;
-const TOTAL_GB = 100.0;
-const PCT = Math.round((USED_GB / TOTAL_GB) * 100);
-
-const pieData = fileCategories.map((f) => ({ name: f.name, value: f.pct, fill: f.color }));
-
-const StatusIcon = ({ status }: { status: string }) => {
-  if (status === "done") return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
-  if (status === "uploading") return <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />;
-  if (status === "processing") return <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />;
-  return <Clock className="w-4 h-4 text-slate-500 dark:text-slate-400" />;
+type ApiError = {
+  response?: {
+    data?: {
+      message?: string;
+      error?: string;
+    };
+  };
+  message?: string;
 };
 
-const FileTypeIcon = ({ type }: { type: string }) => {
-  const map: Record<string, { icon: React.ElementType; color: string }> = {
-    pdf: { icon: FileText, color: "text-red-500 dark:text-red-300 bg-red-50 dark:bg-red-500/10" },
-    image: { icon: Image, color: "text-emerald-500 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10" },
-    video: { icon: Film, color: "text-amber-500 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10" },
-    archive: { icon: Archive, color: "text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800" },
-  };
-  const { icon: Icon, color } = map[type] || { icon: FileText, color: "text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800" };
+const BYTES_PER_KB = 1024;
+const BYTES_PER_MB = 1024 * 1024;
+const BYTES_PER_GB = 1024 * 1024 * 1024;
+
+const getErrorMessage = (
+  error: unknown,
+  fallbackMessage: string,
+): string => {
+  const apiError = error as ApiError;
+
   return (
-    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
-      <Icon className="w-5 h-5" />
-    </div>
+    apiError.response?.data?.message ||
+    apiError.response?.data?.error ||
+    apiError.message ||
+    fallbackMessage
   );
 };
 
+const toSafeNumber = (
+  value: unknown,
+): number => {
+  const numberValue = Number(value);
+
+  if (
+    !Number.isFinite(numberValue) ||
+    numberValue < 0
+  ) {
+    return 0;
+  }
+
+  return numberValue;
+};
+
+const calculatePercent = (
+  used: number,
+  total: number,
+): number => {
+  if (total <= 0) {
+    return 0;
+  }
+
+  return Math.min(
+    100,
+    Math.max(
+      0,
+      Math.round((used / total) * 100),
+    ),
+  );
+};
+
+const formatBytes = (
+  bytes: number,
+): string => {
+  const safeBytes = toSafeNumber(bytes);
+
+  if (safeBytes >= BYTES_PER_GB) {
+    const value =
+      safeBytes / BYTES_PER_GB;
+
+    return `${value.toFixed(
+      value >= 10 ? 1 : 2,
+    )} GB`;
+  }
+
+  if (safeBytes >= BYTES_PER_MB) {
+    const value =
+      safeBytes / BYTES_PER_MB;
+
+    return `${value.toFixed(
+      value >= 10 ? 1 : 2,
+    )} MB`;
+  }
+
+  if (safeBytes >= BYTES_PER_KB) {
+    const value =
+      safeBytes / BYTES_PER_KB;
+
+    return `${value.toFixed(1)} KB`;
+  }
+
+  return `${Math.round(safeBytes)} B`;
+};
+
+const formatStorageLimit = (
+  limitMb: number,
+): string => {
+  const safeLimitMb =
+    toSafeNumber(limitMb);
+
+  if (safeLimitMb >= 1024) {
+    const limitGb =
+      safeLimitMb / 1024;
+
+    return `${Number.isInteger(limitGb)
+      ? limitGb
+      : limitGb.toFixed(1)} GB`;
+  }
+
+  return `${safeLimitMb.toLocaleString(
+    "en-US",
+  )} MB`;
+};
+
+const formatNumber = (
+  value: number,
+): string => {
+  return Math.floor(
+    toSafeNumber(value),
+  ).toLocaleString("en-US");
+};
+
+const formatDate = (
+  value?: string | null,
+): string => {
+  if (!value) {
+    return "No expiration";
+  }
+
+  const normalizedValue = value.replace(
+    /\.(\d{3})\d+/,
+    ".$1",
+  );
+
+  const date = new Date(normalizedValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString(
+    "vi-VN",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    },
+  );
+};
+
+function UsageCircle({
+  percent,
+}: {
+  percent: number;
+}) {
+  const safePercent = Math.min(
+    100,
+    Math.max(0, percent),
+  );
+
+  const chartData = [
+    {
+      value: safePercent,
+    },
+    {
+      value: Math.max(
+        0,
+        100 - safePercent,
+      ),
+    },
+  ];
+
+  return (
+    <div className="relative w-48 h-48">
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+      >
+        <PieChart>
+          <Pie
+            data={chartData}
+            cx="50%"
+            cy="50%"
+            innerRadius={60}
+            outerRadius={80}
+            startAngle={90}
+            endAngle={-270}
+            dataKey="value"
+            strokeWidth={0}
+          >
+            <Cell fill="#2563EB" />
+            <Cell fill="#E2E8F0" />
+          </Pie>
+        </PieChart>
+      </ResponsiveContainer>
+
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-3xl font-extrabold text-slate-900 dark:text-white">
+          {safePercent}%
+        </span>
+
+        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+          used
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ProgressBar({
+  percent,
+}: {
+  percent: number;
+}) {
+  const safePercent = Math.min(
+    100,
+    Math.max(0, percent),
+  );
+
+  return (
+    <div className="w-full h-2.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+      <div
+        className="h-full rounded-full bg-blue-600 transition-all duration-500"
+        style={{
+          width: `${safePercent}%`,
+        }}
+      />
+    </div>
+  );
+}
+
 export function StorageDashboard() {
   const navigate = useNavigate();
-  const [activeQueue, setActiveQueue] = useState(uploadQueue);
 
-  const removeFromQueue = (id: number) => {
-    setActiveQueue((prev) => prev.filter((q) => q.id !== id));
-    toast.success("Removed from queue");
-  };
+  const [
+    profile,
+    setProfile,
+  ] = useState<UserResponse | null>(null);
+
+  const [
+    subscription,
+    setSubscription,
+  ] =
+    useState<SubscriptionResponse | null>(
+      null,
+    );
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [
+    loadError,
+    setLoadError,
+  ] = useState("");
+
+  const loadData = useCallback(
+    async (
+      showRefreshLoading = false,
+    ): Promise<void> => {
+      if (showRefreshLoading) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
+      setLoadError("");
+
+      try {
+        /*
+         * API 1:
+         * GET /api/account/me
+         *
+         * Lấy:
+         * - totalStorageUsedBytes
+         * - documentCount
+         * - categoryCount
+         */
+        const profileRequest =
+          userApi.getProfile();
+
+        /*
+         * API 2:
+         * GET /api/subscriptions/current
+         *
+         * Lấy:
+         * - plan.code
+         * - plan.storageLimitMb
+         * - plan.dailyTokenLimit
+         * - subscription status
+         */
+        const subscriptionRequest =
+          subscriptionApi.getCurrentSubscription();
+
+        const [
+          profileResponse,
+          subscriptionResponse,
+        ] = await Promise.all([
+          profileRequest,
+          subscriptionRequest,
+        ]);
+
+        setProfile(
+          profileResponse.data,
+        );
+
+        setSubscription(
+          subscriptionResponse.data,
+        );
+      } catch (error) {
+        console.error(
+          "Load storage information failed:",
+          error,
+        );
+
+        const errorMessage =
+          getErrorMessage(
+            error,
+            "Cannot load storage information.",
+          );
+
+        setLoadError(errorMessage);
+        toast.error(errorMessage);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const planCode =
+    subscription?.plan?.code
+      ?.trim()
+      .toUpperCase() || "FREE";
+
+  const isPro =
+    planCode === "PRO";
+
+  const planName =
+    subscription?.plan?.name ||
+    (isPro
+      ? "Pro Plan"
+      : "Free Plan");
+
+  /*
+   * Ưu tiên giới hạn backend trả về.
+   *
+   * Nếu database chưa có giá trị thì
+   * mới dùng fallback:
+   * FREE = 500 MB
+   * PRO = 2 GB
+   */
+  const storageLimitMb = useMemo(() => {
+    const apiLimit = toSafeNumber(
+      subscription?.plan
+        ?.storageLimitMb,
+    );
+
+    if (apiLimit > 0) {
+      return apiLimit;
+    }
+
+    return isPro ? 2048 : 500;
+  }, [
+    subscription,
+    isPro,
+  ]);
+
+  /*
+   * Ưu tiên dailyTokenLimit từ API.
+   *
+   * Fallback:
+   * FREE = 500 token/ngày
+   * PRO = 3.000.000 token/ngày
+   */
+  const dailyTokenLimit =
+    useMemo(() => {
+      const apiLimit = toSafeNumber(
+        subscription?.plan
+          ?.dailyTokenLimit,
+      );
+
+      if (apiLimit > 0) {
+        return apiLimit;
+      }
+
+      return isPro
+        ? 3_000_000
+        : 500;
+    }, [
+      subscription,
+      isPro,
+    ]);
+
+  const usedStorageBytes =
+    toSafeNumber(
+      profile?.totalStorageUsedBytes,
+    );
+
+  const totalStorageBytes =
+    storageLimitMb * BYTES_PER_MB;
+
+  const remainingStorageBytes =
+    Math.max(
+      0,
+      totalStorageBytes -
+        usedStorageBytes,
+    );
+
+  const storagePercent =
+    calculatePercent(
+      usedStorageBytes,
+      totalStorageBytes,
+    );
+
+  const documentCount =
+    toSafeNumber(
+      profile?.documentCount,
+    );
+
+  const categoryCount =
+    toSafeNumber(
+      profile?.categoryCount,
+    );
+
+  if (loading) {
+    return (
+      <div className="min-h-[420px] flex items-center justify-center">
+        <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 font-semibold">
+          <RefreshCw className="w-5 h-5 animate-spin" />
+          Loading storage information...
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    loadError &&
+    !profile &&
+    !subscription
+  ) {
+    return (
+      <div className="max-w-3xl mx-auto mt-10">
+        <div className="rounded-[2rem] border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-8 text-center">
+          <AlertCircle className="w-12 h-12 mx-auto text-red-500" />
+
+          <h2 className="mt-4 text-xl font-extrabold text-red-700 dark:text-red-300">
+            Cannot load storage information
+          </h2>
+
+          <p className="mt-2 text-sm text-red-600 dark:text-red-300">
+            {loadError}
+          </p>
+
+          <button
+            type="button"
+            onClick={() =>
+              void loadData()
+            }
+            className="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Cloud Storage</h1>
-          <p className="text-slate-500 dark:text-slate-400">Manage your files, storage quota, and uploads</p>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
+            Cloud Storage
+          </h1>
+
+          <p className="mt-1 text-slate-500 dark:text-slate-400">
+            View your real storage usage
+            and current plan limits.
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="flex flex-wrap items-center gap-3">
           <button
-            onClick={() => navigate("/app/upload")}
-            className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all"
+            type="button"
+            onClick={() =>
+              void loadData(true)
+            }
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-60"
+          >
+            <RefreshCw
+              className={`w-4 h-4 ${
+                refreshing
+                  ? "animate-spin"
+                  : ""
+              }`}
+            />
+
+            Refresh
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/app/upload")
+            }
+            className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all"
           >
             <Upload className="w-4 h-4" />
-              Upload Files
+            Upload Files
           </button>
         </div>
       </div>
 
-      {/* Storage Overview */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Quota Gauge */}
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col items-center">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4 self-start">Storage Quota</h2>
-          <div className="relative w-48 h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={[{ value: PCT }, { value: 100 - PCT }]}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  startAngle={90}
-                  endAngle={-270}
-                  dataKey="value"
-                  strokeWidth={0}
-                >
-                  <Cell fill="#2563EB" />
-                  <Cell fill="#F1F5F9" />
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-3xl font-extrabold text-slate-900 dark:text-white">{PCT}%</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">used</span>
-            </div>
-          </div>
-          <div className="mt-4 text-center">
-            <p className="text-2xl font-extrabold text-slate-900 dark:text-white">{USED_GB} GB</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">of {TOTAL_GB} GB used</p>
-          </div>
-          <div className="w-full mt-6 bg-slate-50 dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-800">
-            <div className="flex justify-between text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
-              <span>Free</span>
-              <span className="text-emerald-600">{(TOTAL_GB - USED_GB).toFixed(1)} GB available</span>
-            </div>
-            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-              <div className="bg-blue-600 h-2 rounded-full transition-all" style={{ width: `${PCT}%` }} />
-            </div>
-          </div>
-        </div>
-
-        {/* File Categories */}
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-5">By File Type</h2>
-          <div className="space-y-3">
-            {fileCategories.map((cat) => (
-              <div key={cat.name} className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300 truncate">{cat.name}</span>
-                    <span className="text-slate-500 dark:text-slate-400 ml-2 shrink-0">{cat.size}</span>
-                  </div>
-                  <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5">
-                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${cat.pct}%`, backgroundColor: cat.color }} />
-                  </div>
-                </div>
-                <span className="text-xs text-slate-500 dark:text-slate-400 w-6 text-right shrink-0">{cat.count}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-            <span className="text-sm text-slate-500 dark:text-slate-400">198 total files</span>
-            <button className="text-sm font-bold text-blue-600 hover:underline flex items-center gap-1">
-              View all <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Upload Queue */}
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Upload Queue</h2>
-            <span className="px-2.5 py-0.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-bold rounded-lg">{activeQueue.filter(q => q.status !== "done").length} pending</span>
-          </div>
-          <div className="space-y-3">
-            <AnimatePresence>
-              {activeQueue.map((item) => (
-                <motion.div
-                  key={item.id}
-                  layout
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl"
-                >
-                  <StatusIcon status={item.status} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate">{item.name}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex-1 bg-slate-200 dark:bg-slate-700 rounded-full h-1">
-                        <div
-                          className={`h-1 rounded-full transition-all ${
-                            item.status === "done" ? "bg-emerald-500" : item.status === "processing" ? "bg-purple-500" : "bg-blue-600"
-                          }`}
-                          style={{ width: `${item.progress}%` }}
-                        />
-                      </div>
-                      <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">{item.size}</span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => removeFromQueue(item.id)}
-                    className="p-1 text-slate-500 dark:text-slate-400 hover:text-red-500 transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-            {activeQueue.length === 0 && (
-              <div className="py-8 text-center text-slate-500 dark:text-slate-400">
-                <Upload className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No uploads in queue</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Recent Files */}
-      <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Recent Files</h2>
-          <button className="text-sm font-bold text-blue-600 hover:underline flex items-center gap-1">
-            Browse all <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full border-separate border-spacing-y-2">
-            <thead>
-              <tr className="text-left text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-widest">
-                <th className="px-4 py-2">Name</th>
-                <th className="px-4 py-2">Size</th>
-                <th className="px-4 py-2">Modified</th>
-                <th className="px-4 py-2 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentFiles.map((file) => (
-                <tr key={file.id} className="group hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                  <td className="px-4 py-3 rounded-l-2xl">
-                    <div className="flex items-center gap-3">
-                      <FileTypeIcon type={file.type} />
-                      <span className="font-semibold text-slate-700 dark:text-slate-300">{file.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{file.size}</td>
-                  <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{file.modified}</td>
-                  <td className="px-4 py-3 rounded-r-2xl text-right">
-                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => toast.success(`Downloading ${file.name}`)}
-                        className="p-2 text-slate-500 dark:text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-all"
-                      >
-                        <Upload className="w-4 h-4 rotate-180" />
-                      </button>
-                      <button
-                        onClick={() => toast.error(`${file.name} deleted`)}
-                        className="p-2 text-slate-500 dark:text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Upgrade Banner */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[2rem] p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <HardDrive className="w-5 h-5" />
-            <span className="text-sm font-bold uppercase tracking-wider opacity-80">Storage Alert</span>
-          </div>
-          <h3 className="text-2xl font-extrabold mb-1">You're using {PCT}% of your storage</h3>
-          <p className="opacity-80">Upgrade to Pro for 100GB storage and unlimited AI usage</p>
-        </div>
-        <button
-          onClick={() => navigate("/app/subscription")}
-          className="shrink-0 px-8 py-3.5 bg-white text-blue-600 font-extrabold rounded-2xl hover:bg-blue-50 transition-colors shadow-xl"
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Storage quota */}
+        <motion.section
+          initial={{
+            opacity: 0,
+            y: 12,
+          }}
+          animate={{
+            opacity: 1,
+            y: 0,
+          }}
+          className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 md:p-8"
         >
-          Upgrade to Pro
-        </button>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                <HardDrive className="w-5 h-5" />
+
+                <span className="text-xs font-extrabold uppercase tracking-widest">
+                  Storage quota
+                </span>
+              </div>
+
+              <h2 className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">
+                {formatBytes(
+                  usedStorageBytes,
+                )}{" "}
+                used
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Total limit:{" "}
+                {formatStorageLimit(
+                  storageLimitMb,
+                )}
+              </p>
+            </div>
+
+            <span
+              className={`px-3 py-1.5 rounded-full text-xs font-extrabold tracking-widest ${
+                isPro
+                  ? "bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+              }`}
+            >
+              {planCode}
+            </span>
+          </div>
+
+          <div className="mt-7 flex flex-col sm:flex-row items-center gap-8">
+            <UsageCircle
+              percent={storagePercent}
+            />
+
+            <div className="flex-1 w-full space-y-5">
+              <ProgressBar
+                percent={storagePercent}
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4">
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    Used
+                  </p>
+
+                  <p className="mt-1 font-extrabold text-slate-900 dark:text-white">
+                    {formatBytes(
+                      usedStorageBytes,
+                    )}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 p-4">
+                  <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-300">
+                    Available
+                  </p>
+
+                  <p className="mt-1 font-extrabold text-emerald-700 dark:text-emerald-200">
+                    {formatBytes(
+                      remainingStorageBytes,
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-slate-500 dark:text-slate-400">
+                    Storage limit
+                  </span>
+
+                  <span className="font-extrabold text-slate-900 dark:text-white">
+                    {formatStorageLimit(
+                      storageLimitMb,
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.section>
+
+        {/* AI token limit */}
+        <motion.section
+          initial={{
+            opacity: 0,
+            y: 12,
+          }}
+          animate={{
+            opacity: 1,
+            y: 0,
+          }}
+          transition={{
+            delay: 0.05,
+          }}
+          className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 md:p-8"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-violet-600 dark:text-violet-400">
+                <Bot className="w-5 h-5" />
+
+                <span className="text-xs font-extrabold uppercase tracking-widest">
+                  AI Chat
+                </span>
+              </div>
+
+              <h2 className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">
+                Daily Token Limit
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Limit supplied by your
+                current subscription API.
+              </p>
+            </div>
+
+            <span
+              className={`px-3 py-1.5 rounded-full text-xs font-extrabold tracking-widest ${
+                isPro
+                  ? "bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+              }`}
+            >
+              {planCode}
+            </span>
+          </div>
+
+          <div className="mt-8 rounded-[2rem] bg-gradient-to-br from-violet-600 to-indigo-700 p-7 text-white">
+            <p className="text-xs font-bold uppercase tracking-widest text-white/70">
+              Tokens per day
+            </p>
+
+            <p className="mt-2 text-4xl font-extrabold">
+              {formatNumber(
+                dailyTokenLimit,
+              )}
+            </p>
+
+            <p className="mt-2 text-sm text-white/75">
+              Available under the{" "}
+              {planName}.
+            </p>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-300 shrink-0 mt-0.5" />
+
+              <div>
+                <p className="text-sm font-extrabold text-amber-800 dark:text-amber-200">
+                  Token usage is not
+                  available
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-amber-700 dark:text-amber-300">
+                  Backend currently returns
+                  the daily token limit, but
+                  does not provide an API
+                  for a normal user to view
+                  tokens used today.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Used today
+              </p>
+
+              <p className="mt-1 font-extrabold text-slate-500 dark:text-slate-400">
+                No API
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Remaining
+              </p>
+
+              <p className="mt-1 font-extrabold text-slate-500 dark:text-slate-400">
+                No API
+              </p>
+            </div>
+          </div>
+        </motion.section>
       </div>
+
+      {/* Account information */}
+      <section className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 md:p-8">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
+              Account Usage
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Information returned by your
+              profile and subscription APIs.
+            </p>
+          </div>
+
+          <span
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold ${
+              subscription?.status
+                ?.toUpperCase() ===
+              "ACTIVE"
+                ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+                : "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-300"
+            }`}
+          >
+            {subscription?.status ||
+              "UNKNOWN"}
+          </span>
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+            <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+
+            <p className="mt-4 text-2xl font-extrabold text-slate-900 dark:text-white">
+              {formatNumber(
+                documentCount,
+              )}
+            </p>
+
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Documents
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+            <FolderTree className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+
+            <p className="mt-4 text-2xl font-extrabold text-slate-900 dark:text-white">
+              {formatNumber(
+                categoryCount,
+              )}
+            </p>
+
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Categories
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+            <HardDrive className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+
+            <p className="mt-4 text-2xl font-extrabold text-slate-900 dark:text-white">
+              {formatStorageLimit(
+                storageLimitMb,
+              )}
+            </p>
+
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Storage limit
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+            <Bot className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+
+            <p className="mt-4 text-2xl font-extrabold text-slate-900 dark:text-white">
+              {formatNumber(
+                dailyTokenLimit,
+              )}
+            </p>
+
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              AI tokens/day
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-x-8 gap-y-2 text-sm text-slate-500 dark:text-slate-400">
+          <span>
+            Plan:{" "}
+            <strong className="text-slate-800 dark:text-slate-200">
+              {planName}
+            </strong>
+          </span>
+
+          <span>
+            Started:{" "}
+            <strong className="text-slate-800 dark:text-slate-200">
+              {formatDate(
+                subscription?.startDate,
+              )}
+            </strong>
+          </span>
+
+          <span>
+            Expires:{" "}
+            <strong className="text-slate-800 dark:text-slate-200">
+              {formatDate(
+                subscription?.endDate,
+              )}
+            </strong>
+          </span>
+        </div>
+      </section>
+
+      {!isPro && (
+        <section className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[2rem] p-7 md:p-8 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl shadow-blue-500/15">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-white/75">
+              <Zap className="w-5 h-5" />
+              Upgrade available
+            </div>
+
+            <h3 className="mt-2 text-2xl font-extrabold">
+              Get more storage and AI
+              tokens
+            </h3>
+
+            <div className="mt-3 flex flex-wrap gap-4 text-sm text-white/85">
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                2 GB storage
+              </span>
+
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                3,000,000 AI tokens/day
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              navigate(
+                "/app/subscription",
+              )
+            }
+            className="shrink-0 px-7 py-3.5 bg-white text-blue-700 font-extrabold rounded-2xl hover:bg-blue-50 transition shadow-lg"
+          >
+            View Pro Plan
+          </button>
+        </section>
+      )}
     </div>
   );
 }
