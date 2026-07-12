@@ -134,11 +134,12 @@ public class PgvectorSearchService {
                     .map(id -> "?")
                     .collect(java.util.stream.Collectors.joining(","));
             sql = String.format(
-                    "SELECT document_id, chunk_index, " +
-                    "1 - (embedding <=> '%s'::vector) AS score " +
-                    "FROM document_chunk_embeddings " +
-                    "WHERE document_id IN (%s) " +
-                    "ORDER BY embedding <=> '%s'::vector " +
+                    "SELECT dce.document_id, dce.chunk_index, " +
+                    "1 - (dce.embedding <=> '%s'::vector) AS score " +
+                    "FROM document_chunk_embeddings dce " +
+                    "JOIN documents d ON d.id = dce.document_id " +
+                    "WHERE dce.document_id IN (%s) AND d.is_trashed = false " +
+                    "ORDER BY dce.embedding <=> '%s'::vector " +
                     "LIMIT ?",
                     embeddingLiteral, placeholders, embeddingLiteral
             );
@@ -149,11 +150,12 @@ public class PgvectorSearchService {
 
         } else if (documentId != null) {
             sql = String.format(
-                    "SELECT document_id, chunk_index, " +
-                    "1 - (embedding <=> '%s'::vector) AS score " +
-                    "FROM document_chunk_embeddings " +
-                    "WHERE document_id = ? " +
-                    "ORDER BY embedding <=> '%s'::vector " +
+                    "SELECT dce.document_id, dce.chunk_index, " +
+                    "1 - (dce.embedding <=> '%s'::vector) AS score " +
+                    "FROM document_chunk_embeddings dce " +
+                    "JOIN documents d ON d.id = dce.document_id " +
+                    "WHERE dce.document_id = ? AND d.is_trashed = false " +
+                    "ORDER BY dce.embedding <=> '%s'::vector " +
                     "LIMIT ?",
                     embeddingLiteral, embeddingLiteral
             );
@@ -161,10 +163,12 @@ public class PgvectorSearchService {
 
         } else {
             sql = String.format(
-                    "SELECT document_id, chunk_index, " +
-                    "1 - (embedding <=> '%s'::vector) AS score " +
-                    "FROM document_chunk_embeddings " +
-                    "ORDER BY embedding <=> '%s'::vector " +
+                    "SELECT dce.document_id, dce.chunk_index, " +
+                    "1 - (dce.embedding <=> '%s'::vector) AS score " +
+                    "FROM document_chunk_embeddings dce " +
+                    "JOIN documents d ON d.id = dce.document_id " +
+                    "WHERE d.is_trashed = false " +
+                    "ORDER BY dce.embedding <=> '%s'::vector " +
                     "LIMIT ?",
                     embeddingLiteral, embeddingLiteral
             );

@@ -1,7 +1,9 @@
 package com.aistudyhub.backend.service;
 
+import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentChunk;
 import com.aistudyhub.backend.entity.DocumentProcessStatus;
+import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +32,7 @@ public class AiIntegrationService {
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository documentChunkRepository;
     private final PgvectorSearchService pgvectorSearchService;
+    private final TokenUsageService tokenUsageService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
@@ -53,8 +57,10 @@ public class AiIntegrationService {
             // Mark as PROCESSING; clear any old error message
             updateDocumentMetadata(documentId, DocumentProcessStatus.PROCESSING, null, null);
 
-            String absoluteFilePath = Paths.get(filePath).toAbsolutePath().toString();
-            log.info("Stored file path: {} | Absolute path sent to AI: {}", filePath, absoluteFilePath);
+            String fileLocation = isRemoteUrl(filePath)
+                    ? filePath
+                    : Paths.get(filePath).toAbsolutePath().toString();
+            log.info("Stored file location: {} | Location sent to AI: {}", filePath, fileLocation);
 
             String url = aiServiceBaseUrl + "/process-document";
             HttpHeaders headers = new HttpHeaders();
@@ -65,7 +71,7 @@ public class AiIntegrationService {
             requestBody.put("documentId", documentId);
             requestBody.put("fileName", fileName);
             requestBody.put("originalFileName", originalFileName);
-            requestBody.put("filePath", absoluteFilePath);
+            requestBody.put("filePath", fileLocation);
             requestBody.put("fileType", fileType);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
@@ -137,6 +143,7 @@ public class AiIntegrationService {
 
                     log.info("Finalizing document ID: {} → PROCESSED, chunkCount={}", documentId, savedChunkCount);
                     updateDocumentMetadata(documentId, DocumentProcessStatus.PROCESSED, null, savedChunkCount);
+                    recordExtractUsageIfPresent(documentId, body);
                     return DocumentProcessStatus.PROCESSED;
 
                 } else {
@@ -164,6 +171,66 @@ public class AiIntegrationService {
     }
 
     // ─── Update metadata helper ────────────────────────────────────────────────
+
+    private void recordExtractUsageIfPresent(Long documentId, Map<String, Object> body) {
+        Long totalTokens = extractTotalTokens(body.get("usage"));
+        if (totalTokens == null || totalTokens <= 0) {
+            log.info("[Extract][TokenTracking] No extract token usage recorded for documentId={} because totalTokens={}",
+                    documentId, totalTokens);
+            return;
+        }
+
+        try {
+            Document document = documentRepository.findById(documentId).orElse(null);
+            if (document == null || document.getUser() == null) {
+                log.warn("[Extract][TokenTracking] Cannot record extract usage. Missing document/user for documentId={}",
+                        documentId);
+                return;
+            }
+
+            User user = document.getUser();
+            String modelName = body.get("modelName") instanceof String model && !model.isBlank()
+                    ? model
+                    : "gemini";
+            String requestId = UUID.randomUUID().toString();
+
+            tokenUsageService.recordUsage(
+                    user,
+                    "EXTRACT",
+                    modelName,
+                    totalTokens,
+                    documentId,
+                    requestId
+            );
+            log.info("[Extract][TokenTracking] recorded {} tokens for documentId={}, userId={}",
+                    totalTokens, documentId, user.getId());
+        } catch (Exception e) {
+            log.error("[Extract][TokenTracking] Failed to record token usage for documentId={}: {}",
+                    documentId, e.getMessage(), e);
+        }
+    }
+
+    private Long extractTotalTokens(Object usageObject) {
+        if (!(usageObject instanceof Map<?, ?> usageMap)) {
+            return 0L;
+        }
+        Object totalTokens = usageMap.get("totalTokens");
+        if (totalTokens instanceof Number number) {
+            return number.longValue();
+        }
+        if (totalTokens instanceof String text) {
+            try {
+                return Long.parseLong(text);
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+        return 0L;
+    }
+
+    private boolean isRemoteUrl(String value) {
+        return value != null && (value.startsWith("http://") || value.startsWith("https://"));
+    }
 
     private void updateDocumentMetadata(Long documentId, DocumentProcessStatus status,
                                         String errorMessage, Integer chunkCount) {

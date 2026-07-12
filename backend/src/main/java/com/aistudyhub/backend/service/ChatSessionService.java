@@ -127,6 +127,9 @@ public class ChatSessionService {
             }
             for (Long docId : activeDocumentIds) {
                 Document doc = documentAccessService.getAccessibleDocument(user, docId);
+                if (doc.isTrashed()) {
+                    throw new RuntimeException("Document " + docId + " is in trash and cannot be used in chat.");
+                }
                 if (doc.getProcessStatus() != DocumentProcessStatus.PROCESSED) {
                     throw new RuntimeException("Document " + docId + " is not processed yet.");
                 }

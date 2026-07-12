@@ -2,6 +2,8 @@ package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.dto.request.DocumentRequest;
 import com.aistudyhub.backend.dto.response.DocumentResponse;
+import com.aistudyhub.backend.exception.ConflictException;
+import com.aistudyhub.backend.exception.ForbiddenException;
 import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.specification.DocumentSpecification;
 import com.aistudyhub.backend.entity.*;
@@ -9,8 +11,9 @@ import com.aistudyhub.backend.repository.CategoryRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.FolderRepository;
 import com.aistudyhub.backend.repository.UserRepository;
+import com.aistudyhub.backend.repository.AiCitationRepository;
+import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -20,6 +23,8 @@ import lombok.extern.slf4j.Slf4j;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -32,16 +37,16 @@ public class DocumentService {
     private final CategoryRepository categoryRepository;
     private final FolderRepository folderRepository;
     private final FileStorageService fileStorageService;
+    private final CloudinaryStorageService cloudinaryStorageService;
     private final AiIntegrationService aiIntegrationService;
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentProcessingAsyncService documentProcessingAsyncService;
     private final DocumentAccessService documentAccessService;
     private final StorageQuotaService storageQuotaService;
     private final CurrentUserService currentUserService;
+    private final AiCitationRepository aiCitationRepository;
+    private final PgvectorSearchService pgvectorSearchService;
 
-    // Read upload dir from config (same value used in FileStorageService)
-    @Value("${app.upload.dir:uploads}")
-    private String uploadDir;
     private final FolderAccessService folderAccessService;
 
     // ─── Create ────────────────────────────────────────────────────────────────
@@ -107,7 +112,8 @@ public class DocumentService {
             String documentType,
             String visibility,
             Long categoryId,
-            Long folderId) throws IOException {
+            Long folderId
+    ) throws IOException {
 
         log.info("Upload received — title='{}', originalName='{}', categoryId={}, folderId={}",
                 title, file.getOriginalFilename(), categoryId, folderId);
@@ -130,29 +136,24 @@ public class DocumentService {
                     .orElseThrow(() -> new NotFoundException("Folder not found"));
         }
 
-        // 3. Save the file to the local "uploads/" directory
         // 3. Validate quotas
         String mimeType = fileStorageService.detectMimeType(file);
         storageQuotaService.validateFileRestrictions(userId, mimeType);
         storageQuotaService.validateFileSize(userId, file.getSize());
         storageQuotaService.validateStorageLimit(userId, file.getSize());
 
-        // 4. Save the file to the local "uploads/" directory
-        // fileStorageService will throw IllegalArgumentException for unsupported file
-        // types
-        String savedFileName = fileStorageService.saveFile(file);
-
-        // 4. Build the relative file path (e.g. "uploads/a1b2c3_lecture1.pdf")
-        String filePath = uploadDir + "/" + savedFileName;
+        // 4. Upload the file to Cloudinary. The AI service will later download this
+        // URL to a temporary local file for extraction.
+        CloudinaryStorageService.UploadResult uploadResult = cloudinaryStorageService.upload(file);
 
         // 5. Build CloudFile record
         CloudFile cloudFile = CloudFile.builder()
-                .fileName(savedFileName) // stored name on disk
+                .fileName(uploadResult.getPublicId()) // Cloudinary public_id
                 .originalName(file.getOriginalFilename()) // name from user's computer
-                .fileType(fileStorageService.detectMimeType(file)) // MIME type
+                .fileType(mimeType) // MIME type
                 .fileSize(file.getSize()) // size in bytes
-                .fileUrl(filePath) // local path
-                .storageProvider("LOCAL") // storage type
+                .fileUrl(uploadResult.getSecureUrl()) // Cloudinary secure URL
+                .storageProvider(uploadResult.getStorageProvider())
                 .uploadedAt(LocalDateTime.now())
                 .build();
 
@@ -252,24 +253,184 @@ public class DocumentService {
         return toResponse(documentRepository.save(document));
     }
 
-    // ─── Soft Delete ───────────────────────────────────────────────────────────
+    // ─── Move to Trash ─────────────────────────────────────────────────────────
 
-    public void delete(Long id) {
-        Document document = documentAccessService.getOwnedActiveDocument(id);
-        if (document.getStatus() == DocumentStatus.DELETED) {
-            return;
+    /**
+     * Moves a document to trash instead of hard-deleting it.
+     * Chunks, vectors, and the file are NOT touched here.
+     * Permanent deletion happens either via the scheduler (30 days) or explicit DELETE /permanent.
+     *
+     * Idempotent: if already trashed, returns a clear message instead of re-trashing.
+     */
+    @Transactional
+    public DocumentResponse delete(Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Document not found with id: " + id));
+
+        if (!documentAccessService.isOwner(currentUser, document)) {
+            throw new ForbiddenException("Only the document owner can move it to trash");
         }
 
-        Long ownerId = document.getUser() != null ? document.getUser().getId() : null;
-        Long fileSize = document.getCloudFile() != null ? document.getCloudFile().getFileSize() : null;
-        // Soft delete: change status to DELETED instead of removing from DB
-        document.setStatus(DocumentStatus.DELETED);
+        if (document.isTrashed()) {
+            // Idempotent: already in trash — just return current state
+            log.info("[Trash] Document id={} is already in trash, no-op.", id);
+            return toResponse(document);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        document.setTrashed(true);
+        document.setTrashedAt(now);
+        document.setDeleteAfter(now.plusDays(30));
+        document.setTrashedBy(currentUser.getId());
+        document.setUpdatedAt(now);
+        Document saved = documentRepository.save(document);
+        log.info("[Trash] Document id={} moved to trash by userId={}, deleteAfter={}",
+                id, currentUser.getId(), saved.getDeleteAfter());
+        return toResponse(saved);
+    }
+
+    // ─── Restore from Trash ────────────────────────────────────────────────────
+
+    /**
+     * Restores a trashed document to active state. No reprocessing needed.
+     * Only the owner can restore their document.
+     */
+    @Transactional
+    public DocumentResponse restore(Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Document not found with id: " + id));
+
+        if (!documentAccessService.isOwner(currentUser, document)) {
+            throw new ForbiddenException("Only the document owner can restore it");
+        }
+
+        if (!document.isTrashed()) {
+            throw new ConflictException("Document is not currently in trash.");
+        }
+
+        document.setTrashed(false);
+        document.setTrashedAt(null);
+        document.setDeleteAfter(null);
+        document.setTrashedBy(null);
         document.setUpdatedAt(LocalDateTime.now());
-        documentRepository.save(document);
+        Document saved = documentRepository.save(document);
+        log.info("[Trash] Document id={} restored by userId={}", id, currentUser.getId());
+        return toResponse(saved);
+    }
+
+    // ─── Get Trash List ────────────────────────────────────────────────────────
+
+    /**
+     * Returns all trashed documents owned by the currently authenticated user.
+     * userId is resolved from the JWT via {@link CurrentUserService} — never trusted from the client.
+     */
+    @Transactional(readOnly = true)
+    public List<DocumentResponse> getTrashedDocuments() {
+        User currentUser = currentUserService.getCurrentUser();
+        return documentRepository.findTrashedByUserId(currentUser.getId())
+                .stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    // ─── Permanent Delete ──────────────────────────────────────────────────────
+
+    /**
+     * Permanently deletes a document — removes chunks, pgvector embeddings,
+     * citations, file from disk, and the document record.
+     *
+     * Only the owner can call this.
+     * The document must already be in trash (use DELETE /api/documents/{id} first).
+     * Also called internally by the scheduler.
+     */
+    @Transactional
+    public void permanentDelete(Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Document not found with id: " + id));
+
+        if (!documentAccessService.isOwner(currentUser, document)) {
+            throw new ForbiddenException("Only the document owner can permanently delete it");
+        }
+
+        if (!document.isTrashed()) {
+            throw new ConflictException("Document is not currently in trash.");
+        }
+
+        permanentDeleteInternal(document);
+    }
+
+    /**
+     * Internal permanent delete — shared by explicit delete endpoint and nightly scheduler.
+     * Deletes in FK-safe order: citations → chunks → pgvector → file → document record.
+     */
+    @Transactional
+    public void permanentDeleteInternal(Document document) {
+        Long id = document.getId();
+        Long ownerId = document.getUser() != null
+                ? document.getUser().getId()
+                : null;
+
+        Long fileSize = document.getCloudFile() != null
+                ? document.getCloudFile().getFileSize()
+                : null;
+        log.info("[Trash] Permanently deleting document id={}, title='{}'", id, document.getTitle());
+
+        // 1. Delete AI citations referencing this document
+        try {
+            aiCitationRepository.deleteByDocumentId(id);
+            log.info("[Trash] Deleted citations for document id={}", id);
+        } catch (Exception e) {
+            log.warn("[Trash] Could not delete citations for document id={}: {}", id, e.getMessage());
+        }
+
+        // 2. Delete document chunks from PostgreSQL
+        try {
+            documentChunkRepository.deleteByDocumentId(id);
+            log.info("[Trash] Deleted chunks for document id={}", id);
+        } catch (Exception e) {
+            log.warn("[Trash] Could not delete chunks for document id={}: {}", id, e.getMessage());
+        }
+
+        // 3. Delete pgvector embeddings
+        try {
+            pgvectorSearchService.deleteEmbeddingsByDocumentId(id);
+            log.info("[Trash] Deleted pgvector embeddings for document id={}", id);
+        } catch (Exception e) {
+            log.warn("[Trash] Could not delete pgvector embeddings for document id={}: {}", id, e.getMessage());
+        }
+
+        // 4. Delete the file from disk
+        if (document.getCloudFile() != null && document.getCloudFile().getFileName() != null) {
+            try {
+                fileStorageService.deleteFile(document.getCloudFile().getFileName());
+                log.info("[Trash] Deleted file '{}' for document id={}",
+                        document.getCloudFile().getFileName(), id);
+            } catch (Exception e) {
+                log.warn("[Trash] Could not delete file for document id={}: {}", id, e.getMessage());
+            }
+        }
+
+        // 5. Delete document record (CloudFile deleted via CascadeType.ALL)
+        documentRepository.delete(document);
+        log.info("[Trash] Document id={} permanently deleted.", id);
+        // 6. Update storage quota only after permanent deletion
         if (ownerId != null && fileSize != null) {
             storageQuotaService.subtractStorageUsage(ownerId, fileSize);
-            log.info("Storage usage decreased for userId={} by {} bytes", ownerId, fileSize);
+
+            log.info(
+                    "[Trash] Storage usage decreased for userId={} by {} bytes",
+                    ownerId,
+                    fileSize
+            );
         }
+
+        log.info(
+                "[Trash] Document id={} permanently deleted.",
+                id
+        );
     }
 
     // ─── Reprocess Document ────────────────────────────────────────────────────
@@ -302,10 +463,13 @@ public class DocumentService {
             throw new RuntimeException("Document file metadata not found");
         }
 
-        java.nio.file.Path path = java.nio.file.Paths.get(cloudFile.getFileUrl()).toAbsolutePath();
-        if (!java.nio.file.Files.exists(path)) {
-            markFailed(document, "Physical file does not exist at path: " + path);
-            throw new RuntimeException("Physical file does not exist at path: " + path);
+        String fileLocation = cloudFile.getFileUrl();
+        if (!isRemoteUrl(fileLocation)) {
+            java.nio.file.Path path = java.nio.file.Paths.get(fileLocation).toAbsolutePath();
+            if (!java.nio.file.Files.exists(path)) {
+                markFailed(document, "Physical file does not exist at path: " + path);
+                throw new RuntimeException("Physical file does not exist at path: " + path);
+            }
         }
 
         // Set status to PROCESSING immediately so the UI reflects the in-progress state
@@ -315,8 +479,8 @@ public class DocumentService {
         documentRepository.save(document);
 
         long oldChunkCount = documentChunkRepository.countByDocumentId(id);
-        log.info("Reprocessing document ID: {}. Old chunk count: {}. File path sent: {}",
-                id, oldChunkCount, path);
+        log.info("Reprocessing document ID: {}. Old chunk count: {}. File location sent: {}",
+                id, oldChunkCount, fileLocation);
 
         // Delegate to AiIntegrationService which handles:
         // - calling the Python /process-document endpoint
@@ -472,7 +636,12 @@ public class DocumentService {
                 .updatedAt(document.getUpdatedAt())
                 .processedAt(document.getProcessedAt())
                 .processErrorMessage(document.getProcessErrorMessage())
-                .chunkCount(document.getChunkCount());
+                .chunkCount(document.getChunkCount())
+                // Trash fields
+                .isTrashed(document.isTrashed())
+                .trashedAt(document.getTrashedAt())
+                .deleteAfter(document.getDeleteAfter())
+                .trashedBy(document.getTrashedBy());
 
         // Category info
         if (document.getCategory() != null) {
@@ -529,6 +698,10 @@ public class DocumentService {
         return sb.isEmpty() ? null : sb.toString();
     }
 
+    private boolean isRemoteUrl(String value) {
+        return value != null && (value.startsWith("http://") || value.startsWith("https://"));
+    }
+
     public DocumentResponse getDownloadableById(Long id) {
         Document document = documentAccessService.getDownloadableDocument(id);
         return toResponse(document);
@@ -547,3 +720,4 @@ public class DocumentService {
     }
 
 }
+

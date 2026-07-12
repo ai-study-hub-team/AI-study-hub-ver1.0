@@ -115,13 +115,28 @@ public class JwtService {
     }
 
     private SecretKey getSigningKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(
-                properties.getSecretKey()
-        );
+        String secret = properties.getSecretKey();
+        
+        if (secret == null || secret.isBlank() || secret.equals("${JWT_SECRET}")) {
+            throw new IllegalStateException(
+                    "JWT_SECRET is missing or not properly configured. " +
+                    "Please set the JWT_SECRET environment variable or configure it in application-local.yml."
+            );
+        }
+
+        byte[] keyBytes;
+        try {
+            keyBytes = Decoders.BASE64.decode(secret);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "JWT_SECRET must be a valid standard Base64-encoded 256-bit key. " +
+                    "Do not use raw strings or invalid characters like '_'.", e
+            );
+        }
 
         if (keyBytes.length < 32) {
             throw new IllegalStateException(
-                    "JWT_SECRET must have at least 32 bytes."
+                    "JWT_SECRET must have at least 32 bytes (256 bits)."
             );
         }
 

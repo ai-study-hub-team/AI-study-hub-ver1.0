@@ -106,6 +106,15 @@ public class SharedDocumentSubmission {
     @Column(name = "reject_reason", columnDefinition = "TEXT")
     private String rejectReason;
 
+    /**
+     * Deadline for automatic removal of PENDING_REVIEW submissions.
+     * Set to {@code submittedAt + 30 days} when the submission is created.
+     * Cleared to {@code null} on approval so the scheduler never removes approved submissions.
+     * Not set for REJECTED submissions (rejection is handled separately).
+     */
+    @Column(name = "delete_after")
+    private LocalDateTime deleteAfter;
+
     @PrePersist
     void prePersist() {
         if (submittedAt == null) submittedAt = LocalDateTime.now();

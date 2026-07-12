@@ -103,4 +103,23 @@ public class Document {
     /** Email provided by the submitter (User B). */
     @Column(length = 254)
     private String contributedByEmail;
+
+    // ─── Trash / soft-delete ─────────────────────────────────────────────────
+
+    /** True when the document has been moved to trash (not yet permanently deleted). */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean isTrashed = false;
+
+    /** Timestamp when the document was moved to trash. */
+    private LocalDateTime trashedAt;
+
+    /**
+     * Deadline for permanent deletion (trashedAt + 30 days).
+     * The nightly scheduler hard-deletes documents where is_trashed=true AND delete_after <= now().
+     */
+    private LocalDateTime deleteAfter;
+
+    /** ID of the user who moved this document to trash. */
+    private Long trashedBy;
 }

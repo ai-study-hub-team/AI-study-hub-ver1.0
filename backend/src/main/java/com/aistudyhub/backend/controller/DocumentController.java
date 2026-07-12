@@ -7,6 +7,7 @@ import com.aistudyhub.backend.dto.response.SemanticSearchResponse;
 import com.aistudyhub.backend.service.DocumentService;
 import com.aistudyhub.backend.service.FileStorageService;
 import com.aistudyhub.backend.service.SemanticSearchService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
@@ -28,11 +29,13 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api/documents")
 @RequiredArgsConstructor
+@SecurityRequirement(name = "bearerAuth")
 public class DocumentController {
 
     private final DocumentService documentService;
@@ -95,10 +98,30 @@ public class DocumentController {
         return ResponseEntity.ok(documentService.update(id, request));
     }
 
-    // DELETE /api/documents/{id}  — soft delete (sets status = DELETED)
+    // DELETE /api/documents/{id}  — moves to trash (sets isTrashed=true, no data deleted yet)
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        documentService.delete(id);
+    public ResponseEntity<DocumentResponse> delete(@PathVariable Long id) {
+        DocumentResponse response = documentService.delete(id);
+        return ResponseEntity.ok(response); // 200 with trash metadata
+    }
+
+    // GET /api/documents/trash  — list trashed documents for the currently authenticated user
+    // userId is resolved from the JWT, NOT accepted as a query parameter.
+    @GetMapping("/trash")
+    public ResponseEntity<java.util.List<DocumentResponse>> getTrash() {
+        return ResponseEntity.ok(documentService.getTrashedDocuments());
+    }
+
+    // POST /api/documents/{id}/restore  — restore a trashed document
+    @PostMapping("/{id}/restore")
+    public ResponseEntity<DocumentResponse> restore(@PathVariable Long id) {
+        return ResponseEntity.ok(documentService.restore(id));
+    }
+
+    // DELETE /api/documents/{id}/permanent  — hard delete immediately (must be in trash first)
+    @DeleteMapping("/{id}/permanent")
+    public ResponseEntity<Void> permanentDelete(@PathVariable Long id) {
+        documentService.permanentDelete(id);
         return ResponseEntity.noContent().build(); // 204 No Content
     }
 
@@ -180,9 +203,14 @@ public class DocumentController {
     // ─── GET /api/documents/{id}/file ────────────────────────────────────────────
     // Streams the file inline so the browser can display/preview it directly.
     @GetMapping("/{id}/file")
-    public ResponseEntity<Resource> viewFile(@PathVariable Long id) {
+    public ResponseEntity<?> viewFile(@PathVariable Long id) {
         // 1. Load document metadata to get fileName and fileType
         var docResponse = documentService.getById(id);
+        if (isRemoteUrl(docResponse.getFileUrl())) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(URI.create(docResponse.getFileUrl()))
+                    .build();
+        }
         String fileName = docResponse.getFileName();
         if (fileName == null || fileName.isBlank()) {
             return ResponseEntity.notFound().build();
@@ -212,9 +240,14 @@ public class DocumentController {
     // Forces a browser download with the original file name.
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<Resource> downloadFile(@PathVariable Long id) {
+    public ResponseEntity<?> downloadFile(@PathVariable Long id) {
         // 1. Load document metadata
         var docResponse = documentService.getDownloadableById(id);
+        if (isRemoteUrl(docResponse.getFileUrl())) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(URI.create(docResponse.getFileUrl()))
+                    .build();
+        }
         String fileName     = docResponse.getFileName();       // stored on disk
         String originalName = docResponse.getOriginalName();   // shown to user
         if (fileName == null || fileName.isBlank()) {
@@ -279,6 +312,10 @@ public class DocumentController {
             @RequestBody MoveDocumentRequest request) {
         DocumentResponse response = documentService.moveDocumentToFolder(id, request.getFolderId());
         return ResponseEntity.ok(response);
+    }
+
+    private boolean isRemoteUrl(String value) {
+        return value != null && (value.startsWith("http://") || value.startsWith("https://"));
     }
 
 }

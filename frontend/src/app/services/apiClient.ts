@@ -1,7 +1,11 @@
-import axios, { AxiosHeaders } from "axios";
+import axios, {
+  AxiosHeaders,
+} from "axios";
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8080",
+  baseURL:
+    import.meta.env.VITE_API_URL ||
+    "http://localhost:8080",
 });
 
 export const getAuthToken = (): string | null => {
@@ -10,160 +14,211 @@ export const getAuthToken = (): string | null => {
     localStorage.getItem("accessToken") ||
     localStorage.getItem("jwt");
 
-  if (!token) {
+  if (
+    !token ||
+    token === "null" ||
+    token === "undefined"
+  ) {
     return null;
   }
 
-  return token.replace(/^Bearer\s+/i, "").trim();
+  return token.trim();
 };
 
-export const getCurrentUserId = (): number | null => {
-  const storedUserId = localStorage.getItem("userId");
-
-  if (storedUserId) {
-    const userId = Number(storedUserId);
-
-    if (Number.isInteger(userId) && userId > 0) {
-      return userId;
-    }
-  }
-
-  try {
-    const token = getAuthToken();
-    const encodedPayload = token?.split(".")[1];
-
-    if (!encodedPayload) {
-      return null;
-    }
-
-    const normalizedPayload = encodedPayload
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-
-    const paddedPayload = normalizedPayload.padEnd(
-      Math.ceil(normalizedPayload.length / 4) * 4,
-      "=",
-    );
-
-    const payload = JSON.parse(atob(paddedPayload)) as {
-      id?: number | string;
-      userId?: number | string;
-      sub?: number | string;
-    };
-
-    const userId = Number(
-      payload.userId ??
-        payload.id ??
-        payload.sub,
-    );
-
-    return Number.isInteger(userId) && userId > 0
-      ? userId
-      : null;
-  } catch {
-    return null;
-  }
-};
-
-export const clearAuthStorage = () => {
+const clearAuthentication = (): void => {
   localStorage.removeItem("token");
   localStorage.removeItem("accessToken");
   localStorage.removeItem("jwt");
   localStorage.removeItem("refreshToken");
-  localStorage.removeItem("userId");
   localStorage.removeItem("user");
+  localStorage.removeItem("userId");
   localStorage.removeItem("role");
   localStorage.removeItem("email");
   localStorage.removeItem("fullName");
   localStorage.removeItem("name");
+  localStorage.removeItem("avatarUrl");
+
+  sessionStorage.clear();
 };
 
-export const getAuthHeader = () => {
-  const token = getAuthToken();
+const publicAuthEndpoints = [
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/google",
+  "/api/auth/refresh",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/auth/resend-verification",
+  "/api/auth/verify-email",
+  "/api/auth/check-email",
+];
 
-  return {
-    headers: {
-      Authorization: token ? `Bearer ${token}` : "",
-    },
-  };
-};
-
-const isPublicApi = (url?: string): boolean => {
+const isPublicEndpoint = (
+  url?: string,
+): boolean => {
   if (!url) {
     return false;
   }
 
-  return (
-  url.includes("/api/public/") ||
-  url.includes("/api/auth/login") ||
-  url.includes("/api/auth/google") ||
-  url.includes("/api/auth/register") ||
-  url.includes("/api/auth/refresh") ||
-  url.includes("/api/auth/forgot-password") ||
-  url.includes("/api/auth/reset-password") ||
-  url.includes("/api/auth/verify-email") ||
-  url.includes("/api/auth/resend-verification") ||
-  url.includes("/api/auth/verify-reset-code") ||
-  url.includes("/auth/login") ||
-  url.includes("/auth/register") ||
-  url.includes("/auth/refresh")
-);
+  return publicAuthEndpoints.some(
+    (endpoint) =>
+      url === endpoint ||
+      url.startsWith(
+        `${endpoint}?`,
+      ),
+  );
 };
+
+const isValidJwtStructure = (
+  token: string,
+): boolean => {
+  const parts = token.split(".");
+
+  return (
+    parts.length === 3 &&
+    parts.every(
+      (part) => part.length > 0,
+    )
+  );
+};
+
+export const getAuthHeader = (): Record<string, string> => {
+  const token = getAuthToken();
+
+  if (
+    !token ||
+    !isValidJwtStructure(token)
+  ) {
+    return {};
+  }
+
+  return {
+    Authorization: `Bearer ${token}`,
+  };
+};
+/*
+ * Gắn access token vào những API
+ * yêu cầu đăng nhập.
+ */
 apiClient.interceptors.request.use(
   (config) => {
-    config.headers =
+    /*
+     * AxiosHeaders.from giúp chuyển
+     * headers thành đúng kiểu AxiosHeaders.
+     */
+    const headers =
       AxiosHeaders.from(
         config.headers,
       );
 
-    const token =
-      localStorage.getItem(
-        "accessToken",
-      ) ||
-      localStorage.getItem("token") ||
-      localStorage.getItem("jwt");
+    /*
+     * API đăng nhập, đăng ký và xác thực
+     * không được gửi token cũ.
+     */
+    if (isPublicEndpoint(config.url)) {
+      headers.delete(
+        "Authorization",
+      );
 
-    if (token) {
-      config.headers.set(
+      config.headers = headers;
+
+      return config;
+    }
+
+    const token = getAuthToken();
+
+    if (
+      token &&
+      isValidJwtStructure(token)
+    ) {
+      headers.set(
         "Authorization",
         `Bearer ${token}`,
       );
+    } else {
+      /*
+       * Xóa Authorization nếu token
+       * không tồn tại hoặc không đúng
+       * định dạng JWT.
+       */
+      headers.delete(
+        "Authorization",
+      );
+
+      if (token) {
+        localStorage.removeItem(
+          "token",
+        );
+
+        localStorage.removeItem(
+          "accessToken",
+        );
+
+        localStorage.removeItem(
+          "jwt",
+        );
+      }
     }
+
+    config.headers = headers;
 
     return config;
   },
-  (error) =>
-    Promise.reject(error),
+  (error) => {
+    return Promise.reject(error);
+  },
 );
 
+/*
+ * Xử lý lỗi từ backend.
+ */
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    const status = error.response?.status;
-    const requestUrl = String(error.config?.url || "");
+    const status =
+      error?.response?.status;
+
+    const requestUrl =
+      String(
+        error?.config?.url || "",
+      );
+
+    const isAuthenticationRequest =
+      isPublicEndpoint(requestUrl);
 
     /*
-     * Không tự logout khi API login hoặc xác thực email trả 401.
-     * Chỉ logout khi một API cần đăng nhập trả 401.
+     * Nếu API bảo vệ trả 401:
+     * xóa phiên đăng nhập và chuyển
+     * về trang login.
+     *
+     * Không áp dụng với API login vì
+     * login có thể trả 401 khi sai mật khẩu.
      */
     if (
       status === 401 &&
-      !isPublicApi(requestUrl)
+      !isAuthenticationRequest
     ) {
-      console.warn(
-        "Access token không hợp lệ hoặc đã hết hạn.",
-      );
+      clearAuthentication();
 
-      clearAuthStorage();
+      const currentPath =
+        window.location.pathname;
 
-      const currentPath = window.location.pathname;
+      const isPublicPage =
+        currentPath === "/login" ||
+        currentPath === "/register" ||
+        currentPath ===
+          "/forgot-password" ||
+        currentPath.startsWith(
+          "/reset-password",
+        ) ||
+        currentPath.startsWith(
+          "/verify-email",
+        );
 
-      if (
-        !currentPath.includes("/login") &&
-        !currentPath.includes("/register") &&
-        !currentPath.includes("/verify-email")
-      ) {
-        window.location.href = "/login";
+      if (!isPublicPage) {
+        window.location.replace(
+          "/login",
+        );
       }
     }
 
@@ -171,4 +226,89 @@ apiClient.interceptors.response.use(
   },
 );
 
-export default apiClient;
+export const getCurrentUserId =
+  (): number | null => {
+    /*
+     * Ưu tiên lấy ID từ user lưu trong
+     * localStorage.
+     */
+    try {
+      const storedUser = JSON.parse(
+        localStorage.getItem(
+          "user",
+        ) || "{}",
+      ) as {
+        id?: number | string;
+        userId?: number | string;
+      };
+
+      const userId = Number(
+        storedUser.id ??
+          storedUser.userId,
+      );
+
+      if (
+        Number.isInteger(userId) &&
+        userId > 0
+      ) {
+        return userId;
+      }
+    } catch {
+      // Tiếp tục thử đọc JWT.
+    }
+
+    /*
+     * Nếu localStorage chưa có user,
+     * thử lấy userId từ JWT.
+     */
+    try {
+      const token = getAuthToken();
+
+      if (
+        !token ||
+        !isValidJwtStructure(token)
+      ) {
+        return null;
+      }
+
+      const encodedPayload =
+        token.split(".")[1];
+
+      const normalizedPayload =
+        encodedPayload
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+
+      const paddedPayload =
+        normalizedPayload.padEnd(
+          Math.ceil(
+            normalizedPayload.length /
+              4,
+          ) * 4,
+          "=",
+        );
+
+      const payload = JSON.parse(
+        atob(paddedPayload),
+      ) as {
+        id?: number | string;
+        userId?: number | string;
+      };
+
+      const userId = Number(
+        payload.userId ??
+          payload.id,
+      );
+
+      if (
+        Number.isInteger(userId) &&
+        userId > 0
+      ) {
+        return userId;
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  };

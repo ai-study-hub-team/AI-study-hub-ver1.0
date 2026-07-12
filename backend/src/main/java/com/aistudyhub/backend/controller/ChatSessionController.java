@@ -7,6 +7,7 @@ import com.aistudyhub.backend.dto.response.ChatMessageResponse;
 import com.aistudyhub.backend.dto.response.ChatSessionResponse;
 import com.aistudyhub.backend.dto.response.CreateChatSessionResponse;
 import com.aistudyhub.backend.service.ChatSessionService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/chat")
+@SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
 public class ChatSessionController {
 
