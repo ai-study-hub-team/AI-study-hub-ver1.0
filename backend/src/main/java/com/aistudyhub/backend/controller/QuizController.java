@@ -3,6 +3,7 @@ package com.aistudyhub.backend.controller;
 import com.aistudyhub.backend.dto.request.QuizGenerateRequest;
 import com.aistudyhub.backend.dto.response.QuizGenerateResponse;
 import com.aistudyhub.backend.service.QuizService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +14,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/quizzes")
 @RequiredArgsConstructor
+@SecurityRequirement(name = "bearerAuth")
 public class QuizController {
 
     private final QuizService quizService;

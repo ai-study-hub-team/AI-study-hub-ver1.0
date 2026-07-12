@@ -41,7 +41,7 @@ public class DocumentResponse {
     private String fileUrl;           // path/URL to the file
     private String fileType;          // MIME type
     private Long fileSize;            // size in bytes
-    private String storageProvider;   // LOCAL, FIREBASE
+    private String storageProvider;   // LOCAL, CLOUDINARY
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
