@@ -4,16 +4,23 @@ import com.aistudyhub.backend.dto.request.VnpayCreateRequest;
 import com.aistudyhub.backend.dto.response.PaymentHistoryResponse;
 import com.aistudyhub.backend.dto.response.PaymentStatusResponse;
 import com.aistudyhub.backend.dto.response.VnpayCreateResponse;
+import com.aistudyhub.backend.dto.response.VnpayPaymentCreation;
+import com.aistudyhub.backend.dto.response.VnpayReturnResult;
+import com.aistudyhub.backend.exception.PaymentException;
 import com.aistudyhub.backend.service.PaymentService;
 import com.aistudyhub.backend.service.VnpayService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +33,9 @@ public class PaymentController {
     private final VnpayService vnpayService;
     private final PaymentService paymentService;
 
+    @Value("${app.frontend.base-url:http://localhost:5173}")
+    private String frontendBaseUrl;
+
     @PostMapping("/vnpay/create")
     public ResponseEntity<VnpayCreateResponse> createPayment(
             Authentication authentication,
@@ -33,24 +43,50 @@ public class PaymentController {
             HttpServletRequest httpRequest) {
         
         Long userId = (Long) authentication.getDetails();
-        String paymentUrl = vnpayService.createPaymentUrl(userId, request.getPlanCode(), httpRequest);
+        VnpayPaymentCreation payment = vnpayService.createPayment(userId, request.getPlanCode(), httpRequest);
         
-        // Extract order code from URL or return a standard response
-        // For simplicity, we just return the URL, the frontend redirects to it.
-        // If we want orderCode returned, we'd adjust vnpayService to return a Pair or DTO.
-        // Here we'll just return the URL.
         VnpayCreateResponse response = VnpayCreateResponse.builder()
-                .paymentUrl(paymentUrl)
+                .paymentUrl(payment.getPaymentUrl())
+                .orderCode(payment.getOrderCode())
                 .build();
                 
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/vnpay-return")
-    public ResponseEntity<String> vnpayReturn(@RequestParam Map<String, String> params) {
-        vnpayService.processReturn(params);
-        // In a real app, you might redirect to a frontend success/failure page here
-        return ResponseEntity.ok("Payment processed. Check status via API or frontend.");
+    public ResponseEntity<Void> vnpayReturn(@RequestParam Map<String, String> params) {
+        try {
+            VnpayReturnResult result = vnpayService.processReturn(params);
+            URI redirectUri = buildFrontendRedirect(
+                    result.isSuccess() ? "success" : "failed",
+                    result.getOrderCode(),
+                    result.getMessage()
+            );
+
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(redirectUri)
+                    .build();
+        } catch (PaymentException ex) {
+            URI redirectUri = buildFrontendRedirect(
+                    "failed",
+                    null,
+                    ex.getMessage()
+            );
+
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(redirectUri)
+                    .build();
+        } catch (RuntimeException ex) {
+            URI redirectUri = buildFrontendRedirect(
+                    "failed",
+                    null,
+                    "Payment processing failed"
+            );
+
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(redirectUri)
+                    .build();
+        }
     }
 
     @GetMapping("/history")
@@ -66,5 +102,24 @@ public class PaymentController {
             @PathVariable String orderCode) {
         Long userId = (Long) authentication.getDetails();
         return ResponseEntity.ok(paymentService.getPaymentStatus(userId, orderCode));
+    }
+
+    private URI buildFrontendRedirect(String paymentStatus, String orderCode, String message) {
+        UriComponentsBuilder builder = UriComponentsBuilder
+                .fromUriString(frontendBaseUrl)
+                .path("/app/subscription")
+                .queryParam("payment", paymentStatus);
+
+        if (orderCode != null && !orderCode.isBlank()) {
+            builder.queryParam("orderCode", orderCode);
+        }
+
+        if (message != null && !message.isBlank()) {
+            builder.queryParam("message", message);
+        }
+
+        return builder.build()
+                .encode()
+                .toUri();
     }
 }

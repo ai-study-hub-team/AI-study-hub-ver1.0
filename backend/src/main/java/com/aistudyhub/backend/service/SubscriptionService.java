@@ -219,6 +219,7 @@ public class SubscriptionService {
             sub.setStatus(SubscriptionStatus.ACTIVE);
             userSubscriptionRepository.save(sub);
         }
+    }
     private SubscriptionResponse toResponse(UserSubscription subscription) {
         SubscriptionPlan plan = subscription.getPlan();
         PlanResponse planResponse = PlanResponse.builder()
@@ -229,6 +230,7 @@ public class SubscriptionService {
                 .maxUploadSizePerFileMb(plan.getMaxUploadSizePerFileMb())
                 .dailyTokenLimit(plan.getDailyTokenLimit())
                 .price(plan.getPrice())
+                .durationDays(plan.getDurationDays())
                 .description(plan.getDescription())
                 .allowImageUpload(plan.getAllowImageUpload())
                 .allowDocumentUpload(plan.getAllowDocumentUpload())

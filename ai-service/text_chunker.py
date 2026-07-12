@@ -3,6 +3,14 @@ import re
 
 logger = logging.getLogger("ai-service.text_chunker")
 
+SLIDE_MARKER_PATTERN = re.compile(
+    r"<<<SLIDE_START:(?P<number>\d+)(?:\|TYPE:(?P<kind>[A-Z]+))?>>>\n?"
+)
+PAGE_MARKER_PATTERN = re.compile(
+    r"<<<PAGE_START:(?P<number>\d+)>>>\n?"
+)
+
+
 def chunk_text(
     text: str,
     file_type: str = "",
@@ -25,6 +33,8 @@ def chunk_text(
         return chunk_excel(text)
     elif file_type in ["ppt", "pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.ms-powerpoint"]:
         return chunk_pptx(text, chunk_size, chunk_overlap, max_chunks)
+    elif "pdf" in file_type:
+        return chunk_pdf_marker_text(text, chunk_size, chunk_overlap, max_chunks)
     elif file_type in ["docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]:
         # DOCX: no reliable fixed page numbers without rendering to PDF.
         # Extract and chunk normally, but mark every chunk as UNKNOWN.
@@ -144,69 +154,106 @@ def chunk_excel(text: str, max_rows=50, max_chars=1500) -> list:
                 
         if current_chunk_rows:
             push_chunk()
-            
+
     return chunks
+def chunk_marked_text(
+    text: str,
+    marker_pattern: re.Pattern,
+    locator_type: str,
+    chunk_size=1000,
+    chunk_overlap=150,
+    max_chunks=10000
+) -> list:
+    """
+    Removes location markers, chunks the cleaned text, then maps each chunk back
+    to the nearest 1-based source location.
+
+    Supported markers:
+      - <<<SLIDE_START:1>>>
+      - <<<SLIDE_START:1|TYPE:TITLE>>>  (legacy)
+      - <<<PAGE_START:1>>>
+    """
+    clean_text = ""
+    location_mapping = []
+
+    last_end = 0
+    for match in marker_pattern.finditer(text or ""):
+        clean_text += text[last_end:match.start()]
+        location_number = int(match.group("number"))
+        location_kind = match.groupdict().get("kind") or "TEXT"
+        location_mapping.append((len(clean_text), location_number, location_kind))
+        last_end = match.end()
+
+    clean_text += (text or "")[last_end:]
+
+    chunks = chunk_text_sliding_window(clean_text, chunk_size, chunk_overlap, max_chunks)
+    if not location_mapping:
+        return chunks
+
+    for chunk in chunks:
+        c_start = chunk["charStart"]
+        c_end = chunk["charEnd"]
+
+        previous_location = None
+        locations_inside_chunk = []
+        kinds_inside_chunk = set()
+
+        for pos, loc_num, loc_kind in location_mapping:
+            if pos <= c_start:
+                previous_location = (loc_num, loc_kind)
+            if c_start <= pos < c_end:
+                locations_inside_chunk.append(loc_num)
+                kinds_inside_chunk.add(loc_kind)
+
+        if previous_location is not None:
+            locator_start = previous_location[0]
+        elif locations_inside_chunk:
+            locator_start = locations_inside_chunk[0]
+        else:
+            locator_start = None
+
+        locator_end = locations_inside_chunk[-1] if locations_inside_chunk else locator_start
+
+        chunk["locatorType"] = locator_type
+        chunk["locatorStart"] = locator_start
+        chunk["locatorEnd"] = locator_end
+
+        if locator_type == "SLIDE":
+            chunk["slideStart"] = locator_start
+            chunk["slideEnd"] = locator_end
+            if len(kinds_inside_chunk) > 1:
+                chunk["slideType"] = "MIXED"
+            elif len(kinds_inside_chunk) == 1:
+                chunk["slideType"] = next(iter(kinds_inside_chunk))
+            elif previous_location is not None:
+                chunk["slideType"] = previous_location[1]
+            else:
+                chunk["slideType"] = "TEXT"
+
+    return chunks
+
+
+def chunk_pdf_marker_text(text: str, chunk_size=1000, chunk_overlap=150, max_chunks=10000) -> list:
+    """
+    PDF can arrive in three forms:
+      - normal PDF text: no markers; caller later injects PAGE using page_char_map
+      - Gemini PDF from PROMPT_A: <<<PAGE_START:n>>>
+      - slide-like PDF from PROMPT_B: <<<SLIDE_START:n>>> but still a PDF page
+
+    For PDF, both marker styles are stored as PAGE locators.
+    """
+    if PAGE_MARKER_PATTERN.search(text or ""):
+        return chunk_marked_text(text, PAGE_MARKER_PATTERN, "PAGE", chunk_size, chunk_overlap, max_chunks)
+    if SLIDE_MARKER_PATTERN.search(text or ""):
+        return chunk_marked_text(text, SLIDE_MARKER_PATTERN, "PAGE", chunk_size, chunk_overlap, max_chunks)
+    return chunk_text_sliding_window(text, chunk_size, chunk_overlap, max_chunks)
 
 
 def chunk_pptx(text: str, chunk_size=1000, chunk_overlap=150, max_chunks=10000) -> list:
     """
     Parses slide markers, chunks text, and assigns metadata.
     """
-    marker_pattern = re.compile(r"<<<SLIDE_START:(\d+)\|TYPE:([A-Z]+)>>>\n?")
-    
-    clean_text = ""
-    slide_mapping = [] 
-    
-    last_end = 0
-    for match in marker_pattern.finditer(text):
-        clean_text += text[last_end:match.start()]
-        slide_num = int(match.group(1))
-        slide_type = match.group(2)
-        slide_mapping.append((len(clean_text), slide_num, slide_type))
-        last_end = match.end()
-    
-    clean_text += text[last_end:]
-    
-    chunks = chunk_text_sliding_window(clean_text, chunk_size, chunk_overlap, max_chunks)
-    
-    # For PPTX, locatorStart/locatorEnd represent 1-based slide numbers (not page numbers).
-    # A single chunk may span multiple slides when its text crosses a slide boundary.
-    for chunk in chunks:
-        c_start = chunk["charStart"]
-        c_end = chunk["charEnd"]
-
-        start_slide = None
-        end_slide = None
-        types_in_chunk = set()
-
-        for i, (pos, s_num, s_type) in enumerate(slide_mapping):
-            if pos <= c_start:
-                start_slide = s_num
-                types_in_chunk.clear()
-                types_in_chunk.add(s_type)
-            elif c_start < pos < c_end:
-                types_in_chunk.add(s_type)
-                end_slide = s_num
-
-        if end_slide is None:
-            end_slide = start_slide
-
-        chunk["slideStart"] = start_slide
-        chunk["slideEnd"] = end_slide
-
-        # Generic locator fields — SLIDE type with 1-based slide numbers
-        chunk["locatorType"] = "SLIDE"
-        chunk["locatorStart"] = start_slide
-        chunk["locatorEnd"] = end_slide
-
-        if len(types_in_chunk) > 1:
-            chunk["slideType"] = "MIXED"
-        elif len(types_in_chunk) == 1:
-            chunk["slideType"] = list(types_in_chunk)[0]
-        else:
-            chunk["slideType"] = "TEXT"
-
-    return chunks
+    return chunk_marked_text(text, SLIDE_MARKER_PATTERN, "SLIDE", chunk_size, chunk_overlap, max_chunks)
 
 
 def chunk_text_sliding_window(
@@ -330,4 +377,3 @@ def chunk_text_sliding_window(
     logger.info("Chunking completed. chunk_count=%s", len(chunks))
 
     return chunks
-    
