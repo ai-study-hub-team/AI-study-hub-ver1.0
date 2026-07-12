@@ -591,7 +591,7 @@ export function UploadDocumentsPage() {
           </section>
 
           <CollaborationCard
-            onCopyLink={() => toast.success("Upload link copied.")}
+            onCopyLink={() => navigate("/app/shares")}
           />
         </div>
 

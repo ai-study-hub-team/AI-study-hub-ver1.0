@@ -1,4 +1,4 @@
-import axios, { AxiosHeaders } from "axios";
+import axios, { AxiosHeaders, type InternalAxiosRequestConfig } from "axios";
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:8080",
@@ -106,12 +106,79 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
+type RetryableRequestConfig = InternalAxiosRequestConfig & {
+  _retryAfterRefresh?: boolean;
+};
+
+type RefreshResponse = {
+  accessToken?: string;
+  token?: string;
+  jwt?: string;
+  refreshToken?: string;
+};
+
+let refreshRequest: Promise<string> | null = null;
+
+const refreshAccessToken = (): Promise<string> => {
+  if (refreshRequest) return refreshRequest;
+
+  const refreshToken = localStorage.getItem("refreshToken")?.trim();
+  if (!refreshToken) {
+    return Promise.reject(new Error("No refresh token is available"));
+  }
+
+  refreshRequest = apiClient
+    .post<RefreshResponse>("/api/auth/refresh", { refreshToken })
+    .then(({ data }) => {
+      const accessToken = (data.accessToken || data.token || data.jwt)?.trim();
+
+      if (!accessToken || !isValidJwtStructure(accessToken)) {
+        throw new Error("The refresh response does not contain a valid access token");
+      }
+
+      localStorage.setItem("accessToken", accessToken);
+      localStorage.setItem("token", accessToken);
+
+      if (data.refreshToken?.trim()) {
+        localStorage.setItem("refreshToken", data.refreshToken.trim());
+      }
+
+      return accessToken;
+    })
+    .finally(() => {
+      refreshRequest = null;
+    });
+
+  return refreshRequest;
+};
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const status = error?.response?.status;
     const requestUrl = String(error?.config?.url || "");
     const isAuthenticationRequest = isPublicEndpoint(requestUrl);
+    const originalRequest = error?.config as RetryableRequestConfig | undefined;
+
+    if (
+      status === 401 &&
+      !isAuthenticationRequest &&
+      originalRequest &&
+      !originalRequest._retryAfterRefresh
+    ) {
+      originalRequest._retryAfterRefresh = true;
+
+      try {
+        const accessToken = await refreshAccessToken();
+        const headers = AxiosHeaders.from(originalRequest.headers);
+        headers.set("Authorization", `Bearer ${accessToken}`);
+        originalRequest.headers = headers;
+
+        return apiClient(originalRequest);
+      } catch {
+        // The refresh token is missing, expired, revoked, or otherwise invalid.
+      }
+    }
 
     if (status === 401 && !isAuthenticationRequest) {
       clearAuthStorage();
