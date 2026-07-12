@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -35,6 +36,8 @@ public class AdminPlanService {
 
     @Transactional
     public PlanResponse createPlan(AdminPlanRequest request) {
+        validateDuration(request);
+
         if (subscriptionPlanRepository.findByCode(request.getCode()).isPresent()) {
             throw new RuntimeException("Plan with code " + request.getCode() + " already exists");
         }
@@ -46,6 +49,7 @@ public class AdminPlanService {
                 .maxUploadSizePerFileMb(request.getMaxUploadSizePerFileMb())
                 .dailyTokenLimit(request.getDailyTokenLimit())
                 .price(request.getPrice())
+                .durationDays(request.getDurationDays())
                 .description(request.getDescription())
                 .allowImageUpload(request.getAllowImageUpload())
                 .allowDocumentUpload(request.getAllowDocumentUpload())
@@ -59,6 +63,8 @@ public class AdminPlanService {
 
     @Transactional
     public PlanResponse updatePlan(Long id, AdminPlanRequest request) {
+        validateDuration(request);
+
         SubscriptionPlan plan = subscriptionPlanRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Plan not found with id: " + id));
 
@@ -82,6 +88,7 @@ public class AdminPlanService {
         plan.setMaxUploadSizePerFileMb(request.getMaxUploadSizePerFileMb());
         plan.setDailyTokenLimit(request.getDailyTokenLimit());
         plan.setPrice(request.getPrice());
+        plan.setDurationDays(request.getDurationDays());
         plan.setDescription(request.getDescription());
         plan.setAllowImageUpload(request.getAllowImageUpload());
         plan.setAllowDocumentUpload(request.getAllowDocumentUpload());
@@ -108,6 +115,15 @@ public class AdminPlanService {
         log.info("Soft deleted (disabled) plan with id: {}", id);
     }
  // trả về frontend
+    private void validateDuration(AdminPlanRequest request) {
+        boolean paidPlan = request.getPrice() != null
+                && request.getPrice().compareTo(BigDecimal.ZERO) > 0;
+
+        if (paidPlan && (request.getDurationDays() == null || request.getDurationDays() <= 0)) {
+            throw new RuntimeException("Paid plans must have durationDays greater than 0");
+        }
+    }
+
     private PlanResponse toResponse(SubscriptionPlan plan) {
         return PlanResponse.builder()
                 .id(plan.getId())
@@ -117,6 +133,7 @@ public class AdminPlanService {
                 .maxUploadSizePerFileMb(plan.getMaxUploadSizePerFileMb())
                 .dailyTokenLimit(plan.getDailyTokenLimit())
                 .price(plan.getPrice())
+                .durationDays(plan.getDurationDays())
                 .description(plan.getDescription())
                 .allowImageUpload(plan.getAllowImageUpload())
                 .allowDocumentUpload(plan.getAllowDocumentUpload())

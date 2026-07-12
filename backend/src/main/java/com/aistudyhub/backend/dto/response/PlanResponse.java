@@ -16,6 +16,7 @@ public class PlanResponse {
     private Long maxUploadSizePerFileMb;
     private Long dailyTokenLimit;
     private BigDecimal price;
+    private Integer durationDays;
     private String description;
     private Boolean allowImageUpload;
     private Boolean allowDocumentUpload;

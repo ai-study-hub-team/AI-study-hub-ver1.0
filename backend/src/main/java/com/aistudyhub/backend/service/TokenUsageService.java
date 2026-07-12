@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.service;
 
+import com.aistudyhub.backend.dto.response.CurrentUserTodayTokenUsageResponse;
 import com.aistudyhub.backend.entity.TokenUsageLog;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.UserDailyUsage;
@@ -22,6 +23,29 @@ public class TokenUsageService {
     private final SubscriptionService subscriptionService;
     private final UserDailyUsageRepository userDailyUsageRepository;
     private final TokenUsageLogRepository tokenUsageLogRepository;
+
+    @Transactional(readOnly = true)
+    public CurrentUserTodayTokenUsageResponse getTodayUsage(Long userId) {
+        UserDailyUsage usage = userDailyUsageRepository
+                .findByUserIdAndUsageDate(userId, LocalDate.now())
+                .orElse(null);
+
+        if (usage == null) {
+            return CurrentUserTodayTokenUsageResponse.builder()
+                    .total(0L)
+                    .chat(0L)
+                    .summarize(0L)
+                    .quiz(0L)
+                    .build();
+        }
+
+        return CurrentUserTodayTokenUsageResponse.builder()
+                .total(safe(usage.getTotalTokens()))
+                .chat(safe(usage.getChatTokens()))
+                .summarize(safe(usage.getSummaryTokens()))
+                .quiz(safe(usage.getQuizTokens()))
+                .build();
+    }
 
     @Transactional(readOnly = true)
     // so sánh token hằng ngày
