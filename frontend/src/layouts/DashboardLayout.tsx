@@ -594,11 +594,6 @@ export function DashboardLayout({
       label: "Reports",
     },
     {
-      to: "/admin/subscriptions",
-      icon: CreditCard,
-      label: "Subscriptions",
-    },
-    {
       to: "/app/dashboard",
       icon: LayoutDashboard,
       label: "User View",

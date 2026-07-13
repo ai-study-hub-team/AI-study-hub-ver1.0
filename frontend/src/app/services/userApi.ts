@@ -29,6 +29,10 @@ export interface UpdateUserStatusPayload {
   status: string;
 }
 
+export interface UpdateUserSubscriptionPayload {
+  planCode: string;
+}
+
 export interface UpdateProfilePayload {
   fullName: string;
   avatarUrl?: string | null;
@@ -74,6 +78,16 @@ export const userApi = {
   ) => {
     return apiClient.patch<UserResponse>(
       `/api/users/${id}/status`,
+      payload,
+    );
+  },
+
+  updateUserSubscription: (
+    id: number,
+    payload: UpdateUserSubscriptionPayload,
+  ) => {
+    return apiClient.patch(
+      `/api/users/${id}/subscription`,
       payload,
     );
   },
