@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -26,6 +27,8 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AvatarStorageService avatarStorageService;
+
 
     @Transactional(readOnly = true)
     public List<UserResponse> getAll() {
@@ -84,7 +87,6 @@ public class UserService {
         User user = findUserByEmail(authenticatedEmail);
 
         user.setFullName(request.getFullName().trim());
-        user.setAvatarUrl(trimToNull(request.getAvatarUrl()));
         user.setPhone(trimToNull(request.getPhone()));
         user.setUpdatedAt(LocalDateTime.now());
 
@@ -252,5 +254,23 @@ public class UserService {
         if (activeAdminCount <= 1) {
             throw new BadRequestException("Cannot remove or disable the last active admin");
         }
+    }
+
+    @Transactional
+    public UserResponse updateCurrentUserAvatar(
+            String authenticatedEmail,
+            MultipartFile file
+    ) {
+        User user = findUserByEmail(authenticatedEmail);
+        String oldAvatarUrl = user.getAvatarUrl();
+
+        String newAvatarUrl = avatarStorageService.storeLocalAvatar(file);
+        user.setAvatarUrl(newAvatarUrl);
+        user.setUpdatedAt(LocalDateTime.now());
+
+        User saved = userRepository.save(user);
+        avatarStorageService.deleteLocalAvatarByUrl(oldAvatarUrl);
+
+        return toResponse(saved);
     }
 }

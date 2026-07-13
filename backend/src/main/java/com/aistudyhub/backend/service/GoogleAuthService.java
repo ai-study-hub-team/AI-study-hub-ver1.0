@@ -78,7 +78,9 @@ public class GoogleAuthService {
             if (user.getEmailVerifiedAt() == null) {
                 user.setEmailVerifiedAt(LocalDateTime.now());
             }
-            if (avatarUrl != null && !avatarUrl.isBlank()) {
+            if ((user.getAvatarUrl() == null || user.getAvatarUrl().isBlank())
+                    && avatarUrl != null
+                    && !avatarUrl.isBlank()) {
                 user.setAvatarUrl(avatarUrl);
             }
         }
