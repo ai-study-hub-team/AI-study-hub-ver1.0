@@ -21,7 +21,8 @@ import {
   Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
 
 import {
@@ -36,6 +37,14 @@ import {
 } from "../../services/subscriptionApi";
 
 type SubscriptionTab = "overview" | "plans" | "billing";
+
+type PaymentReturnView = {
+  status: "success" | "failed";
+  orderCode: string;
+  message: string;
+} | null;
+
+const PENDING_PAYMENT_ORDER_CODE_KEY = "pendingPaymentOrderCode";
 
 type ApiError = {
   response?: {
@@ -72,11 +81,11 @@ const toSafeNumber = (value: unknown): number => {
 };
 
 const formatNumber = (value: unknown): string => {
-  return Math.floor(toSafeNumber(value)).toLocaleString("vi-VN");
+  return Math.floor(toSafeNumber(value)).toLocaleString("en-US");
 };
 
 const formatCurrency = (value?: number | string | null): string => {
-  return new Intl.NumberFormat("vi-VN", {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "VND",
     maximumFractionDigits: 0,
@@ -85,7 +94,7 @@ const formatCurrency = (value?: number | string | null): string => {
 
 const formatDate = (value?: string | null): string => {
   if (!value) {
-    return "Không hết hạn";
+    return "No expiration";
   }
 
   const normalizedValue = value.replace(/\.(\d{3})\d+/, ".$1");
@@ -95,7 +104,7 @@ const formatDate = (value?: string | null): string => {
     return "—";
   }
 
-  return date.toLocaleDateString("vi-VN", {
+  return date.toLocaleDateString("en-US", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -114,7 +123,7 @@ const formatDateTime = (value?: string | null): string => {
     return "—";
   }
 
-  return date.toLocaleString("vi-VN", {
+  return date.toLocaleString("en-US", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -147,40 +156,40 @@ const getStatusLabel = (status?: string | null): string => {
   const normalizedStatus = normalizeCode(status);
 
   if (normalizedStatus === "ACTIVE") {
-    return "Đang hoạt động";
+    return "Active";
   }
 
   if (normalizedStatus === "EXPIRED") {
-    return "Đã hết hạn";
+    return "Expired";
   }
 
   if (normalizedStatus === "CANCELLED") {
-    return "Đã hủy";
+    return "Cancelled";
   }
 
-  return status || "Không xác định";
+  return status || "Unknown";
 };
 
 const getPaymentStatusLabel = (status?: string | null): string => {
   const normalizedStatus = normalizeCode(status);
 
   if (normalizedStatus === "SUCCESS" || normalizedStatus === "PAID") {
-    return "Thành công";
+    return "Successful";
   }
 
   if (normalizedStatus === "PENDING") {
-    return "Đang chờ";
+    return "Pending";
   }
 
   if (normalizedStatus === "FAILED") {
-    return "Thất bại";
+    return "Failed";
   }
 
   if (normalizedStatus === "CANCELLED") {
-    return "Đã hủy";
+    return "Cancelled";
   }
 
-  return status || "Không xác định";
+  return status || "Unknown";
 };
 
 const getPaymentStatusClass = (status?: string | null): string => {
@@ -278,16 +287,112 @@ function PlanFeatureList({ plan }: { plan: PlanResponse }) {
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <FeatureRow
         enabled={Boolean(plan.allowDocumentUpload)}
-        label="Tải tài liệu"
+        label="Document uploads"
       />
-      <FeatureRow enabled={Boolean(plan.allowImageUpload)} label="Tải hình ảnh" />
-      <FeatureRow enabled={Boolean(plan.allowVideoUpload)} label="Tải video" />
-      <FeatureRow enabled={Boolean(plan.allowAudioUpload)} label="Tải âm thanh" />
+      <FeatureRow
+        enabled={Boolean(plan.allowImageUpload)}
+        label="Image uploads"
+      />
+      <FeatureRow
+        enabled={Boolean(plan.allowVideoUpload)}
+        label="Video uploads"
+      />
+      <FeatureRow
+        enabled={Boolean(plan.allowAudioUpload)}
+        label="Audio uploads"
+      />
+    </div>
+  );
+}
+
+
+function PaymentResultPanel({
+  result,
+  onConfirm,
+}: {
+  result: Exclude<PaymentReturnView, null>;
+  onConfirm: () => void;
+}) {
+  const isSuccess = result.status === "success";
+
+  return (
+    <div className="min-h-[calc(100vh-10rem)] flex items-center justify-center px-4 py-10">
+      <motion.div
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.3 }}
+        className="w-full max-w-xl overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl shadow-slate-200/60 dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/20"
+      >
+        <div
+          className={`h-2 w-full ${
+            isSuccess ? "bg-emerald-500" : "bg-red-500"
+          }`}
+        />
+
+        <div className="p-8 text-center sm:p-10">
+          <div
+            className={`mx-auto flex h-24 w-24 items-center justify-center rounded-full ${
+              isSuccess
+                ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"
+                : "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300"
+            }`}
+          >
+            {isSuccess ? (
+              <CheckCircle2 className="h-14 w-14" />
+            ) : (
+              <AlertCircle className="h-14 w-14" />
+            )}
+          </div>
+
+          <h1 className="mt-6 text-3xl font-extrabold text-slate-900 dark:text-white">
+            {isSuccess ? "Payment successful!" : "Payment failed"}
+          </h1>
+
+          <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+            {isSuccess
+              ? "Your payment has been completed and your subscription plan has been updated."
+              : "Your payment could not be completed. Please return to the Subscription page and try again."}
+          </p>
+
+          {result.orderCode && (
+            <div className="mt-7 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-left dark:border-slate-700 dark:bg-slate-800/70">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Order code
+              </p>
+              <p className="mt-1 break-all font-mono text-sm font-bold text-slate-800 dark:text-slate-100">
+                {result.orderCode}
+              </p>
+            </div>
+          )}
+
+          {result.message && (
+            <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+              {result.message}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`mt-8 inline-flex min-w-40 items-center justify-center rounded-xl px-8 py-3 text-sm font-extrabold text-white shadow-lg transition ${
+              isSuccess
+                ? "bg-emerald-600 shadow-emerald-500/20 hover:bg-emerald-700"
+                : "bg-red-600 shadow-red-500/20 hover:bg-red-700"
+            }`}
+          >
+            OK
+          </button>
+        </div>
+      </motion.div>
     </div>
   );
 }
 
 export function SubscriptionDashboard() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const paymentReturnHandledRef = useRef(false);
+
   const [activeTab, setActiveTab] = useState<SubscriptionTab>("overview");
   const [subscription, setSubscription] =
     useState<SubscriptionResponse | null>(null);
@@ -302,6 +407,7 @@ export function SubscriptionDashboard() {
   const [pageError, setPageError] = useState("");
   const [billingError, setBillingError] = useState("");
   const [creatingPlanCode, setCreatingPlanCode] = useState("");
+  const [paymentReturn, setPaymentReturn] = useState<PaymentReturnView>(null);
 
   const loadSubscriptionAndPlans = useCallback(
     async (showRefreshState = false): Promise<void> => {
@@ -335,7 +441,7 @@ export function SubscriptionDashboard() {
 
         const message = getErrorMessage(
           error,
-          "Không thể tải thông tin gói đăng ký.",
+          "Unable to load subscription information.",
         );
 
         setPageError(message);
@@ -369,7 +475,7 @@ export function SubscriptionDashboard() {
 
       const message = getErrorMessage(
         error,
-        "Không thể tải lịch sử thanh toán.",
+        "Unable to load payment history.",
       );
 
       setBillingError(message);
@@ -380,9 +486,51 @@ export function SubscriptionDashboard() {
   }, []);
 
   useEffect(() => {
-    void loadSubscriptionAndPlans();
-    void loadBillingHistory();
-  }, [loadBillingHistory, loadSubscriptionAndPlans]);
+    if (paymentReturnHandledRef.current) {
+      return;
+    }
+
+    paymentReturnHandledRef.current = true;
+
+    const searchParams = new URLSearchParams(location.search);
+    const paymentResult = normalizeCode(searchParams.get("payment"));
+    const orderCode = searchParams.get("orderCode")?.trim() || "";
+    const returnMessage = searchParams.get("message")?.trim() || "";
+
+    const handlePaymentReturn = async (): Promise<void> => {
+      if (paymentResult) {
+        const pendingOrderCode = sessionStorage.getItem(
+          PENDING_PAYMENT_ORDER_CODE_KEY,
+        );
+
+        if (pendingOrderCode && orderCode && pendingOrderCode !== orderCode) {
+          console.warn(
+            "Returned payment order code does not match the pending order code.",
+            { pendingOrderCode, orderCode },
+          );
+        }
+
+        sessionStorage.removeItem(PENDING_PAYMENT_ORDER_CODE_KEY);
+
+        setPaymentReturn({
+          status: paymentResult === "SUCCESS" ? "success" : "failed",
+          orderCode,
+          message: returnMessage,
+        });
+      }
+
+      await Promise.all([
+        loadSubscriptionAndPlans(),
+        loadBillingHistory(),
+      ]);
+    };
+
+    void handlePaymentReturn();
+  }, [
+    loadBillingHistory,
+    loadSubscriptionAndPlans,
+    location.search,
+  ]);
 
   const currentPlan = subscription?.plan || null;
   const currentPlanCode = normalizeCode(currentPlan?.code);
@@ -415,7 +563,7 @@ export function SubscriptionDashboard() {
     const normalizedPlanCode = normalizeCode(planCode);
 
     if (!normalizedPlanCode) {
-      toast.error("Không xác định được mã gói thanh toán.");
+      toast.error("Unable to determine the selected plan code.");
       return;
     }
 
@@ -424,10 +572,18 @@ export function SubscriptionDashboard() {
 
       const response = await createVnpayPaymentApi(normalizedPlanCode);
       const paymentUrl = response.data?.paymentUrl;
+      const orderCode = response.data?.orderCode?.trim();
 
       if (!paymentUrl) {
-        toast.error("Backend không trả về đường dẫn thanh toán VNPAY.");
+        sessionStorage.removeItem(PENDING_PAYMENT_ORDER_CODE_KEY);
+        toast.error("The backend did not return a VNPAY payment URL.");
         return;
+      }
+
+      if (orderCode) {
+        sessionStorage.setItem(PENDING_PAYMENT_ORDER_CODE_KEY, orderCode);
+      } else {
+        sessionStorage.removeItem(PENDING_PAYMENT_ORDER_CODE_KEY);
       }
 
       window.location.assign(paymentUrl);
@@ -437,7 +593,7 @@ export function SubscriptionDashboard() {
       toast.error(
         getErrorMessage(
           error,
-          "Không thể tạo thanh toán. Hãy đăng nhập lại rồi thử tiếp.",
+          "Unable to create the payment. Please sign in again and try again.",
         ),
       );
     } finally {
@@ -445,8 +601,23 @@ export function SubscriptionDashboard() {
     }
   };
 
+  const handlePaymentResultConfirm = (): void => {
+    sessionStorage.removeItem(PENDING_PAYMENT_ORDER_CODE_KEY);
+    setPaymentReturn(null);
+    navigate(location.pathname, { replace: true });
+  };
+
+  if (paymentReturn) {
+    return (
+      <PaymentResultPanel
+        result={paymentReturn}
+        onConfirm={handlePaymentResultConfirm}
+      />
+    );
+  }
+
   if (pageLoading) {
-    return <LoadingPanel label="Đang tải thông tin gói đăng ký..." />;
+    return <LoadingPanel label="Loading subscription information..." />;
   }
 
   if (pageError && !subscription) {
@@ -455,7 +626,7 @@ export function SubscriptionDashboard() {
         <AlertCircle className="w-12 h-12 text-red-500" />
 
         <h2 className="mt-4 text-xl font-extrabold text-red-700 dark:text-red-300">
-          Không thể tải trang Subscription
+          Unable to load the Subscription page
         </h2>
 
         <p className="mt-2 max-w-2xl text-sm text-red-600 dark:text-red-300">
@@ -468,7 +639,7 @@ export function SubscriptionDashboard() {
           className="mt-6 inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white hover:bg-red-700"
         >
           <RefreshCw className="w-4 h-4" />
-          Thử lại
+          Try again
         </button>
       </div>
     );
@@ -482,7 +653,7 @@ export function SubscriptionDashboard() {
             Subscription
           </h1>
           <p className="text-slate-500 dark:text-slate-400">
-            Thông tin gói, giới hạn và lịch sử thanh toán từ API hệ thống.
+            Plan details, usage limits, and payment history from the system API.
           </p>
         </div>
 
@@ -496,7 +667,7 @@ export function SubscriptionDashboard() {
             <RefreshCw
               className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`}
             />
-            Làm mới
+            Refresh
           </button>
 
           {preferredUpgradePlan && (
@@ -515,10 +686,10 @@ export function SubscriptionDashboard() {
               )}
 
               {creatingPlanCode === normalizeCode(preferredUpgradePlan.code)
-                ? "Đang tạo thanh toán..."
+                ? "Creating payment..."
                 : currentPlanCode === normalizeCode(preferredUpgradePlan.code)
-                  ? `Gia hạn ${preferredUpgradePlan.name}`
-                  : `Nâng cấp ${preferredUpgradePlan.name}`}
+                  ? `Renew ${preferredUpgradePlan.name}`
+                  : `Upgrade to ${preferredUpgradePlan.name}`}
             </button>
           )}
         </div>
@@ -532,12 +703,12 @@ export function SubscriptionDashboard() {
           <div>
             <div className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-widest text-white/75">
               <Crown className="w-5 h-5" />
-              Gói hiện tại
+              Current plan
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <h2 className="text-4xl font-extrabold">
-                {currentPlan?.name || "Chưa có gói"}
+                {currentPlan?.name || "No plan"}
               </h2>
 
               {currentPlanCode && (
@@ -549,13 +720,13 @@ export function SubscriptionDashboard() {
 
             <p className="mt-3 max-w-xl text-sm leading-6 text-white/80">
               {currentPlan?.description ||
-                "Thông tin gói được lấy từ GET /api/subscriptions/current."}
+                "Plan information is loaded from GET /api/subscriptions/current."}
             </p>
           </div>
 
           <div className="rounded-2xl border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
             <p className="text-xs font-extrabold uppercase tracking-widest text-white/65">
-              Trạng thái
+              Status
             </p>
 
             <div className="mt-3 flex items-center gap-2">
@@ -572,13 +743,13 @@ export function SubscriptionDashboard() {
             </div>
 
             <p className="mt-3 text-sm text-white/70">
-              Bắt đầu: {formatDate(subscription?.startDate)}
+              Start date: {formatDate(subscription?.startDate)}
             </p>
           </div>
 
           <div className="rounded-2xl border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
             <p className="text-xs font-extrabold uppercase tracking-widest text-white/65">
-              Thời hạn
+              Expiration
             </p>
 
             <p className="mt-3 text-xl font-extrabold">
@@ -587,8 +758,8 @@ export function SubscriptionDashboard() {
 
             <p className="mt-3 text-sm text-white/70">
               {remainingDays === null
-                ? "Gói hiện tại không có ngày hết hạn."
-                : `${formatNumber(remainingDays)} ngày còn lại`}
+                ? "The current plan does not expire."
+                : `${formatNumber(remainingDays)} days remaining`}
             </p>
           </div>
         </div>
@@ -597,9 +768,9 @@ export function SubscriptionDashboard() {
       <div className="flex items-center gap-2 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
         {(
           [
-            ["overview", "Tổng quan"],
-            ["plans", "Các gói"],
-            ["billing", "Lịch sử thanh toán"],
+            ["overview", "Overview"],
+            ["plans", "Plans"],
+            ["billing", "Payment history"],
           ] as Array<[SubscriptionTab, string]>
         ).map(([tab, label]) => (
           <button
@@ -632,32 +803,32 @@ export function SubscriptionDashboard() {
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
             {[
               {
-                label: "Giới hạn lưu trữ",
+                label: "Storage limit",
                 value: formatStorage(currentPlan.storageLimitMb),
                 icon: HardDrive,
                 className:
                   "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300",
               },
               {
-                label: "Dung lượng mỗi file",
+                label: "Maximum file size",
                 value: formatStorage(currentPlan.maxUploadSizePerFileMb),
                 icon: Upload,
                 className:
                   "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300",
               },
               {
-                label: "Token AI mỗi ngày",
+                label: "Daily AI tokens",
                 value: formatNumber(currentPlan.dailyTokenLimit),
                 icon: Bot,
                 className:
                   "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300",
               },
               {
-                label: "Giá gói",
+                label: "Plan price",
                 value:
                   toSafeNumber(currentPlan.price) > 0
                     ? formatCurrency(currentPlan.price)
-                    : "Miễn phí",
+                    : "Free",
                 icon: WalletCards,
                 className:
                   "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300",
@@ -691,10 +862,10 @@ export function SubscriptionDashboard() {
                 </div>
                 <div>
                   <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
-                    Quyền lợi của gói
+                    Plan benefits
                   </h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Dữ liệu trực tiếp từ cấu hình plan của backend.
+                    Live data from the backend plan configuration.
                   </p>
                 </div>
               </div>
@@ -711,7 +882,9 @@ export function SubscriptionDashboard() {
                       Document upload
                     </p>
                     <p className="font-bold text-slate-900 dark:text-white">
-                      {currentPlan.allowDocumentUpload ? "Cho phép" : "Không cho phép"}
+                      {currentPlan.allowDocumentUpload
+                        ? "Allowed"
+                        : "Not allowed"}
                     </p>
                   </div>
                 </div>
@@ -734,7 +907,7 @@ export function SubscriptionDashboard() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
-                    Thanh toán gần nhất
+                    Latest payment
                   </h3>
                 </div>
 
@@ -744,7 +917,7 @@ export function SubscriptionDashboard() {
               {billingLoading ? (
                 <div className="min-h-52 flex items-center justify-center text-sm font-semibold text-slate-500 dark:text-slate-400">
                   <RefreshCw className="mr-2 w-4 h-4 animate-spin" />
-                  Đang tải...
+                  Loading...
                 </div>
               ) : latestPayment ? (
                 <div className="mt-6 space-y-4">
@@ -752,7 +925,7 @@ export function SubscriptionDashboard() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                          Mã đơn hàng
+                          Order code
                         </p>
                         <p className="mt-1 break-all font-extrabold text-slate-900 dark:text-white">
                           {getPaymentOrderCode(latestPayment, 0)}
@@ -771,7 +944,7 @@ export function SubscriptionDashboard() {
                     <div className="mt-5 grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Gói
+                          Plan
                         </p>
                         <p className="mt-1 font-bold text-slate-900 dark:text-white">
                           {latestPayment.planName ||
@@ -782,7 +955,7 @@ export function SubscriptionDashboard() {
 
                       <div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Số tiền
+                          Amount
                         </p>
                         <p className="mt-1 font-extrabold text-slate-900 dark:text-white">
                           {formatCurrency(latestPayment.amount)}
@@ -792,17 +965,17 @@ export function SubscriptionDashboard() {
                   </div>
 
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Thời gian: {formatDateTime(getPaymentDate(latestPayment))}
+                    Date: {formatDateTime(getPaymentDate(latestPayment))}
                   </p>
                 </div>
               ) : (
                 <div className="min-h-52 flex flex-col items-center justify-center text-center">
                   <ReceiptText className="w-10 h-10 text-slate-300 dark:text-slate-600" />
                   <p className="mt-3 font-bold text-slate-700 dark:text-slate-200">
-                    Chưa có lịch sử thanh toán
+                    No payment history yet
                   </p>
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Các giao dịch VNPAY sẽ xuất hiện tại đây.
+                    VNPAY transactions will appear here.
                   </p>
                 </div>
               )}
@@ -834,7 +1007,7 @@ export function SubscriptionDashboard() {
               >
                 {isCurrentPlan && (
                   <div className="absolute right-5 top-5 rounded-full bg-blue-600 px-3 py-1 text-xs font-extrabold text-white">
-                    Gói hiện tại
+                    Current plan
                   </div>
                 )}
 
@@ -865,12 +1038,12 @@ export function SubscriptionDashboard() {
 
                 <div className="mt-6 flex items-end gap-2">
                   <span className="text-3xl font-extrabold text-slate-900 dark:text-white">
-                    {isPaidPlan ? formatCurrency(plan.price) : "Miễn phí"}
+                    {isPaidPlan ? formatCurrency(plan.price) : "Free"}
                   </span>
                 </div>
 
                 <p className="mt-3 min-h-12 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  {plan.description || "Không có mô tả cho gói này."}
+                  {plan.description || "No description is available for this plan."}
                 </p>
 
                 <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -928,14 +1101,14 @@ export function SubscriptionDashboard() {
                   }`}
                 >
                   {isCreatingThisPlan
-                    ? "Đang tạo thanh toán..."
+                    ? "Creating payment..."
                     : isCurrentPlan && isPaidPlan
-                      ? `Gia hạn ${plan.name}`
+                      ? `Renew ${plan.name}`
                       : isCurrentPlan
-                        ? "Đang sử dụng"
+                        ? "Current plan"
                         : isPaidPlan
-                          ? `Chọn ${plan.name}`
-                          : "Không hỗ trợ hạ gói"}
+                          ? `Choose ${plan.name}`
+                          : "Downgrading is not supported"}
                 </button>
               </section>
             );
@@ -943,7 +1116,7 @@ export function SubscriptionDashboard() {
 
           {plans.length === 0 && (
             <div className="xl:col-span-2 min-h-72 flex items-center justify-center rounded-[2rem] border border-dashed border-slate-300 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-              API chưa trả về gói đang hoạt động.
+              The API did not return any active plans.
             </div>
           )}
         </motion.div>
@@ -958,7 +1131,7 @@ export function SubscriptionDashboard() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
-                Lịch sử thanh toán
+                Payment history
               </h2>
             </div>
 
@@ -971,7 +1144,7 @@ export function SubscriptionDashboard() {
               <RefreshCw
                 className={`w-4 h-4 ${billingLoading ? "animate-spin" : ""}`}
               />
-              Làm mới
+              Refresh
             </button>
           </div>
 
@@ -986,13 +1159,13 @@ export function SubscriptionDashboard() {
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                  <th className="px-4 py-3">Mã đơn hàng</th>
-                  <th className="px-4 py-3">Thời gian</th>
-                  <th className="px-4 py-3">Gói</th>
-                  <th className="px-4 py-3">Số ngày</th>
-                  <th className="px-4 py-3">Nhà cung cấp</th>
-                  <th className="px-4 py-3 text-right">Số tiền</th>
-                  <th className="px-4 py-3 text-right">Trạng thái</th>
+                  <th className="px-4 py-3">Order code</th>
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Plan</th>
+                  <th className="px-4 py-3">Days</th>
+                  <th className="px-4 py-3">Provider</th>
+                  <th className="px-4 py-3 text-right">Amount</th>
+                  <th className="px-4 py-3 text-right">Status</th>
                 </tr>
               </thead>
 
@@ -1004,7 +1177,7 @@ export function SubscriptionDashboard() {
                       className="px-4 py-12 text-center text-slate-500 dark:text-slate-400"
                     >
                       <RefreshCw className="mx-auto mb-3 w-5 h-5 animate-spin" />
-                      Đang tải lịch sử thanh toán...
+                      Loading payment history...
                     </td>
                   </tr>
                 )}
@@ -1016,7 +1189,7 @@ export function SubscriptionDashboard() {
                       className="px-4 py-12 text-center text-slate-500 dark:text-slate-400"
                     >
                       <ReceiptText className="mx-auto mb-3 w-9 h-9 text-slate-300 dark:text-slate-600" />
-                      Chưa có giao dịch thanh toán.
+                      No payment transactions yet.
                     </td>
                   </tr>
                 )}
@@ -1058,7 +1231,7 @@ export function SubscriptionDashboard() {
 
                       <td className="px-4 py-4 text-slate-600 dark:text-slate-300">
                         {payment.purchasedDays
-                          ? `${formatNumber(payment.purchasedDays)} ngày`
+                          ? `${formatNumber(payment.purchasedDays)} days`
                           : "—"}
                       </td>
 
@@ -1095,11 +1268,11 @@ export function SubscriptionDashboard() {
             <ShieldCheck className="mt-0.5 w-5 h-5 shrink-0 text-emerald-500" />
             <div>
               <p className="font-bold text-slate-800 dark:text-slate-200">
-                Thanh toán được xử lý qua VNPAY
+                Payments are processed through VNPAY
               </p>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Frontend không lưu thông tin ngân hàng. Trạng thái giao dịch được
-                lấy từ backend.
+                The frontend does not store banking information. Transaction
+                status is retrieved from the backend.
               </p>
             </div>
           </div>
@@ -1143,7 +1316,7 @@ export function SubscriptionDashboard() {
                 {item.label}
               </p>
               <p className="text-sm font-bold text-slate-900 dark:text-white">
-                {item.enabled ? "Được phép" : "Không hỗ trợ"}
+                {item.enabled ? "Supported" : "Not supported"}
               </p>
             </div>
           </div>

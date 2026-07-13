@@ -4,6 +4,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router";
+
 import {
   BarChart2,
   CreditCard,
@@ -29,11 +30,13 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+
 import {
   useEffect,
   useMemo,
   useState,
 } from "react";
+
 import { motion } from "motion/react";
 
 import { useTheme } from "./ThemeProvider";
@@ -66,104 +69,181 @@ type ProfileUpdatedDetail = {
   phone?: string | null;
 };
 
-const getStoredUser = (): StoredUser | null => {
-  try {
-    const rawUser = localStorage.getItem("user");
-
-    if (!rawUser) {
-      return null;
-    }
-
-    return JSON.parse(rawUser) as StoredUser;
-  } catch {
-    return null;
-  }
-};
-
-const decodeJwtPayload = (
-  token: string,
-): {
+type JwtPayload = {
   role?: string;
   roles?: string[];
   authorities?: string[];
-} => {
+};
+
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:8080"
+).replace(/\/$/, "");
+
+const resolveAvatarUrl = (
+  value?: string | null,
+): string => {
+  const normalizedValue =
+    value?.trim() || "";
+
+  if (!normalizedValue) {
+    return "";
+  }
+
+  if (
+    /^(https?:\/\/|data:|blob:)/i.test(
+      normalizedValue,
+    )
+  ) {
+    return normalizedValue;
+  }
+
+  return `${API_BASE_URL}${
+    normalizedValue.startsWith("/")
+      ? ""
+      : "/"
+  }${normalizedValue}`;
+};
+
+const appendCacheVersion = (
+  url: string,
+  version: number,
+): string => {
+  if (
+    !url ||
+    /^(data:|blob:)/i.test(url)
+  ) {
+    return url;
+  }
+
+  return `${url}${
+    url.includes("?") ? "&" : "?"
+  }v=${version}`;
+};
+
+const getStoredUser =
+  (): StoredUser | null => {
+    try {
+      const rawUser =
+        localStorage.getItem("user");
+
+      if (!rawUser) {
+        return null;
+      }
+
+      return JSON.parse(
+        rawUser,
+      ) as StoredUser;
+    } catch {
+      return null;
+    }
+  };
+
+const decodeJwtPayload = (
+  token: string,
+): JwtPayload => {
   try {
-    const encodedPayload = token.split(".")[1];
+    const encodedPayload =
+      token.split(".")[1];
 
     if (!encodedPayload) {
       return {};
     }
 
-    const normalizedPayload = encodedPayload
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
+    const normalizedPayload =
+      encodedPayload
+        .replace(/-/g, "+")
+        .replace(/_/g, "/");
 
-    const paddedPayload = normalizedPayload.padEnd(
-      Math.ceil(normalizedPayload.length / 4) * 4,
-      "=",
-    );
+    const paddedPayload =
+      normalizedPayload.padEnd(
+        Math.ceil(
+          normalizedPayload.length / 4,
+        ) * 4,
+        "=",
+      );
 
-    return JSON.parse(atob(paddedPayload));
+    return JSON.parse(
+      atob(paddedPayload),
+    ) as JwtPayload;
   } catch {
     return {};
   }
 };
 
-const getRoleFromToken = (): string | null => {
-  const token =
-    localStorage.getItem("token") ||
-    localStorage.getItem("accessToken") ||
-    localStorage.getItem("jwt");
+const getRoleFromToken =
+  (): string | null => {
+    const token =
+      localStorage.getItem("token") ||
+      localStorage.getItem(
+        "accessToken",
+      ) ||
+      localStorage.getItem("jwt");
 
-  if (!token) {
-    return null;
-  }
+    if (!token) {
+      return null;
+    }
 
-  const payload = decodeJwtPayload(token);
+    const payload =
+      decodeJwtPayload(token);
 
-  return (
-    payload.role ||
-    payload.roles?.[0] ||
-    payload.authorities?.[0] ||
-    null
-  );
-};
+    return (
+      payload.role ||
+      payload.roles?.[0] ||
+      payload.authorities?.[0] ||
+      null
+    );
+  };
 
-const getCurrentFullName = (): string => {
-  const storedUser = getStoredUser();
+const getCurrentFullName =
+  (): string => {
+    const storedUser =
+      getStoredUser();
 
-  return (
-    localStorage.getItem("fullName")?.trim() ||
-    storedUser?.fullName?.trim() ||
-    storedUser?.name?.trim() ||
-    localStorage.getItem("email")?.trim() ||
-    storedUser?.email?.trim() ||
-    "User"
-  );
-};
+    return (
+      localStorage
+        .getItem("fullName")
+        ?.trim() ||
+      storedUser?.fullName?.trim() ||
+      storedUser?.name?.trim() ||
+      localStorage
+        .getItem("email")
+        ?.trim() ||
+      storedUser?.email?.trim() ||
+      "User"
+    );
+  };
 
 const getCurrentRole = (): string => {
   const storedUser = getStoredUser();
 
   return (
-    localStorage.getItem("role")?.trim() ||
+    localStorage
+      .getItem("role")
+      ?.trim() ||
     storedUser?.role?.trim() ||
     getRoleFromToken() ||
     "USER"
   );
 };
 
-const getCurrentAvatarUrl = (): string => {
-  const storedUser = getStoredUser();
+const getCurrentAvatarUrl =
+  (): string => {
+    const storedUser =
+      getStoredUser();
 
-  return (
-    storedUser?.avatarUrl?.trim() ||
-    localStorage.getItem("avatarUrl")?.trim() ||
-    ""
-  );
-};
+    return (
+      storedUser?.avatarUrl?.trim() ||
+      localStorage
+        .getItem("avatarUrl")
+        ?.trim() ||
+      ""
+    );
+  };
 
-const getInitials = (name: string): string => {
+const getInitials = (
+  name: string,
+): string => {
   const cleanName = name.trim();
 
   if (!cleanName) {
@@ -221,35 +301,62 @@ export function DashboardLayout({
   ] = useState(false);
 
   const [
+    avatarVersion,
+    setAvatarVersion,
+  ] = useState(() => Date.now());
+
+  const [
     displayPlan,
     setDisplayPlan,
-  ] = useState<"Free" | "Pro">("Free");
+  ] = useState<"Free" | "Pro">(
+    "Free",
+  );
 
   const avatarText = useMemo(
     () => getInitials(displayName),
     [displayName],
   );
 
-  const isCurrentAdmin = useMemo(() => {
-    const role = displayRole
-      .trim()
-      .toUpperCase();
+  const displayAvatarSource =
+    useMemo(() => {
+      const resolvedUrl =
+        resolveAvatarUrl(
+          displayAvatarUrl,
+        );
 
-    return (
-      isAdmin ||
-      role === "ADMIN" ||
-      role === "ROLE_ADMIN" ||
-      role === "ADMINISTRATOR"
-    );
-  }, [displayRole, isAdmin]);
+      return appendCacheVersion(
+        resolvedUrl,
+        avatarVersion,
+      );
+    }, [
+      displayAvatarUrl,
+      avatarVersion,
+    ]);
+
+  const isCurrentAdmin =
+    useMemo(() => {
+      const role = displayRole
+        .trim()
+        .toUpperCase();
+
+      return (
+        isAdmin ||
+        role === "ADMIN" ||
+        role === "ROLE_ADMIN" ||
+        role === "ADMINISTRATOR"
+      );
+    }, [displayRole, isAdmin]);
 
   const roleText = useMemo(() => {
     if (isCurrentAdmin) {
-      return "Administrator";
+      return "Administrator · Pro";
     }
 
     return `User · ${displayPlan}`;
-  }, [isCurrentAdmin, displayPlan]);
+  }, [
+    isCurrentAdmin,
+    displayPlan,
+  ]);
 
   useEffect(() => {
     setDisplayName(
@@ -266,63 +373,74 @@ export function DashboardLayout({
 
     setAvatarLoadError(false);
 
-    const fetchCurrentPlan = async () => {
-      if (isAdmin) {
-        setDisplayPlan("Pro");
-        return;
-      }
+    const fetchCurrentPlan =
+      async (): Promise<void> => {
+        if (isCurrentAdmin) {
+          setDisplayPlan("Pro");
+          return;
+        }
 
-      try {
-        const response =
-          await subscriptionApi.getCurrentSubscription();
+        try {
+          const response =
+            await subscriptionApi.getCurrentSubscription();
 
-        const code =
-          response.data?.plan?.code?.toUpperCase();
+          const code =
+            response.data?.plan?.code?.toUpperCase();
 
-        const status =
-          response.data?.status?.toUpperCase();
+          const status =
+            response.data?.status?.toUpperCase();
 
-        const activePro =
-          code === "PRO" &&
-          (status === "ACTIVE" ||
-            status === "VALID");
+          const activePro =
+            code === "PRO" &&
+            (status === "ACTIVE" ||
+              status === "VALID");
 
-        setDisplayPlan(
-          activePro ? "Pro" : "Free",
-        );
-      } catch (error) {
-        console.warn(
-          "Load current plan failed, fallback to Free:",
-          error,
-        );
+          setDisplayPlan(
+            activePro
+              ? "Pro"
+              : "Free",
+          );
+        } catch (error) {
+          console.warn(
+            "Load current plan failed, fallback to Free:",
+            error,
+          );
 
-        setDisplayPlan("Free");
-      }
-    };
+          setDisplayPlan("Free");
+        }
+      };
 
     void fetchCurrentPlan();
-  }, [location.pathname, isAdmin]);
+  }, [
+    location.pathname,
+    isCurrentAdmin,
+  ]);
 
   useEffect(() => {
-    const syncProfileFromStorage = () => {
-      setDisplayName(
-        getCurrentFullName(),
-      );
+    const syncProfileFromStorage =
+      (): void => {
+        setDisplayName(
+          getCurrentFullName(),
+        );
 
-      setDisplayRole(
-        getCurrentRole(),
-      );
+        setDisplayRole(
+          getCurrentRole(),
+        );
 
-      setDisplayAvatarUrl(
-        getCurrentAvatarUrl(),
-      );
+        setDisplayAvatarUrl(
+          getCurrentAvatarUrl(),
+        );
 
-      setAvatarLoadError(false);
-    };
+        setAvatarVersion(
+          Date.now(),
+        );
+
+        setAvatarLoadError(false);
+      };
 
     const handleProfileUpdated = (
       event: Event,
-    ) => {
+    ): void => {
       const customEvent =
         event as CustomEvent<ProfileUpdatedDetail>;
 
@@ -341,9 +459,10 @@ export function DashboardLayout({
 
       setDisplayAvatarUrl(
         updatedProfile?.avatarUrl?.trim() ||
-          "",
+          getCurrentAvatarUrl(),
       );
 
+      setAvatarVersion(Date.now());
       setAvatarLoadError(false);
     };
 
@@ -494,7 +613,10 @@ export function DashboardLayout({
     to: string,
   ): boolean => {
     if (to === "/admin") {
-      return location.pathname === "/admin";
+      return (
+        location.pathname ===
+        "/admin"
+      );
     }
 
     if (to === "/app/profile") {
@@ -511,7 +633,7 @@ export function DashboardLayout({
     );
   };
 
-  const handleLogout = () => {
+  const handleLogout = (): void => {
     localStorage.removeItem("token");
     localStorage.removeItem(
       "accessToken",
@@ -539,12 +661,13 @@ export function DashboardLayout({
     });
   };
 
-  const handleAvatarClick = () => {
-    navigate("/app/profile");
-  };
+  const handleAvatarClick =
+    (): void => {
+      navigate("/app/profile");
+    };
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <div className="relative flex h-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <motion.aside
         initial={false}
         animate={{
@@ -557,20 +680,24 @@ export function DashboardLayout({
           stiffness: 300,
           damping: 30,
         }}
-        className="relative z-20 flex flex-col h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-sm"
+        className="relative z-20 flex h-full flex-col border-r border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"
       >
         <div
-          className={`flex items-center h-16 border-b border-slate-100 dark:border-slate-800 shrink-0 ${
-            isSidebarOpen ? "px-4" : "px-2"
+          className={`flex h-16 shrink-0 items-center border-b border-slate-100 dark:border-slate-800 ${
+            isSidebarOpen
+              ? "px-4"
+              : "px-2"
           }`}
         >
           <div
-            className={`flex items-center min-w-0 overflow-hidden whitespace-nowrap ${
-              isSidebarOpen ? "gap-2" : "gap-0"
+            className={`flex min-w-0 items-center overflow-hidden whitespace-nowrap ${
+              isSidebarOpen
+                ? "gap-2"
+                : "gap-0"
             }`}
           >
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-600 text-white shrink-0">
-              <span className="font-bold text-lg">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
+              <span className="text-lg font-bold">
                 A
               </span>
             </div>
@@ -583,7 +710,7 @@ export function DashboardLayout({
                 animate={{
                   opacity: 1,
                 }}
-                className="font-bold text-xl text-slate-800 dark:text-white tracking-tight truncate"
+                className="truncate text-xl font-bold tracking-tight text-slate-800 dark:text-white"
               >
                 AI Study Hub
               </motion.span>
@@ -592,14 +719,16 @@ export function DashboardLayout({
 
           <button
             type="button"
-            onClick={() =>
+            onClick={() => {
               setIsSidebarOpen(
                 (previous) =>
                   !previous,
-              )
-            }
-            className={`ml-auto text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors shrink-0 ${
-              isSidebarOpen ? "p-1.5" : "p-1"
+              );
+            }}
+            className={`ml-auto shrink-0 rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 ${
+              isSidebarOpen
+                ? "p-1.5"
+                : "p-1"
             }`}
             aria-label={
               isSidebarOpen
@@ -612,14 +741,14 @@ export function DashboardLayout({
                 : "Expand sidebar"
             }
           >
-            <Menu className="w-4 h-4" />
+            <Menu className="h-4 w-4" />
           </button>
         </div>
 
-        <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto overflow-x-hidden">
+        <nav className="flex-1 space-y-1 overflow-x-hidden overflow-y-auto px-3 py-5">
           {isAdmin &&
             isSidebarOpen && (
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest px-3 pb-2">
+              <p className="px-3 pb-2 text-xs font-bold uppercase tracking-widest text-slate-400">
                 Admin Panel
               </p>
             )}
@@ -635,10 +764,10 @@ export function DashboardLayout({
                 end={
                   link.to === "/admin"
                 }
-                className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group ${
+                className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 ${
                   active
-                    ? "bg-blue-600 text-white font-medium hover:bg-blue-700"
-                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
+                    ? "bg-blue-600 font-medium text-white hover:bg-blue-700"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                 }`}
                 title={
                   !isSidebarOpen
@@ -647,7 +776,7 @@ export function DashboardLayout({
                 }
               >
                 <link.icon
-                  className={`w-5 h-5 shrink-0 transition-colors ${
+                  className={`h-5 w-5 shrink-0 transition-colors ${
                     active
                       ? "text-white"
                       : "text-slate-400 group-hover:text-slate-600 dark:group-hover:text-white"
@@ -671,26 +800,26 @@ export function DashboardLayout({
                 {!isSidebarOpen &&
                   link.label ===
                     "Reports" && (
-                    <div className="absolute left-14 w-2 h-2 bg-red-500 rounded-full" />
+                    <div className="absolute left-14 h-2 w-2 rounded-full bg-red-500" />
                   )}
               </NavLink>
             );
           })}
         </nav>
 
-        <div className="p-3 border-t border-slate-100 dark:border-slate-800 shrink-0 space-y-2">
+        <div className="shrink-0 space-y-2 border-t border-slate-100 p-3 dark:border-slate-800">
           {!isAdmin &&
             isCurrentAdmin && (
               <NavLink
                 to="/admin"
-                className="flex items-center gap-3 px-3 py-2.5 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transition-colors"
+                className="flex items-center gap-3 rounded-xl border border-blue-200 px-3 py-2.5 text-blue-600 transition-colors hover:bg-blue-50 dark:border-blue-500/30 dark:text-blue-300 dark:hover:bg-blue-500/10"
                 title={
                   !isSidebarOpen
                     ? "Back to Admin Panel"
                     : undefined
                 }
               >
-                <ShieldCheck className="w-5 h-5 shrink-0" />
+                <ShieldCheck className="h-5 w-5 shrink-0" />
 
                 {isSidebarOpen && (
                   <span className="text-sm font-semibold">
@@ -703,14 +832,14 @@ export function DashboardLayout({
           <button
             type="button"
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors"
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-950/30"
             title={
               !isSidebarOpen
                 ? "Log Out"
                 : undefined
             }
           >
-            <LogOut className="w-5 h-5 shrink-0" />
+            <LogOut className="h-5 w-5 shrink-0" />
 
             {isSidebarOpen && (
               <span className="text-sm font-medium">
@@ -721,8 +850,8 @@ export function DashboardLayout({
         </div>
       </motion.aside>
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-16 flex items-center gap-4 px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-16 shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
           <GlobalDocumentSearch />
 
           <div className="ml-auto flex items-center gap-3">
@@ -730,10 +859,10 @@ export function DashboardLayout({
               displayPlan ===
                 "Free" && (
                 <NavLink
-                  to="/app/subscription/upgrade"
-                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold rounded-xl hover:opacity-90 transition-opacity"
+                  to="/app/subscription"
+                  className="hidden items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-1.5 text-xs font-bold text-white transition-opacity hover:opacity-90 sm:flex"
                 >
-                  <Zap className="w-3 h-3" />
+                  <Zap className="h-3 w-3" />
                   Upgrade Pro
                 </NavLink>
               )}
@@ -741,7 +870,7 @@ export function DashboardLayout({
             <button
               type="button"
               onClick={toggleTheme}
-              className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
               title={
                 theme === "light"
                   ? "Switch to dark mode"
@@ -754,48 +883,49 @@ export function DashboardLayout({
               }
             >
               {theme === "light" ? (
-                <Moon className="w-5 h-5" />
+                <Moon className="h-5 w-5" />
               ) : (
-                <Sun className="w-5 h-5" />
+                <Sun className="h-5 w-5" />
               )}
             </button>
 
-            {/* Nút thông báo chỉ nằm ở đây */}
             <NotificationBell />
 
             <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
 
             <button
               type="button"
-              onClick={handleAvatarClick}
-              className="flex items-center gap-3 rounded-xl p-1 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              onClick={
+                handleAvatarClick
+              }
+              className="flex items-center gap-3 rounded-xl p-1 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
               title="Open profile"
             >
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium text-slate-900 dark:text-white leading-none">
+              <div className="hidden text-right sm:block">
+                <p className="text-sm font-medium leading-none text-slate-900 dark:text-white">
                   {displayName}
                 </p>
 
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {roleText}
                 </p>
               </div>
 
-              <div className="w-10 h-10 overflow-hidden rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 border-2 border-white dark:border-slate-900 shadow-sm flex items-center justify-center text-white font-bold text-sm">
-                {displayAvatarUrl &&
+              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-gradient-to-br from-blue-500 to-indigo-600 text-sm font-bold text-white shadow-sm dark:border-slate-900">
+                {displayAvatarSource &&
                 !avatarLoadError ? (
                   <img
                     key={
-                      displayAvatarUrl
+                      displayAvatarSource
                     }
                     src={
-                      displayAvatarUrl
+                      displayAvatarSource
                     }
                     alt={
                       displayName ||
                       "User avatar"
                     }
-                    className="w-full h-full object-cover"
+                    className="h-full w-full object-cover"
                     referrerPolicy="no-referrer"
                     onLoad={() => {
                       setAvatarLoadError(
@@ -816,8 +946,8 @@ export function DashboardLayout({
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50 dark:bg-slate-950">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 overflow-y-auto bg-slate-50 p-6 dark:bg-slate-950 md:p-8">
+          <div className="mx-auto max-w-7xl">
             <Outlet />
           </div>
         </main>
@@ -825,8 +955,8 @@ export function DashboardLayout({
 
       {!isAdmin && (
         <div className="fixed bottom-6 right-6 z-[9999]">
-          <div className="relative w-[140px] h-[110px]">
-            <div className="absolute bottom-0 right-0 w-[85px] h-[85px]">
+          <div className="relative h-[110px] w-[140px]">
+            <div className="absolute bottom-0 right-0 h-[85px] w-[85px]">
               <Chatbot3D />
             </div>
           </div>

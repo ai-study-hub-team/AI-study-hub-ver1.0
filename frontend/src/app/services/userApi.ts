@@ -103,6 +103,16 @@ export const userApi = {
     );
   },
 
+  updateAvatar: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    return apiClient.patch<UserResponse>(
+      "/api/account/me/avatar",
+      formData,
+    );
+  },
+
   changePassword: (
     payload: ChangePasswordPayload,
   ) => {
