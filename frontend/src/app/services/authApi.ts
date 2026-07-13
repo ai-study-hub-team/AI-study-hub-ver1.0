@@ -100,10 +100,12 @@ export const resendVerificationApi = (
 
 // Lấy user đang đăng nhập
 export const getAuthMeApi = () => {
-  return apiClient.get("/api/auth/me");
+  return apiClient.get(
+    "/api/auth/me",
+  );
 };
 
-// Refresh token
+// Refresh access token
 export const refreshTokenApi = (
   refreshToken: string,
 ) => {
@@ -115,17 +117,43 @@ export const refreshTokenApi = (
   );
 };
 
-// Đăng xuất
-export const logoutApi = () => {
-  return apiClient.post("/api/auth/logout", {
-    refreshToken:
-      localStorage.getItem("refreshToken"),
-  });
-};
+/**
+ * Backend đã có:
+ * POST /api/auth/logout
+ *
+ * Body:
+ * {
+ *   refreshToken: "..."
+ * }
+ */
+export const logoutApi =
+  async (): Promise<void> => {
+    const refreshToken =
+      localStorage
+        .getItem("refreshToken")
+        ?.trim();
+
+    /*
+     * Nếu refresh token đã mất thì vẫn cho phép
+     * frontend tiếp tục xóa dữ liệu đăng nhập.
+     */
+    if (!refreshToken) {
+      return;
+    }
+
+    await apiClient.post(
+      "/api/auth/logout",
+      {
+        refreshToken,
+      },
+    );
+  };
 
 // Lấy profile
 export const getMyAccountApi = () => {
-  return apiClient.get("/api/account/me");
+  return apiClient.get(
+    "/api/account/me",
+  );
 };
 
 // Cập nhật profile
