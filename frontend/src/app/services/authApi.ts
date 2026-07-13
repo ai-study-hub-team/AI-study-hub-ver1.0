@@ -34,19 +34,33 @@ export type EmailVerificationResponse = {
   nextAction: string;
 };
 
-// Đăng ký
-export const registerApi = (data: {
+export type RegisterPayload = {
   fullName: string;
   email: string;
   password: string;
-}) => {
+};
+
+export type UpdateMyAccountPayload = {
+  fullName?: string;
+  avatarUrl?: string;
+  phone?: string;
+  bio?: string;
+};
+
+export type ChangePasswordPayload = {
+  currentPassword: string;
+  newPassword: string;
+};
+
+// Register a new account.
+export const registerApi = (data: RegisterPayload) => {
   return apiClient.post<EmailVerificationResponse>(
     "/api/auth/register",
     data,
   );
 };
 
-// Đăng nhập bằng email/password
+// Sign in with email and password.
 export const loginApi = (
   email: string,
   password: string,
@@ -60,10 +74,8 @@ export const loginApi = (
   );
 };
 
-// Đăng nhập bằng Google ID Token
-export const googleLoginApi = (
-  idToken: string,
-) => {
+// Sign in with a Google ID token.
+export const googleLoginApi = (idToken: string) => {
   return apiClient.post<AuthResponse>(
     "/api/auth/google",
     {
@@ -72,24 +84,18 @@ export const googleLoginApi = (
   );
 };
 
-// Xác thực email
-export const verifyEmailApi = (
-  token: string,
-) => {
+// Verify an email address.
+export const verifyEmailApi = (token: string) => {
   return apiClient.get<EmailVerificationResponse>(
     "/api/auth/verify-email",
     {
-      params: {
-        token,
-      },
+      params: { token },
     },
   );
 };
 
-// Gửi lại email xác thực
-export const resendVerificationApi = (
-  email: string,
-) => {
+// Resend the verification email.
+export const resendVerificationApi = (email: string) => {
   return apiClient.post<EmailVerificationResponse>(
     "/api/auth/resend-verification",
     {
@@ -98,17 +104,13 @@ export const resendVerificationApi = (
   );
 };
 
-// Lấy user đang đăng nhập
+// Get the currently authenticated user.
 export const getAuthMeApi = () => {
-  return apiClient.get(
-    "/api/auth/me",
-  );
+  return apiClient.get("/api/auth/me");
 };
 
-// Refresh access token
-export const refreshTokenApi = (
-  refreshToken: string,
-) => {
+// Refresh the access token.
+export const refreshTokenApi = (refreshToken: string) => {
   return apiClient.post<AuthResponse>(
     "/api/auth/refresh",
     {
@@ -117,63 +119,29 @@ export const refreshTokenApi = (
   );
 };
 
-/**
- * Backend đã có:
- * POST /api/auth/logout
- *
- * Body:
- * {
- *   refreshToken: "..."
- * }
- */
-export const logoutApi =
-  async (): Promise<void> => {
-    const refreshToken =
-      localStorage
-        .getItem("refreshToken")
-        ?.trim();
+// Sign out and invalidate the refresh token.
+export const logoutApi = () => {
+  return apiClient.post("/api/auth/logout", {
+    refreshToken: localStorage.getItem("refreshToken"),
+  });
+};
 
-    /*
-     * Nếu refresh token đã mất thì vẫn cho phép
-     * frontend tiếp tục xóa dữ liệu đăng nhập.
-     */
-    if (!refreshToken) {
-      return;
-    }
-
-    await apiClient.post(
-      "/api/auth/logout",
-      {
-        refreshToken,
-      },
-    );
-  };
-
-// Lấy profile
+// Get the current user's account profile.
 export const getMyAccountApi = () => {
-  return apiClient.get(
-    "/api/account/me",
-  );
+  return apiClient.get("/api/account/me");
 };
 
-// Cập nhật profile
-export const updateMyAccountApi = (data: {
-  fullName?: string;
-  avatarUrl?: string;
-  phone?: string;
-  bio?: string;
-}) => {
-  return apiClient.put(
-    "/api/account/me",
-    data,
-  );
+// Update the current user's account profile.
+export const updateMyAccountApi = (
+  data: UpdateMyAccountPayload,
+) => {
+  return apiClient.put("/api/account/me", data);
 };
 
-// Đổi mật khẩu
-export const changePasswordApi = (data: {
-  currentPassword: string;
-  newPassword: string;
-}) => {
+// Change the current user's password.
+export const changePasswordApi = (
+  data: ChangePasswordPayload,
+) => {
   return apiClient.put(
     "/api/account/change-password",
     data,

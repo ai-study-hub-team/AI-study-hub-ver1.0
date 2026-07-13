@@ -3,6 +3,7 @@ import {
   Bot,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   Coins,
   FileText,
   HardDrive,
@@ -23,7 +24,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -479,26 +480,242 @@ function UserFilter({
   onChange: (value: string) => void;
   label: string;
 }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+
+  const selectedUser = useMemo(
+    () => users.find((user) => String(user.id) === value) || null,
+    [users, value],
+  );
+
+  const filteredUsers = useMemo(() => {
+    const keyword = searchValue.trim().toLowerCase();
+
+    const sortedUsers = [...users].sort((firstUser, secondUser) => {
+      const firstEmail = firstUser.email?.toLowerCase() || "";
+      const secondEmail = secondUser.email?.toLowerCase() || "";
+
+      return firstEmail.localeCompare(secondEmail);
+    });
+
+    if (!keyword) {
+      return sortedUsers;
+    }
+
+    return sortedUsers.filter((user) =>
+      [String(user.id), user.fullName || "", user.email || ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword),
+    );
+  }, [searchValue, users]);
+
+  /*
+   * Avoid rendering hundreds or thousands of rows at once. Users can keep
+   * typing an email, name, or ID to narrow the result list.
+   */
+  const visibleUsers = useMemo(
+    () => filteredUsers.slice(0, 100),
+    [filteredUsers],
+  );
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent): void => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isOpen]);
+
+  const selectUser = (userId: string): void => {
+    onChange(userId);
+    setSearchValue("");
+    setIsOpen(false);
+  };
+
   return (
-    <label className="space-y-1.5">
+    <div ref={containerRef} className="relative space-y-1.5">
       <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
         {label}
       </span>
 
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 min-w-64 max-w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+      <button
+        type="button"
+        onClick={() => setIsOpen((previous) => !previous)}
+       className="
+  flex h-10 w-72 max-w-full
+  items-center justify-between gap-3
+  rounded-xl border border-slate-200
+  bg-white px-3 text-left text-sm
+  font-semibold text-slate-700
+  outline-none transition
+  hover:border-blue-300 focus:border-blue-500
+  dark:border-slate-700 dark:bg-slate-950
+  dark:text-slate-200 dark:hover:border-blue-500/60
+"
+        aria-expanded={isOpen}
       >
-        <option value="">All users</option>
+        <span className="min-w-0 truncate">
+          {selectedUser
+            ? selectedUser.email || selectedUser.fullName || `User ${selectedUser.id}`
+            : "All users"}
+        </span>
 
-        {users.map((user) => (
-          <option key={user.id} value={String(user.id)}>
-            ID {user.id} - {user.fullName || user.email}
-          </option>
-        ))}
-      </select>
-    </label>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+  <div
+    className="
+      absolute left-0 top-full z-[9999] mt-2
+      w-[min(26rem,calc(100vw-2rem))]
+      overflow-hidden rounded-2xl
+      border border-slate-200 bg-white shadow-2xl
+      dark:border-slate-700 dark:bg-slate-900
+    "
+  >
+    <div className="border-b border-slate-200 p-3 dark:border-slate-700">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+        <input
+          ref={searchInputRef}
+          value={searchValue}
+          onChange={(event) =>
+            setSearchValue(event.target.value)
+          }
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setIsOpen(false);
+            }
+          }}
+          placeholder="Search by email, name, or user ID..."
+          className="
+            h-10 w-full rounded-xl
+            border border-slate-200 bg-slate-50
+            pl-9 pr-3 text-sm text-slate-800
+            outline-none transition
+            focus:border-blue-500 focus:bg-white
+            dark:border-slate-700 dark:bg-slate-950
+            dark:text-white
+          "
+        />
+      </div>
+    </div>
+
+    <div
+      className="max-h-64 overflow-y-auto overscroll-contain p-2"
+      role="listbox"
+    >
+      <button
+        type="button"
+        onClick={() => selectUser("")}
+        className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition ${
+          value === ""
+            ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300"
+            : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+        }`}
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-bold">
+            All users
+          </span>
+
+          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+            Combine data from every account
+          </span>
+        </span>
+
+        {value === "" && (
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+        )}
+      </button>
+
+      <div className="my-2 border-t border-slate-100 dark:border-slate-800" />
+
+      {visibleUsers.map((user) => {
+        const isSelected =
+          String(user.id) === value;
+
+        return (
+          <button
+            key={user.id}
+            type="button"
+            onClick={() =>
+              selectUser(String(user.id))
+            }
+            className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+              isSelected
+                ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300"
+                : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+            }`}
+            role="option"
+            aria-selected={isSelected}
+          >
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-bold">
+                {user.email || "No email"}
+              </span>
+
+              <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                {user.fullName || "Unnamed user"} · ID {user.id}
+              </span>
+            </span>
+
+            {isSelected && (
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+            )}
+          </button>
+        );
+      })}
+
+      {filteredUsers.length === 0 && (
+        <div className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+          No user matches this email, name, or ID.
+        </div>
+      )}
+    </div>
+
+    {filteredUsers.length > visibleUsers.length && (
+      <div className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+        Showing the first {visibleUsers.length} of{" "}
+        {filteredUsers.length} users. Continue typing to narrow
+        the results.
+      </div>
+    )}
+  </div>
+)}
+    </div>
   );
 }
 
@@ -1214,17 +1431,6 @@ export function AnalyticsDashboard() {
                   <h3 className="font-extrabold text-slate-900 dark:text-white">
                     User details
                   </h3>
-
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2 text-slate-400" />
-
-                    <input
-                      value={userSearch}
-                      onChange={(event) => setUserSearch(event.target.value)}
-                      placeholder="Search by ID, name, or email..."
-                      className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-blue-500 sm:w-64 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    />
-                  </div>
                 </div>
 
                 <div className="max-h-80 overflow-auto">

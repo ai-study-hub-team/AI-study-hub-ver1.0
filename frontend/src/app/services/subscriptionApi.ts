@@ -21,6 +21,7 @@ export type SubscriptionResponse = {
   startDate?: string | null;
   endDate?: string | null;
   status?: string | null;
+  adminAccess?: boolean;
 };
 
 export type VnpayCreateResponse = {
