@@ -12,11 +12,40 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "ai-study-hub")
 
 # ─── pgvector PostgreSQL connection ──────────────────────────────────────────
-PGVECTOR_HOST = os.getenv("PGVECTOR_HOST", "localhost")
-PGVECTOR_PORT = os.getenv("PGVECTOR_PORT", "5433")
-PGVECTOR_DATABASE = os.getenv("PGVECTOR_DATABASE", "aistudyhub_pgvector_test")
-PGVECTOR_USER = os.getenv("PGVECTOR_USER", "postgres")
-PGVECTOR_PASSWORD = os.getenv("PGVECTOR_PASSWORD", "123456")
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ─── Supabase pgvector PostgreSQL connection ───────────────────
+PGVECTOR_HOST = os.getenv(
+    "PGVECTOR_HOST",
+    "aws-0-ap-northeast-1.pooler.supabase.com"
+)
+
+PGVECTOR_PORT = int(
+    os.getenv("PGVECTOR_PORT", "5432")
+)
+
+PGVECTOR_DATABASE = os.getenv(
+    "PGVECTOR_DATABASE",
+    "postgres"
+)
+
+PGVECTOR_USER = os.getenv(
+    "PGVECTOR_USER",
+    "postgres.tybusvaeviwwbopdqzdk"
+)
+
+PGVECTOR_PASSWORD = os.getenv(
+    "PGVECTOR_PASSWORD",
+    "Trongthuan@13062005"
+)
+
+PGVECTOR_SSLMODE = os.getenv(
+    "PGVECTOR_SSLMODE",
+    "require"
+)
 
 # ─── Gemini ───────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")

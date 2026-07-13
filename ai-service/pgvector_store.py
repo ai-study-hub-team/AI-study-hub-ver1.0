@@ -27,7 +27,6 @@ load_dotenv()
 logger = logging.getLogger("ai-service.pgvector_store")
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-
 from settings import (
     EMBEDDING_MODEL_NAME,
     PGVECTOR_HOST,
@@ -35,8 +34,8 @@ from settings import (
     PGVECTOR_DATABASE,
     PGVECTOR_USER,
     PGVECTOR_PASSWORD,
+    PGVECTOR_SSLMODE,
 )
-
 # ─── Lazy singletons ─────────────────────────────────────────────────────────
 
 _embedding_model = None
@@ -77,6 +76,7 @@ def _get_db_connection():
                 "database": PGVECTOR_DATABASE,
                 "user": PGVECTOR_USER,
                 "password": PGVECTOR_PASSWORD,
+                "sslmode": PGVECTOR_SSLMODE,
             }
             # Test connection
             conn = psycopg2.connect(**_db_pool)

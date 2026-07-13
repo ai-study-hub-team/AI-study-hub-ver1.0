@@ -10,7 +10,7 @@ application:
 
 resend:
   api-key: ${RESEND_API_KEY}
-  from-email: "AI Study Hub <noreply@aistudyhub.com>"
+  from-email: "AI Study Hub <onboarding@resend.dev>"
   frontend-url: http://localhost:5173
 
 email-verification:
@@ -20,24 +20,28 @@ email-verification:
 google:
   oauth:
     client-id: ${GOOGLE_CLIENT_ID:}
-
+    
 spring:
   application:
     name: backend
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/aistudyhub_pgvector_test
-    username: postgres
-    password: 123456
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 0
+      connection-timeout: 30000
 
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      ddl-auto: ${HIBERNATE_DDL_AUTO:update}
+    show-sql: ${JPA_SHOW_SQL:false}
     properties:
       hibernate:
         format_sql: true
-
   # ── File upload limits ───────────────────────────────────────────────────────
   servlet:
     multipart:
