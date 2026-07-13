@@ -36,6 +36,9 @@ public class SubscriptionPlan {
     @Column(nullable = false)
     private BigDecimal price;
 
+    @Column(name = "duration_days")
+    private Integer durationDays;
+
     @Column(columnDefinition = "TEXT")
     private String description;
 

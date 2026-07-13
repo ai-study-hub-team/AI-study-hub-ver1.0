@@ -32,6 +32,9 @@ public class AdminPlanRequest {
     @PositiveOrZero
     private BigDecimal price;
 
+    @PositiveOrZero
+    private Integer durationDays;
+
     private String description;
 
     @NotNull

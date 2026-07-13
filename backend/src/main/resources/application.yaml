@@ -10,11 +10,15 @@ application:
 
 resend:
   api-key: ${RESEND_API_KEY}
-  from-email: "AI Study Hub <noreply@aistudyhub.com>"
+  from-email: "AI Study Hub <onboarding@resend.dev>"
   frontend-url: http://localhost:5173
 
 email-verification:
-  token-expiration-minutes: 30
+  token-expiration-minutes: 1440
+  resend-cooldown-seconds: 60
+
+password-reset:
+  token-expiration-minutes: 15
   resend-cooldown-seconds: 60
 
 google:

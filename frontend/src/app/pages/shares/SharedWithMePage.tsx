@@ -8,6 +8,7 @@ import {
   Loader2,
   RefreshCcw,
   Search,
+  ShieldAlert,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +19,7 @@ import {
   type SharedWithMeType,
 } from "../../services/sharedWithMeApi";
 import { documentApi } from "../../services/documentApi";
+import { ReportDocumentModal } from "./components/ReportDocumentModal";
 
 type FilterType = SharedWithMeType;
 
@@ -94,6 +96,7 @@ export function SharedWithMePage() {
   const [totalElements, setTotalElements] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [reportTarget, setReportTarget] = useState<SharedWithMeItem | null>(null);
 
   const loadItems = useCallback(async () => {
     try {
@@ -393,6 +396,17 @@ export function SharedWithMePage() {
                       {isFolder ? "Open folder" : "Open document"}
                     </button>
 
+                    {isDocument && (
+                      <button
+                        type="button"
+                        onClick={() => setReportTarget(item)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-800 dark:text-red-300 dark:hover:bg-red-950/30"
+                      >
+                        <ShieldAlert className="h-4 w-4" />
+                        Report
+                      </button>
+                    )}
+
                     {isDocument && item.permission === "DOWNLOAD" && (
                       <button
                         type="button"
@@ -435,6 +449,14 @@ export function SharedWithMePage() {
           </button>
         </div>
       </section>
+
+      {reportTarget && (
+        <ReportDocumentModal
+          documentId={reportTarget.itemId}
+          documentTitle={reportTarget.title}
+          onClose={() => setReportTarget(null)}
+        />
+      )}
     </div>
   );
 }

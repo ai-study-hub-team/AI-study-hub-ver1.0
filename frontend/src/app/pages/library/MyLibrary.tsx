@@ -23,8 +23,16 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { DragEvent, DragEventHandler, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
@@ -39,6 +47,7 @@ import type { AiStatus } from "../../constants/documentStatus";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 import { FolderShareModal } from "./components/FolderShareModal";
+import { DocumentInformationModal as DocumentInfoModal } from "../../components/ui/DocumentInformationModal";
 
 interface LibraryDocument {
   id: number;
@@ -304,51 +313,112 @@ function CategoryCard({
   );
 }
 
+interface MenuPosition {
+  top: number;
+  left: number;
+}
+
+const ACTION_MENU_VIEWPORT_PADDING = 12;
+const ACTION_MENU_GAP = 6;
+
 function RowActionMenu({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<MenuPosition>({
+    top: ACTION_MENU_VIEWPORT_PADDING,
+    left: ACTION_MENU_VIEWPORT_PADDING,
+  });
   const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const [menuPosition, setMenuPosition] = useState({ top: 0, right: 16 });
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<number | null>(null);
+
+  const updateMenuPosition = useCallback(() => {
+    const button = buttonRef.current;
+    const menu = menuRef.current;
+    if (!button || !menu) return;
+
+    const anchorRect = button.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const maxLeft = Math.max(
+      ACTION_MENU_VIEWPORT_PADDING,
+      window.innerWidth - menuRect.width - ACTION_MENU_VIEWPORT_PADDING,
+    );
+    const maxTop = Math.max(
+      ACTION_MENU_VIEWPORT_PADDING,
+      window.innerHeight - menuRect.height - ACTION_MENU_VIEWPORT_PADDING,
+    );
+
+    const preferredLeft = anchorRect.right - menuRect.width;
+    const openBelowTop = anchorRect.bottom + ACTION_MENU_GAP;
+    const openAboveTop = anchorRect.top - menuRect.height - ACTION_MENU_GAP;
+    const preferredTop =
+      openBelowTop + menuRect.height <=
+      window.innerHeight - ACTION_MENU_VIEWPORT_PADDING
+        ? openBelowTop
+        : openAboveTop >= ACTION_MENU_VIEWPORT_PADDING
+          ? openAboveTop
+          : Math.min(
+              Math.max(anchorRect.top, ACTION_MENU_VIEWPORT_PADDING),
+              maxTop,
+            );
+
+    const nextPosition = {
+      top: Math.min(
+        Math.max(preferredTop, ACTION_MENU_VIEWPORT_PADDING),
+        maxTop,
+      ),
+      left: Math.min(
+        Math.max(preferredLeft, ACTION_MENU_VIEWPORT_PADDING),
+        maxLeft,
+      ),
+    };
+
+    setMenuPosition((current) =>
+      current.top === nextPosition.top && current.left === nextPosition.left
+        ? current
+        : nextPosition,
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    if (open) updateMenuPosition();
+  }, [open, updateMenuPosition]);
 
   useEffect(() => {
     if (!open) return;
 
-    const updateMenuPosition = () => {
-      const rect = buttonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      const gap = 8;
-      const viewportPadding = 16;
-      const maxMenuHeight = Math.min(384, window.innerHeight - viewportPadding * 2);
-      const menuTopWhenOpenDown = rect.bottom + gap;
-      const shouldOpenUp = menuTopWhenOpenDown + maxMenuHeight > window.innerHeight;
-      const top = shouldOpenUp
-        ? Math.max(viewportPadding, rect.top - maxMenuHeight - gap)
-        : menuTopWhenOpenDown;
-
-      setMenuPosition({
-        top,
-        right: Math.max(window.innerWidth - rect.right, viewportPadding),
+    const schedulePositionUpdate = () => {
+      if (frameRef.current !== null) return;
+      frameRef.current = window.requestAnimationFrame(() => {
+        frameRef.current = null;
+        updateMenuPosition();
       });
     };
 
-    updateMenuPosition();
-    window.addEventListener("scroll", updateMenuPosition, true);
-    window.addEventListener("resize", updateMenuPosition);
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        buttonRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setOpen(false);
+    };
+
+    window.addEventListener("scroll", schedulePositionUpdate, true);
+    window.addEventListener("resize", schedulePositionUpdate);
+    document.addEventListener("mousedown", closeOnOutsideClick);
 
     return () => {
-      window.removeEventListener("scroll", updateMenuPosition, true);
-      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", schedulePositionUpdate, true);
+      window.removeEventListener("resize", schedulePositionUpdate);
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      if (frameRef.current !== null) {
+        window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
     };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const closeMenu = () => setOpen(false);
-    window.addEventListener("click", closeMenu);
-
-    return () => window.removeEventListener("click", closeMenu);
-  }, [open]);
+  }, [open, updateMenuPosition]);
 
   return (
     <div className="flex justify-center">
@@ -362,26 +432,30 @@ function RowActionMenu({ children }: { children: ReactNode }) {
         className={actionIconButtonClass}
         title="More actions"
         aria-label="More actions"
+        aria-expanded={open}
       >
         <MoreHorizontal className="h-4 w-4" />
       </button>
 
-      {open && (
-        <div
-          className="fixed z-[9999] min-w-48 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
-          style={{
-            top: menuPosition.top,
-            right: menuPosition.right,
-            maxHeight: "calc(100vh - 32px)",
-          }}
-          onClick={(event) => {
-            event.stopPropagation();
-            setOpen(false);
-          }}
-        >
-          {children}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[9999] min-w-48 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            style={{
+              top: menuPosition.top,
+              left: menuPosition.left,
+              maxHeight: `calc(100vh - ${ACTION_MENU_VIEWPORT_PADDING * 2}px)`,
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpen(false);
+            }}
+          >
+            {children}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -403,7 +477,9 @@ function ActionMenuItem({
     <button
       type="button"
       disabled={disabled}
-      onClick={onClick}
+      onClick={() => {
+        onClick();
+      }}
       className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
         danger
           ? "text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/30"
@@ -413,68 +489,6 @@ function ActionMenuItem({
       <Icon className="h-4 w-4" />
       <span>{label}</span>
     </button>
-  );
-}
-
-function DocumentInfoModal({
-  document,
-  onClose,
-}: {
-  document: LibraryDocument;
-  onClose: () => void;
-}) {
-  const infoItems = [
-    { label: "Title", value: document.name },
-    { label: "File type", value: getFileExtension(document) },
-    { label: "Category", value: document.categoryName || "Uncategorized" },
-    { label: "Folder", value: document.folderName || "Root" },
-    { label: "Date added", value: formatDocumentDateTime(document.createdAt) },
-    { label: "File size", value: formatFileSize(document.fileSize) },
-    { label: "Status", value: document.documentStatus || "Unknown" },
-    { label: "AI status", value: document.aiStatus || "Unknown" },
-    { label: "Favorite", value: document.fav ? "Yes" : "No" },
-    { label: "Document ID", value: String(document.id) },
-  ];
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
-      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
-        <div className="mb-7 flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-extrabold text-slate-950 dark:text-white">
-              Document detail
-            </h2>
-            <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">
-              Information loaded from the library list. Click the document name/card to open preview.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-extrabold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-          {infoItems.map((item) => (
-            <div
-              key={item.label}
-              className="rounded-3xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-950"
-            >
-              <p className="text-sm font-extrabold uppercase text-slate-400 dark:text-slate-500">
-                {item.label}
-              </p>
-              <p className="mt-3 break-words text-lg font-extrabold text-slate-900 dark:text-slate-100">
-                {item.value}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1951,8 +1965,7 @@ export function MyLibrary() {
                     }
                     onDragEnd={resetDragState}
                     onClick={() => handleViewFile(document.id)}
-                    whileHover={{ y: -3 }}
-                    className="cursor-pointer rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                    className="cursor-pointer rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-colors hover:border-blue-100 hover:bg-blue-50/20 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/10"
                   >
                     <div className="mb-4 flex items-start justify-between gap-3">
                       <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">

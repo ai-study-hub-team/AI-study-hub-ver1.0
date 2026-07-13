@@ -33,6 +33,10 @@ import {
   subscriptionApi,
   type SubscriptionResponse,
 } from "../../services/subscriptionApi";
+import {
+  tokenUsageApi,
+  type TodayTokenUsageResponse,
+} from "../../services/tokenUsageApi";
 
 type ApiError = {
   response?: {
@@ -280,6 +284,18 @@ export function StorageDashboard() {
       null,
     );
 
+  const [
+    tokenUsage,
+    setTokenUsage,
+  ] = useState<TodayTokenUsageResponse | null>(
+    null,
+  );
+
+  const [
+    tokenUsageError,
+    setTokenUsageError,
+  ] = useState("");
+
   const [loading, setLoading] =
     useState(true);
 
@@ -302,6 +318,7 @@ export function StorageDashboard() {
       }
 
       setLoadError("");
+      setTokenUsageError("");
 
       try {
         /*
@@ -329,12 +346,45 @@ export function StorageDashboard() {
         const subscriptionRequest =
           subscriptionApi.getCurrentSubscription();
 
+        /*
+         * API 3:
+         * GET /api/token-usage/today
+         *
+         * Lấy số token người dùng đã sử dụng hôm nay:
+         * - total
+         * - chat
+         * - summarize
+         * - quiz
+         *
+         * Token usage is optional for this page. If this request fails,
+         * storage and subscription information can still be displayed.
+         */
+        const tokenUsageRequest = tokenUsageApi
+          .getTodayUsage()
+          .catch((error: unknown) => {
+            console.error(
+              "Load token usage failed:",
+              error,
+            );
+
+            setTokenUsageError(
+              getErrorMessage(
+                error,
+                "Cannot load today's token usage.",
+              ),
+            );
+
+            return null;
+          });
+
         const [
           profileResponse,
           subscriptionResponse,
+          tokenUsageResponse,
         ] = await Promise.all([
           profileRequest,
           subscriptionRequest,
+          tokenUsageRequest,
         ]);
 
         setProfile(
@@ -343,6 +393,10 @@ export function StorageDashboard() {
 
         setSubscription(
           subscriptionResponse.data,
+        );
+
+        setTokenUsage(
+          tokenUsageResponse?.data ?? null,
         );
       } catch (error) {
         console.error(
@@ -433,6 +487,19 @@ export function StorageDashboard() {
       subscription,
       isPro,
     ]);
+
+  const usedTokensToday =
+    toSafeNumber(tokenUsage?.total);
+
+  const remainingTokensToday = Math.max(
+    0,
+    dailyTokenLimit - usedTokensToday,
+  );
+
+  const tokenUsagePercent = calculatePercent(
+    usedTokensToday,
+    dailyTokenLimit,
+  );
 
   const usedStorageBytes =
     toSafeNumber(
@@ -721,26 +788,44 @@ export function StorageDashboard() {
             </p>
           </div>
 
-          <div className="mt-5 rounded-2xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-300 shrink-0 mt-0.5" />
+          {tokenUsageError ? (
+            <div className="mt-5 rounded-2xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-300 shrink-0 mt-0.5" />
 
-              <div>
-                <p className="text-sm font-extrabold text-amber-800 dark:text-amber-200">
-                  Token usage is not
-                  available
-                </p>
+                <div>
+                  <p className="text-sm font-extrabold text-amber-800 dark:text-amber-200">
+                    Token usage could not be loaded
+                  </p>
 
-                <p className="mt-1 text-xs leading-5 text-amber-700 dark:text-amber-300">
-                  Backend currently returns
-                  the daily token limit, but
-                  does not provide an API
-                  for a normal user to view
-                  tokens used today.
-                </p>
+                  <p className="mt-1 text-xs leading-5 text-amber-700 dark:text-amber-300">
+                    {tokenUsageError}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between gap-4 text-xs font-bold">
+                <span className="text-slate-500 dark:text-slate-400">
+                  Daily usage
+                </span>
+
+                <span className="text-violet-600 dark:text-violet-300">
+                  {tokenUsagePercent}%
+                </span>
+              </div>
+
+              <div className="h-2.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                <div
+                  className="h-full rounded-full bg-violet-600 transition-all duration-500"
+                  style={{
+                    width: `${tokenUsagePercent}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="mt-5 grid grid-cols-2 gap-3">
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4">
@@ -748,8 +833,10 @@ export function StorageDashboard() {
                 Used today
               </p>
 
-              <p className="mt-1 font-extrabold text-slate-500 dark:text-slate-400">
-                No API
+              <p className="mt-1 font-extrabold text-slate-900 dark:text-white">
+                {tokenUsageError
+                  ? "Unavailable"
+                  : formatNumber(usedTokensToday)}
               </p>
             </div>
 
@@ -758,11 +845,44 @@ export function StorageDashboard() {
                 Remaining
               </p>
 
-              <p className="mt-1 font-extrabold text-slate-500 dark:text-slate-400">
-                No API
+              <p className="mt-1 font-extrabold text-emerald-600 dark:text-emerald-300">
+                {tokenUsageError
+                  ? "Unavailable"
+                  : formatNumber(remainingTokensToday)}
               </p>
             </div>
           </div>
+
+          {!tokenUsageError && tokenUsage ? (
+            <div className="mt-3 grid grid-cols-3 gap-3 text-center">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Chat
+                </p>
+                <p className="mt-1 text-sm font-extrabold text-slate-900 dark:text-white">
+                  {formatNumber(toSafeNumber(tokenUsage.chat))}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Summary
+                </p>
+                <p className="mt-1 text-sm font-extrabold text-slate-900 dark:text-white">
+                  {formatNumber(toSafeNumber(tokenUsage.summarize))}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Quiz
+                </p>
+                <p className="mt-1 text-sm font-extrabold text-slate-900 dark:text-white">
+                  {formatNumber(toSafeNumber(tokenUsage.quiz))}
+                </p>
+              </div>
+            </div>
+          ) : null}
         </motion.section>
       </div>
 

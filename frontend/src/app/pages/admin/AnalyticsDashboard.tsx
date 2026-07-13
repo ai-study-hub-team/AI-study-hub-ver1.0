@@ -3,6 +3,7 @@ import {
   Bot,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   Coins,
   FileText,
   HardDrive,
@@ -23,12 +24,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -40,18 +36,10 @@ import {
   type TokenUsageReportParams,
   type TokenUsageReportResponse,
 } from "../../services/adminAnalyticsApi";
-import {
-  userApi,
-  type UserResponse,
-} from "../../services/userApi";
+import { userApi, type UserResponse } from "../../services/userApi";
 
 type UiReportPeriod =
-  | "DAY"
-  | "WEEK"
-  | "MONTH"
-  | "LAST_7_DAYS"
-  | "LAST_30_DAYS"
-  | "CUSTOM";
+  "DAY" | "WEEK" | "MONTH" | "LAST_7_DAYS" | "LAST_30_DAYS" | "CUSTOM";
 
 type ApiError = {
   response?: {
@@ -63,8 +51,7 @@ type ApiError = {
   message?: string;
 };
 
-const DATE_INPUT_PATTERN =
-  /^\d{4}-\d{2}-\d{2}$/;
+const DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const PERIOD_OPTIONS: Array<{
   value: UiReportPeriod;
@@ -72,73 +59,50 @@ const PERIOD_OPTIONS: Array<{
 }> = [
   {
     value: "DAY",
-    label: "1 ngày",
+    label: "1 day",
   },
   {
     value: "WEEK",
-    label: "Theo tuần",
+    label: "Weekly",
   },
   {
     value: "MONTH",
-    label: "Theo tháng",
+    label: "Monthly",
   },
   {
     value: "LAST_7_DAYS",
-    label: "7 ngày gần nhất",
+    label: "Last 7 days",
   },
   {
     value: "LAST_30_DAYS",
-    label: "30 ngày gần nhất",
+    label: "Last 30 days",
   },
   {
     value: "CUSTOM",
-    label: "Tùy chọn",
+    label: "Custom",
   },
 ];
 
 const todayInputValue = (): string => {
   const date = new Date();
 
-  const year =
-    date.getFullYear();
+  const year = date.getFullYear();
 
-  const month = String(
-    date.getMonth() + 1,
-  ).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
 
-  const day = String(
-    date.getDate(),
-  ).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 };
 
-const isValidDateInput = (
-  value: string,
-): boolean => {
-  if (
-    !value ||
-    !DATE_INPUT_PATTERN.test(value)
-  ) {
+const isValidDateInput = (value: string): boolean => {
+  if (!value || !DATE_INPUT_PATTERN.test(value)) {
     return false;
   }
 
-  const [
-    year,
-    month,
-    day,
-  ] = value
-    .split("-")
-    .map(Number);
+  const [year, month, day] = value.split("-").map(Number);
 
-  const date = new Date(
-    year,
-    month - 1,
-    day,
-    12,
-    0,
-    0,
-  );
+  const date = new Date(year, month - 1, day, 12, 0, 0);
 
   return (
     !Number.isNaN(date.getTime()) &&
@@ -148,59 +112,31 @@ const isValidDateInput = (
   );
 };
 
-const shiftDate = (
-  value: string,
-  days: number,
-): string => {
+const shiftDate = (value: string, days: number): string => {
   if (!isValidDateInput(value)) {
     return "";
   }
 
-  const [
-    year,
-    month,
-    day,
-  ] = value
-    .split("-")
-    .map(Number);
+  const [year, month, day] = value.split("-").map(Number);
 
   /*
-   * Dùng 12 giờ trưa để tránh lỗi lệch ngày
-   * khi máy có timezone khác nhau.
+   * Use noon to avoid date shifts across time zones.
    */
-  const date = new Date(
-    year,
-    month - 1,
-    day,
-    12,
-    0,
-    0,
-  );
+  const date = new Date(year, month - 1, day, 12, 0, 0);
 
-  date.setDate(
-    date.getDate() + days,
-  );
+  date.setDate(date.getDate() + days);
 
-  const shiftedYear =
-    date.getFullYear();
+  const shiftedYear = date.getFullYear();
 
-  const shiftedMonth = String(
-    date.getMonth() + 1,
-  ).padStart(2, "0");
+  const shiftedMonth = String(date.getMonth() + 1).padStart(2, "0");
 
-  const shiftedDay = String(
-    date.getDate(),
-  ).padStart(2, "0");
+  const shiftedDay = String(date.getDate()).padStart(2, "0");
 
   return `${shiftedYear}-${shiftedMonth}-${shiftedDay}`;
 };
 
-const getErrorMessage = (
-  error: unknown,
-  fallbackMessage: string,
-): string => {
-  const apiError =
-    error as ApiError;
+const getErrorMessage = (error: unknown, fallbackMessage: string): string => {
+  const apiError = error as ApiError;
 
   return (
     apiError.response?.data?.message ||
@@ -210,162 +146,86 @@ const getErrorMessage = (
   );
 };
 
-const toSafeNumber = (
-  value: unknown,
-): number => {
-  const numberValue =
-    Number(value);
+const toSafeNumber = (value: unknown): number => {
+  const numberValue = Number(value);
 
-  return Number.isFinite(
-    numberValue,
-  )
-    ? Math.max(0, numberValue)
-    : 0;
+  return Number.isFinite(numberValue) ? Math.max(0, numberValue) : 0;
 };
 
-const formatNumber = (
-  value: unknown,
-): string => {
-  return Math.floor(
-    toSafeNumber(value),
-  ).toLocaleString("vi-VN");
+const formatNumber = (value: unknown): string => {
+  return Math.floor(toSafeNumber(value)).toLocaleString("en-US");
 };
 
-const formatCurrency = (
-  value: unknown,
-  currency = "VND",
-): string => {
-  const amount =
-    toSafeNumber(value);
+const formatCurrency = (value: unknown, currency = "VND"): string => {
+  const amount = toSafeNumber(value);
 
   try {
-    return new Intl.NumberFormat(
-      "vi-VN",
-      {
-        style: "currency",
-        currency:
-          currency || "VND",
-        maximumFractionDigits: 0,
-      },
-    ).format(amount);
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency || "VND",
+      maximumFractionDigits: 0,
+    }).format(amount);
   } catch {
-    return `${formatNumber(
-      amount,
-    )} ${currency || "VND"}`;
+    return `${formatNumber(amount)} ${currency || "VND"}`;
   }
 };
 
-const formatBytes = (
-  value: unknown,
-): string => {
-  const bytes =
-    toSafeNumber(value);
+const formatBytes = (value: unknown): string => {
+  const bytes = toSafeNumber(value);
 
-  const units = [
-    "B",
-    "KB",
-    "MB",
-    "GB",
-    "TB",
-  ];
+  const units = ["B", "KB", "MB", "GB", "TB"];
 
   if (bytes === 0) {
     return "0 B";
   }
 
   const unitIndex = Math.min(
-    Math.floor(
-      Math.log(bytes) /
-        Math.log(1024),
-    ),
+    Math.floor(Math.log(bytes) / Math.log(1024)),
     units.length - 1,
   );
 
-  const converted =
-    bytes / 1024 ** unitIndex;
+  const converted = bytes / 1024 ** unitIndex;
 
   return `${converted.toFixed(
-    converted >= 10 ||
-      unitIndex === 0
-      ? 1
-      : 2,
+    converted >= 10 || unitIndex === 0 ? 1 : 2,
   )} ${units[unitIndex]}`;
 };
 
-const formatDate = (
-  value?: string | null,
-): string => {
+const formatDate = (value?: string | null): string => {
   if (!value) {
     return "—";
   }
 
-  const normalized =
-    value.slice(0, 10);
+  const normalized = value.slice(0, 10);
 
-  if (
-    !isValidDateInput(normalized)
-  ) {
+  if (!isValidDateInput(normalized)) {
     return value;
   }
 
-  const [
-    year,
-    month,
-    day,
-  ] = normalized
-    .split("-")
-    .map(Number);
+  const [year, month, day] = normalized.split("-").map(Number);
 
-  const date = new Date(
-    year,
-    month - 1,
-    day,
-    12,
-    0,
-    0,
-  );
+  const date = new Date(year, month - 1, day, 12, 0, 0);
 
-  return date.toLocaleDateString(
-    "vi-VN",
-    {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    },
-  );
+  return date.toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 };
 
-const formatChartDate = (
-  value: string,
-): string => {
+const formatChartDate = (value: string): string => {
   if (!isValidDateInput(value)) {
     return value;
   }
 
-  const [
-    year,
-    month,
-    day,
-  ] = value
-    .split("-")
-    .map(Number);
+  const [year, month, day] = value.split("-").map(Number);
 
-  const date = new Date(
-    year,
-    month - 1,
-    day,
-    12,
-    0,
-    0,
-  );
+  const date = new Date(year, month - 1, day, 12, 0, 0);
 
-  return date.toLocaleDateString(
-    "vi-VN",
-    {
-      day: "2-digit",
-      month: "2-digit",
-    },
-  );
+  return date.toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+  });
 };
 
 const buildDateParams = (
@@ -379,35 +239,22 @@ const buildDateParams = (
   fromDate?: string;
   toDate?: string;
 } => {
-  const referenceDate =
-    isValidDateInput(
-      selectedDate,
-    )
-      ? selectedDate
-      : todayInputValue();
+  const referenceDate = isValidDateInput(selectedDate)
+    ? selectedDate
+    : todayInputValue();
 
-  if (
-    period === "LAST_7_DAYS"
-  ) {
+  if (period === "LAST_7_DAYS") {
     return {
       period: "CUSTOM",
-      fromDate: shiftDate(
-        referenceDate,
-        -6,
-      ),
+      fromDate: shiftDate(referenceDate, -6),
       toDate: referenceDate,
     };
   }
 
-  if (
-    period === "LAST_30_DAYS"
-  ) {
+  if (period === "LAST_30_DAYS") {
     return {
       period: "CUSTOM",
-      fromDate: shiftDate(
-        referenceDate,
-        -29,
-      ),
+      fromDate: shiftDate(referenceDate, -29),
       toDate: referenceDate,
     };
   }
@@ -415,8 +262,7 @@ const buildDateParams = (
   if (period === "CUSTOM") {
     return {
       period: "CUSTOM",
-      fromDate:
-        customFromDate,
+      fromDate: customFromDate,
       toDate: customToDate,
     };
   }
@@ -434,45 +280,29 @@ const validateDateRange = (
   toDate: string,
 ): string | null => {
   if (period !== "CUSTOM") {
-    if (
-      !isValidDateInput(
-        selectedDate,
-      )
-    ) {
-      return "Vui lòng chọn ngày tham chiếu hoặc ngày kết thúc.";
+    if (!isValidDateInput(selectedDate)) {
+      return "Please select a reference date or end date.";
     }
 
     return null;
   }
 
-  if (
-    !fromDate ||
-    !toDate
-  ) {
-    return "Vui lòng chọn đầy đủ ngày bắt đầu và ngày kết thúc.";
+  if (!fromDate || !toDate) {
+    return "Please select both the start date and end date.";
   }
 
-  if (
-    !isValidDateInput(
-      fromDate,
-    ) ||
-    !isValidDateInput(toDate)
-  ) {
-    return "Ngày không hợp lệ. Định dạng đúng là YYYY-MM-DD.";
+  if (!isValidDateInput(fromDate) || !isValidDateInput(toDate)) {
+    return "Invalid date. Use the YYYY-MM-DD format.";
   }
 
   if (fromDate > toDate) {
-    return "Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc.";
+    return "The start date must be earlier than or equal to the end date.";
   }
 
   return null;
 };
 
-function LoadingBlock({
-  label,
-}: {
-  label: string;
-}) {
+function LoadingBlock({ label }: { label: string }) {
   return (
     <div className="min-h-64 flex items-center justify-center">
       <div className="flex items-center gap-3 text-sm font-semibold text-slate-500 dark:text-slate-400">
@@ -505,8 +335,7 @@ function ErrorBlock({
         className="mt-4 inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
       >
         <RefreshCw className="w-4 h-4" />
-
-        Thử lại
+        Retry
       </button>
     </div>
   );
@@ -525,78 +354,39 @@ function PeriodFilters({
   onRefresh,
 }: {
   period: UiReportPeriod;
-  setPeriod: (
-    value: UiReportPeriod,
-  ) => void;
+  setPeriod: (value: UiReportPeriod) => void;
   selectedDate: string;
-  setSelectedDate: (
-    value: string,
-  ) => void;
+  setSelectedDate: (value: string) => void;
   customFromDate: string;
-  setCustomFromDate: (
-    value: string,
-  ) => void;
+  setCustomFromDate: (value: string) => void;
   customToDate: string;
-  setCustomToDate: (
-    value: string,
-  ) => void;
+  setCustomToDate: (value: string) => void;
   loading: boolean;
   onRefresh: () => void;
 }) {
   const selectedDateLabel =
-    period ===
-      "LAST_7_DAYS" ||
-    period ===
-      "LAST_30_DAYS"
-      ? "Ngày kết thúc"
-      : "Ngày tham chiếu";
+    period === "LAST_7_DAYS" || period === "LAST_30_DAYS"
+      ? "End date"
+      : "Reference date";
 
-  const handlePeriodChange = (
-    nextPeriod: UiReportPeriod,
-  ): void => {
+  const handlePeriodChange = (nextPeriod: UiReportPeriod): void => {
     setPeriod(nextPeriod);
 
-    const today =
-      todayInputValue();
+    const today = todayInputValue();
 
-    if (
-      nextPeriod !== "CUSTOM" &&
-      !isValidDateInput(
-        selectedDate,
-      )
-    ) {
+    if (nextPeriod !== "CUSTOM" && !isValidDateInput(selectedDate)) {
       setSelectedDate(today);
     }
 
-    if (
-      nextPeriod === "CUSTOM"
-    ) {
-      const validToDate =
-        isValidDateInput(
-          customToDate,
-        )
-          ? customToDate
-          : today;
+    if (nextPeriod === "CUSTOM") {
+      const validToDate = isValidDateInput(customToDate) ? customToDate : today;
 
-      if (
-        !isValidDateInput(
-          customToDate,
-        )
-      ) {
+      if (!isValidDateInput(customToDate)) {
         setCustomToDate(today);
       }
 
-      if (
-        !isValidDateInput(
-          customFromDate,
-        )
-      ) {
-        setCustomFromDate(
-          shiftDate(
-            validToDate,
-            -29,
-          ),
-        );
+      if (!isValidDateInput(customFromDate)) {
+        setCustomFromDate(shiftDate(validToDate, -29));
       }
     }
   };
@@ -605,33 +395,21 @@ function PeriodFilters({
     <div className="flex flex-wrap items-end gap-3">
       <label className="space-y-1.5">
         <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Khoảng thời gian
+          Report period
         </span>
 
         <select
           value={period}
           onChange={(event) =>
-            handlePeriodChange(
-              event.target
-                .value as UiReportPeriod,
-            )
+            handlePeriodChange(event.target.value as UiReportPeriod)
           }
           className="h-10 min-w-40 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
         >
-          {PERIOD_OPTIONS.map(
-            (option) => (
-              <option
-                key={
-                  option.value
-                }
-                value={
-                  option.value
-                }
-              >
-                {option.label}
-              </option>
-            ),
-          )}
+          {PERIOD_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
       </label>
 
@@ -644,11 +422,7 @@ function PeriodFilters({
           <input
             type="date"
             value={selectedDate}
-            onChange={(event) =>
-              setSelectedDate(
-                event.target.value,
-              )
-            }
+            onChange={(event) => setSelectedDate(event.target.value)}
             className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
           />
         </label>
@@ -656,38 +430,26 @@ function PeriodFilters({
         <>
           <label className="space-y-1.5">
             <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Từ ngày
+              From date
             </span>
 
             <input
               type="date"
-              value={
-                customFromDate
-              }
-              onChange={(event) =>
-                setCustomFromDate(
-                  event.target
-                    .value,
-                )
-              }
+              value={customFromDate}
+              onChange={(event) => setCustomFromDate(event.target.value)}
               className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
             />
           </label>
 
           <label className="space-y-1.5">
             <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Đến ngày
+              To date
             </span>
 
             <input
               type="date"
               value={customToDate}
-              onChange={(event) =>
-                setCustomToDate(
-                  event.target
-                    .value,
-                )
-              }
+              onChange={(event) => setCustomToDate(event.target.value)}
               className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
             />
           </label>
@@ -700,15 +462,8 @@ function PeriodFilters({
         disabled={loading}
         className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <RefreshCw
-          className={`w-4 h-4 ${
-            loading
-              ? "animate-spin"
-              : ""
-          }`}
-        />
-
-        Xem báo cáo
+        <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+        View report
       </button>
     </div>
   );
@@ -722,473 +477,458 @@ function UserFilter({
 }: {
   users: UserResponse[];
   value: string;
-  onChange: (
-    value: string,
-  ) => void;
+  onChange: (value: string) => void;
   label: string;
 }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+
+  const selectedUser = useMemo(
+    () => users.find((user) => String(user.id) === value) || null,
+    [users, value],
+  );
+
+  const filteredUsers = useMemo(() => {
+    const keyword = searchValue.trim().toLowerCase();
+
+    const sortedUsers = [...users].sort((firstUser, secondUser) => {
+      const firstEmail = firstUser.email?.toLowerCase() || "";
+      const secondEmail = secondUser.email?.toLowerCase() || "";
+
+      return firstEmail.localeCompare(secondEmail);
+    });
+
+    if (!keyword) {
+      return sortedUsers;
+    }
+
+    return sortedUsers.filter((user) =>
+      [String(user.id), user.fullName || "", user.email || ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword),
+    );
+  }, [searchValue, users]);
+
+  /*
+   * Avoid rendering hundreds or thousands of rows at once. Users can keep
+   * typing an email, name, or ID to narrow the result list.
+   */
+  const visibleUsers = useMemo(
+    () => filteredUsers.slice(0, 100),
+    [filteredUsers],
+  );
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent): void => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isOpen]);
+
+  const selectUser = (userId: string): void => {
+    onChange(userId);
+    setSearchValue("");
+    setIsOpen(false);
+  };
+
   return (
-    <label className="space-y-1.5">
+    <div ref={containerRef} className="relative space-y-1.5">
       <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
         {label}
       </span>
 
-      <select
-        value={value}
-        onChange={(event) =>
-          onChange(
-            event.target.value,
-          )
-        }
-        className="h-10 min-w-64 max-w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+      <button
+        type="button"
+        onClick={() => setIsOpen((previous) => !previous)}
+       className="
+  flex h-10 w-72 max-w-full
+  items-center justify-between gap-3
+  rounded-xl border border-slate-200
+  bg-white px-3 text-left text-sm
+  font-semibold text-slate-700
+  outline-none transition
+  hover:border-blue-300 focus:border-blue-500
+  dark:border-slate-700 dark:bg-slate-950
+  dark:text-slate-200 dark:hover:border-blue-500/60
+"
+        aria-expanded={isOpen}
       >
-        <option value="">
-          Tất cả người dùng
-        </option>
+        <span className="min-w-0 truncate">
+          {selectedUser
+            ? selectedUser.email || selectedUser.fullName || `User ${selectedUser.id}`
+            : "All users"}
+        </span>
 
-        {users.map((user) => (
-          <option
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+  <div
+    className="
+      absolute left-0 top-full z-[9999] mt-2
+      w-[min(26rem,calc(100vw-2rem))]
+      overflow-hidden rounded-2xl
+      border border-slate-200 bg-white shadow-2xl
+      dark:border-slate-700 dark:bg-slate-900
+    "
+  >
+    <div className="border-b border-slate-200 p-3 dark:border-slate-700">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+        <input
+          ref={searchInputRef}
+          value={searchValue}
+          onChange={(event) =>
+            setSearchValue(event.target.value)
+          }
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setIsOpen(false);
+            }
+          }}
+          placeholder="Search by email, name, or user ID..."
+          className="
+            h-10 w-full rounded-xl
+            border border-slate-200 bg-slate-50
+            pl-9 pr-3 text-sm text-slate-800
+            outline-none transition
+            focus:border-blue-500 focus:bg-white
+            dark:border-slate-700 dark:bg-slate-950
+            dark:text-white
+          "
+        />
+      </div>
+    </div>
+
+    <div
+      className="max-h-64 overflow-y-auto overscroll-contain p-2"
+      role="listbox"
+    >
+      <button
+        type="button"
+        onClick={() => selectUser("")}
+        className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition ${
+          value === ""
+            ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300"
+            : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+        }`}
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-bold">
+            All users
+          </span>
+
+          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+            Combine data from every account
+          </span>
+        </span>
+
+        {value === "" && (
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+        )}
+      </button>
+
+      <div className="my-2 border-t border-slate-100 dark:border-slate-800" />
+
+      {visibleUsers.map((user) => {
+        const isSelected =
+          String(user.id) === value;
+
+        return (
+          <button
             key={user.id}
-            value={String(
-              user.id,
-            )}
+            type="button"
+            onClick={() =>
+              selectUser(String(user.id))
+            }
+            className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+              isSelected
+                ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300"
+                : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+            }`}
+            role="option"
+            aria-selected={isSelected}
           >
-            ID {user.id} -{" "}
-            {user.fullName ||
-              user.email}
-          </option>
-        ))}
-      </select>
-    </label>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-bold">
+                {user.email || "No email"}
+              </span>
+
+              <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                {user.fullName || "Unnamed user"} · ID {user.id}
+              </span>
+            </span>
+
+            {isSelected && (
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+            )}
+          </button>
+        );
+      })}
+
+      {filteredUsers.length === 0 && (
+        <div className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+          No user matches this email, name, or ID.
+        </div>
+      )}
+    </div>
+
+    {filteredUsers.length > visibleUsers.length && (
+      <div className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+        Showing the first {visibleUsers.length} of{" "}
+        {filteredUsers.length} users. Continue typing to narrow
+        the results.
+      </div>
+    )}
+  </div>
+)}
+    </div>
   );
 }
 
 export function AnalyticsDashboard() {
-  const today = useMemo(
-    () => todayInputValue(),
-    [],
+  const today = useMemo(() => todayInputValue(), []);
+
+  const defaultFromDate = useMemo(() => shiftDate(today, -29), [today]);
+
+  const [users, setUsers] = useState<UserResponse[]>([]);
+
+  const [userSearch, setUserSearch] = useState("");
+
+  const [revenue, setRevenue] = useState<RevenueReportResponse | null>(null);
+
+  const [revenuePeriod, setRevenuePeriod] =
+    useState<UiReportPeriod>("LAST_30_DAYS");
+
+  const [revenueDate, setRevenueDate] = useState(today);
+
+  const [revenueFromDate, setRevenueFromDate] = useState(defaultFromDate);
+
+  const [revenueToDate, setRevenueToDate] = useState(today);
+
+  const [revenueLoading, setRevenueLoading] = useState(true);
+
+  const [revenueError, setRevenueError] = useState("");
+
+  const [storage, setStorage] = useState<StorageReportResponse | null>(null);
+
+  const [storageUserId, setStorageUserId] = useState("");
+
+  const [storageLoading, setStorageLoading] = useState(true);
+
+  const [storageError, setStorageError] = useState("");
+
+  const [tokenUsage, setTokenUsage] = useState<TokenUsageReportResponse | null>(
+    null,
   );
 
-  const defaultFromDate =
-    useMemo(
-      () =>
-        shiftDate(
-          today,
-          -29,
-        ),
-      [today],
+  const [tokenUserId, setTokenUserId] = useState("");
+
+  const [tokenPeriod, setTokenPeriod] =
+    useState<UiReportPeriod>("LAST_30_DAYS");
+
+  const [tokenDate, setTokenDate] = useState(today);
+
+  const [tokenFromDate, setTokenFromDate] = useState(defaultFromDate);
+
+  const [tokenToDate, setTokenToDate] = useState(today);
+
+  const [tokenLoading, setTokenLoading] = useState(true);
+
+  const [tokenError, setTokenError] = useState("");
+
+  const loadUsers = useCallback(async (): Promise<void> => {
+    try {
+      const response = await userApi.getUsers();
+
+      const rawUsers = response.data;
+
+      const userList = Array.isArray(rawUsers) ? rawUsers : [];
+
+      const sortedUsers = [...userList].sort(
+        (firstUser, secondUser) => firstUser.id - secondUser.id,
+      );
+
+      setUsers(sortedUsers);
+    } catch (error) {
+      console.error("Load users failed:", error);
+
+      toast.error(getErrorMessage(error, "Unable to load the user list."));
+    }
+  }, []);
+
+  const loadRevenue = useCallback(async (): Promise<void> => {
+    const validationMessage = validateDateRange(
+      revenuePeriod,
+      revenueDate,
+      revenueFromDate,
+      revenueToDate,
     );
 
-  const [
-    users,
-    setUsers,
-  ] = useState<
-    UserResponse[]
-  >([]);
+    if (validationMessage) {
+      setRevenueError(validationMessage);
 
-  const [
-    userSearch,
-    setUserSearch,
-  ] = useState("");
+      toast.error(validationMessage);
 
-  const [
-    revenue,
-    setRevenue,
-  ] =
-    useState<RevenueReportResponse | null>(
-      null,
-    );
+      return;
+    }
 
-  const [
-    revenuePeriod,
-    setRevenuePeriod,
-  ] =
-    useState<UiReportPeriod>(
-      "LAST_30_DAYS",
-    );
+    setRevenueLoading(true);
+    setRevenueError("");
 
-  const [
-    revenueDate,
-    setRevenueDate,
-  ] = useState(today);
-
-  const [
-    revenueFromDate,
-    setRevenueFromDate,
-  ] =
-    useState(defaultFromDate);
-
-  const [
-    revenueToDate,
-    setRevenueToDate,
-  ] = useState(today);
-
-  const [
-    revenueLoading,
-    setRevenueLoading,
-  ] = useState(true);
-
-  const [
-    revenueError,
-    setRevenueError,
-  ] = useState("");
-
-  const [
-    storage,
-    setStorage,
-  ] =
-    useState<StorageReportResponse | null>(
-      null,
-    );
-
-  const [
-    storageUserId,
-    setStorageUserId,
-  ] = useState("");
-
-  const [
-    storageLoading,
-    setStorageLoading,
-  ] = useState(true);
-
-  const [
-    storageError,
-    setStorageError,
-  ] = useState("");
-
-  const [
-    tokenUsage,
-    setTokenUsage,
-  ] =
-    useState<TokenUsageReportResponse | null>(
-      null,
-    );
-
-  const [
-    tokenUserId,
-    setTokenUserId,
-  ] = useState("");
-
-  const [
-    tokenPeriod,
-    setTokenPeriod,
-  ] =
-    useState<UiReportPeriod>(
-      "LAST_30_DAYS",
-    );
-
-  const [
-    tokenDate,
-    setTokenDate,
-  ] = useState(today);
-
-  const [
-    tokenFromDate,
-    setTokenFromDate,
-  ] =
-    useState(defaultFromDate);
-
-  const [
-    tokenToDate,
-    setTokenToDate,
-  ] = useState(today);
-
-  const [
-    tokenLoading,
-    setTokenLoading,
-  ] = useState(true);
-
-  const [
-    tokenError,
-    setTokenError,
-  ] = useState("");
-
-  const loadUsers =
-    useCallback(
-      async (): Promise<void> => {
-        try {
-          const response =
-            await userApi.getUsers();
-
-          const rawUsers =
-            response.data;
-
-          const userList =
-            Array.isArray(rawUsers)
-              ? rawUsers
-              : [];
-
-          const sortedUsers = [
-            ...userList,
-          ].sort(
-            (firstUser, secondUser) =>
-              firstUser.id -
-              secondUser.id,
-          );
-
-          setUsers(sortedUsers);
-        } catch (error) {
-          console.error(
-            "Load users failed:",
-            error,
-          );
-
-          toast.error(
-            getErrorMessage(
-              error,
-              "Không thể tải danh sách người dùng.",
-            ),
-          );
-        }
-      },
-      [],
-    );
-
-  const loadRevenue =
-    useCallback(
-      async (): Promise<void> => {
-        const validationMessage =
-          validateDateRange(
-            revenuePeriod,
-            revenueDate,
-            revenueFromDate,
-            revenueToDate,
-          );
-
-        if (
-          validationMessage
-        ) {
-          setRevenueError(
-            validationMessage,
-          );
-
-          toast.error(
-            validationMessage,
-          );
-
-          return;
-        }
-
-        setRevenueLoading(true);
-        setRevenueError("");
-
-        try {
-          const params =
-            buildDateParams(
-              revenuePeriod,
-              revenueDate,
-              revenueFromDate,
-              revenueToDate,
-            ) as RevenueReportParams;
-
-          const response =
-            await adminAnalyticsApi.getRevenue(
-              params,
-            );
-
-          setRevenue(
-            response.data,
-          );
-        } catch (error) {
-          console.error(
-            "Load revenue report failed:",
-            error,
-          );
-
-          const message =
-            getErrorMessage(
-              error,
-              "Không thể tải báo cáo doanh thu.",
-            );
-
-          setRevenueError(
-            message,
-          );
-
-          toast.error(message);
-        } finally {
-          setRevenueLoading(
-            false,
-          );
-        }
-      },
-      [
+    try {
+      const params = buildDateParams(
+        revenuePeriod,
         revenueDate,
         revenueFromDate,
-        revenuePeriod,
         revenueToDate,
-      ],
+      ) as RevenueReportParams;
+
+      const response = await adminAnalyticsApi.getRevenue(params);
+
+      setRevenue(response.data);
+    } catch (error) {
+      console.error("Load revenue report failed:", error);
+
+      const message = getErrorMessage(
+        error,
+        "Unable to load the revenue report.",
+      );
+
+      setRevenueError(message);
+
+      toast.error(message);
+    } finally {
+      setRevenueLoading(false);
+    }
+  }, [revenueDate, revenueFromDate, revenuePeriod, revenueToDate]);
+
+  const loadStorage = useCallback(async (): Promise<void> => {
+    setStorageLoading(true);
+    setStorageError("");
+
+    try {
+      const userId = storageUserId ? Number(storageUserId) : undefined;
+
+      if (userId !== undefined && (!Number.isInteger(userId) || userId <= 0)) {
+        throw new Error("Invalid user ID.");
+      }
+
+      const response = await adminAnalyticsApi.getStorage(userId);
+
+      setStorage(response.data);
+    } catch (error) {
+      console.error("Load storage report failed:", error);
+
+      const message = getErrorMessage(
+        error,
+        "Unable to load the storage report.",
+      );
+
+      setStorageError(message);
+
+      toast.error(message);
+    } finally {
+      setStorageLoading(false);
+    }
+  }, [storageUserId]);
+
+  const loadTokenUsage = useCallback(async (): Promise<void> => {
+    const validationMessage = validateDateRange(
+      tokenPeriod,
+      tokenDate,
+      tokenFromDate,
+      tokenToDate,
     );
 
-  const loadStorage =
-    useCallback(
-      async (): Promise<void> => {
-        setStorageLoading(true);
-        setStorageError("");
+    if (validationMessage) {
+      setTokenError(validationMessage);
 
-        try {
-          const userId =
-            storageUserId
-              ? Number(
-                  storageUserId,
-                )
-              : undefined;
+      toast.error(validationMessage);
 
-          if (
-            userId !== undefined &&
-            (!Number.isInteger(
-              userId,
-            ) ||
-              userId <= 0)
-          ) {
-            throw new Error(
-              "User ID không hợp lệ.",
-            );
-          }
+      return;
+    }
 
-          const response =
-            await adminAnalyticsApi.getStorage(
-              userId,
-            );
+    setTokenLoading(true);
+    setTokenError("");
 
-          setStorage(
-            response.data,
-          );
-        } catch (error) {
-          console.error(
-            "Load storage report failed:",
-            error,
-          );
-
-          const message =
-            getErrorMessage(
-              error,
-              "Không thể tải báo cáo dung lượng.",
-            );
-
-          setStorageError(
-            message,
-          );
-
-          toast.error(message);
-        } finally {
-          setStorageLoading(
-            false,
-          );
-        }
-      },
-      [storageUserId],
-    );
-
-  const loadTokenUsage =
-    useCallback(
-      async (): Promise<void> => {
-        const validationMessage =
-          validateDateRange(
-            tokenPeriod,
-            tokenDate,
-            tokenFromDate,
-            tokenToDate,
-          );
-
-        if (
-          validationMessage
-        ) {
-          setTokenError(
-            validationMessage,
-          );
-
-          toast.error(
-            validationMessage,
-          );
-
-          return;
-        }
-
-        setTokenLoading(true);
-        setTokenError("");
-
-        try {
-          const dateParams =
-            buildDateParams(
-              tokenPeriod,
-              tokenDate,
-              tokenFromDate,
-              tokenToDate,
-            );
-
-          const parsedUserId =
-            tokenUserId
-              ? Number(
-                  tokenUserId,
-                )
-              : undefined;
-
-          if (
-            parsedUserId !==
-              undefined &&
-            (!Number.isInteger(
-              parsedUserId,
-            ) ||
-              parsedUserId <= 0)
-          ) {
-            throw new Error(
-              "User ID không hợp lệ.",
-            );
-          }
-
-          const params:
-            TokenUsageReportParams =
-            {
-              ...dateParams,
-              ...(parsedUserId !==
-              undefined
-                ? {
-                    userId:
-                      parsedUserId,
-                  }
-                : {}),
-            };
-
-          const response =
-            await adminAnalyticsApi.getTokenUsage(
-              params,
-            );
-
-          setTokenUsage(
-            response.data,
-          );
-        } catch (error) {
-          console.error(
-            "Load token report failed:",
-            error,
-          );
-
-          const message =
-            getErrorMessage(
-              error,
-              "Không thể tải báo cáo token.",
-            );
-
-          setTokenError(
-            message,
-          );
-
-          toast.error(message);
-        } finally {
-          setTokenLoading(
-            false,
-          );
-        }
-      },
-      [
+    try {
+      const dateParams = buildDateParams(
+        tokenPeriod,
         tokenDate,
         tokenFromDate,
-        tokenPeriod,
         tokenToDate,
-        tokenUserId,
-      ],
-    );
+      );
+
+      const parsedUserId = tokenUserId ? Number(tokenUserId) : undefined;
+
+      if (
+        parsedUserId !== undefined &&
+        (!Number.isInteger(parsedUserId) || parsedUserId <= 0)
+      ) {
+        throw new Error("Invalid user ID.");
+      }
+
+      const params: TokenUsageReportParams = {
+        ...dateParams,
+        ...(parsedUserId !== undefined
+          ? {
+              userId: parsedUserId,
+            }
+          : {}),
+      };
+
+      const response = await adminAnalyticsApi.getTokenUsage(params);
+
+      setTokenUsage(response.data);
+    } catch (error) {
+      console.error("Load token report failed:", error);
+
+      const message = getErrorMessage(
+        error,
+        "Unable to load the token usage report.",
+      );
+
+      setTokenError(message);
+
+      toast.error(message);
+    } finally {
+      setTokenLoading(false);
+    }
+  }, [tokenDate, tokenFromDate, tokenPeriod, tokenToDate, tokenUserId]);
 
   useEffect(() => {
     void loadUsers();
@@ -1197,244 +937,132 @@ export function AnalyticsDashboard() {
     void loadTokenUsage();
 
     /*
-     * Chỉ tải bộ báo cáo mặc định
-     * một lần khi mở trang.
+     * Load the default reports only once when the page opens.
      */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filteredStorageUsers =
-    useMemo(() => {
-      const reportUsers =
-        storage?.users || [];
+  const filteredStorageUsers = useMemo(() => {
+    const reportUsers = storage?.users || [];
 
-      const keyword =
-        userSearch
-          .trim()
-          .toLowerCase();
+    const keyword = userSearch.trim().toLowerCase();
 
-      if (!keyword) {
-        return reportUsers;
-      }
+    if (!keyword) {
+      return reportUsers;
+    }
 
-      return reportUsers.filter(
-        (user) =>
-          [
-            String(
-              user.userId,
-            ),
-            user.fullName || "",
-            user.email || "",
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(keyword),
-      );
-    }, [
-      storage?.users,
-      userSearch,
-    ]);
-
-  const storageChartData =
-    useMemo(
-      () =>
-        [
-          ...(storage?.users ||
-            []),
-        ]
-          .sort(
-            (
-              firstUser,
-              secondUser,
-            ) =>
-              secondUser.totalStorageBytes -
-              firstUser.totalStorageBytes,
-          )
-          .slice(0, 10)
-          .map((user) => ({
-            name:
-              user.fullName ||
-              `User ${user.userId}`,
-            storageMb: Number(
-              (
-                toSafeNumber(
-                  user.totalStorageBytes,
-                ) /
-                1024 ** 2
-              ).toFixed(2),
-            ),
-          })),
-      [storage?.users],
+    return reportUsers.filter((user) =>
+      [String(user.userId), user.fullName || "", user.email || ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword),
     );
+  }, [storage?.users, userSearch]);
 
-  const revenueChartData =
-    useMemo(
-      () =>
-        (
-          revenue?.dailyRevenue ||
-          []
-        ).map((item) => ({
-          ...item,
-          label:
-            formatChartDate(
-              item.date,
-            ),
-          totalRevenue:
-            toSafeNumber(
-              item.totalRevenue,
-            ),
+  const storageChartData = useMemo(
+    () =>
+      [...(storage?.users || [])]
+        .sort(
+          (firstUser, secondUser) =>
+            secondUser.totalStorageBytes - firstUser.totalStorageBytes,
+        )
+        .slice(0, 10)
+        .map((user) => ({
+          name: user.fullName || `User ${user.userId}`,
+          storageMb: Number(
+            (toSafeNumber(user.totalStorageBytes) / 1024 ** 2).toFixed(2),
+          ),
         })),
-      [revenue?.dailyRevenue],
-    );
+    [storage?.users],
+  );
 
-  const tokenChartData =
-    useMemo(
-      () =>
-        (
-          tokenUsage?.dailyUsage ||
-          []
-        ).map((item) => ({
-          ...item,
-          label:
-            formatChartDate(
-              item.date,
-            ),
-        })),
-      [tokenUsage?.dailyUsage],
-    );
+  const revenueChartData = useMemo(
+    () =>
+      (revenue?.dailyRevenue || []).map((item) => ({
+        ...item,
+        label: formatChartDate(item.date),
+        totalRevenue: toSafeNumber(item.totalRevenue),
+      })),
+    [revenue?.dailyRevenue],
+  );
 
-  const selectedStorageUser =
-    useMemo(
-      () =>
-        users.find(
-          (user) =>
-            String(user.id) ===
-            storageUserId,
-        ),
-      [
-        storageUserId,
-        users,
-      ],
-    );
+  const tokenChartData = useMemo(
+    () =>
+      (tokenUsage?.dailyUsage || []).map((item) => ({
+        ...item,
+        label: formatChartDate(item.date),
+      })),
+    [tokenUsage?.dailyUsage],
+  );
 
-  const selectedTokenUser =
-    useMemo(
-      () =>
-        users.find(
-          (user) =>
-            String(user.id) ===
-            tokenUserId,
-        ),
-      [tokenUserId, users],
-    );
+  const selectedStorageUser = useMemo(
+    () => users.find((user) => String(user.id) === storageUserId),
+    [storageUserId, users],
+  );
+
+  const selectedTokenUser = useMemo(
+    () => users.find((user) => String(user.id) === tokenUserId),
+    [tokenUserId, users],
+  );
 
   const kpis = [
     {
-      label:
-        "Tổng doanh thu",
-      value: formatCurrency(
-        revenue?.totalRevenue,
-        revenue?.currency ||
-          "VND",
-      ),
+      label: "Total revenue",
+      value: formatCurrency(revenue?.totalRevenue, revenue?.currency || "VND"),
       sub: revenue?.fromDate
-        ? `${formatDate(
-            revenue.fromDate,
-          )} - ${formatDate(
-            revenue.toDate,
-          )}`
-        : "Khoảng đang chọn",
+        ? `${formatDate(revenue.fromDate)} - ${formatDate(revenue.toDate)}`
+        : "Selected period",
       icon: WalletCards,
-      boxClass:
-        "bg-emerald-50 dark:bg-emerald-500/10",
-      iconClass:
-        "text-emerald-600 dark:text-emerald-300",
+      boxClass: "bg-emerald-50 dark:bg-emerald-500/10",
+      iconClass: "text-emerald-600 dark:text-emerald-300",
     },
     {
-      label:
-        "Giao dịch thành công",
-      value: formatNumber(
-        revenue?.successfulTransactionCount,
-      ),
-      sub:
-        "Chỉ tính trạng thái SUCCESS",
+      label: "Successful transactions",
+      value: formatNumber(revenue?.successfulTransactionCount),
+      sub: "Only SUCCESS transactions are included",
       icon: CheckCircle2,
-      boxClass:
-        "bg-blue-50 dark:bg-blue-500/10",
-      iconClass:
-        "text-blue-600 dark:text-blue-300",
+      boxClass: "bg-blue-50 dark:bg-blue-500/10",
+      iconClass: "text-blue-600 dark:text-blue-300",
     },
     {
-      label:
-        "Dung lượng đã dùng",
-      value: formatBytes(
-        storage?.totalStorageBytes,
-      ),
+      label: "Storage used",
+      value: formatBytes(storage?.totalStorageBytes),
       sub: storageUserId
-        ? selectedStorageUser
-            ?.fullName ||
-          "Một người dùng"
-        : `${formatNumber(
-            storage?.userCount,
-          )} người dùng`,
+        ? selectedStorageUser?.fullName || "Single user"
+        : `${formatNumber(storage?.userCount)} users`,
       icon: HardDrive,
-      boxClass:
-        "bg-violet-50 dark:bg-violet-500/10",
-      iconClass:
-        "text-violet-600 dark:text-violet-300",
+      boxClass: "bg-violet-50 dark:bg-violet-500/10",
+      iconClass: "text-violet-600 dark:text-violet-300",
     },
     {
-      label: "Tổng tài liệu",
-      value: formatNumber(
-        storage?.documentCount,
-      ),
-      sub: storageUserId
-        ? "Của người dùng đã chọn"
-        : "Tất cả người dùng",
+      label: "Total documents",
+      value: formatNumber(storage?.documentCount),
+      sub: storageUserId ? "For the selected user" : "All users",
       icon: FileText,
-      boxClass:
-        "bg-amber-50 dark:bg-amber-500/10",
-      iconClass:
-        "text-amber-600 dark:text-amber-300",
+      boxClass: "bg-amber-50 dark:bg-amber-500/10",
+      iconClass: "text-amber-600 dark:text-amber-300",
     },
     {
-      label:
-        "Tổng token AI",
-      value: formatNumber(
-        tokenUsage?.totals
-          ?.overallTokens,
-      ),
+      label: "Total AI tokens",
+      value: formatNumber(tokenUsage?.totals?.overallTokens),
       sub: tokenUserId
-        ? selectedTokenUser
-            ?.fullName ||
-          "Một người dùng"
-        : "Tất cả người dùng",
+        ? selectedTokenUser?.fullName || "Single user"
+        : "All users",
       icon: Bot,
-      boxClass:
-        "bg-pink-50 dark:bg-pink-500/10",
-      iconClass:
-        "text-pink-600 dark:text-pink-300",
+      boxClass: "bg-pink-50 dark:bg-pink-500/10",
+      iconClass: "text-pink-600 dark:text-pink-300",
     },
     {
-      label:
-        "Token AI Chat",
-      value: formatNumber(
-        tokenUsage?.totals
-          ?.chatTokens,
-      ),
-      sub:
-        tokenUsage?.fromDate
-          ? `${formatDate(
-              tokenUsage.fromDate,
-            )} - ${formatDate(
-              tokenUsage.toDate,
-            )}`
-          : "Khoảng đang chọn",
+      label: "Token AI Chat",
+      value: formatNumber(tokenUsage?.totals?.chatTokens),
+      sub: tokenUsage?.fromDate
+        ? `${formatDate(tokenUsage.fromDate)} - ${formatDate(
+            tokenUsage.toDate,
+          )}`
+        : "Selected period",
       icon: Coins,
-      boxClass:
-        "bg-cyan-50 dark:bg-cyan-500/10",
-      iconClass:
-        "text-cyan-600 dark:text-cyan-300",
+      boxClass: "bg-cyan-50 dark:bg-cyan-500/10",
+      iconClass: "text-cyan-600 dark:text-cyan-300",
     },
   ];
 
@@ -1447,61 +1075,52 @@ export function AnalyticsDashboard() {
           </h1>
 
           <p className="text-slate-500 dark:text-slate-400">
-            Doanh thu, dung lượng lưu
-            trữ và mức sử dụng token
-            theo dữ liệu thật.
+            Revenue, storage usage, and AI token consumption based on live data.
           </p>
         </div>
 
         <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
           <CalendarDays className="w-4 h-4" />
-
-          Cập nhật:{" "}
-          {formatDate(today)}
+          Updated: {formatDate(today)}
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {kpis.map(
-          (kpi, index) => (
-            <motion.div
-              key={kpi.label}
-              initial={{
-                opacity: 0,
-                y: 18,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-              }}
-              transition={{
-                delay:
-                  index * 0.05,
-              }}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+        {kpis.map((kpi, index) => (
+          <motion.div
+            key={kpi.label}
+            initial={{
+              opacity: 0,
+              y: 18,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            transition={{
+              delay: index * 0.05,
+            }}
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+          >
+            <div
+              className={`w-11 h-11 rounded-xl flex items-center justify-center ${kpi.boxClass}`}
             >
-              <div
-                className={`w-11 h-11 rounded-xl flex items-center justify-center ${kpi.boxClass}`}
-              >
-                <kpi.icon
-                  className={`w-5 h-5 ${kpi.iconClass}`}
-                />
-              </div>
+              <kpi.icon className={`w-5 h-5 ${kpi.iconClass}`} />
+            </div>
 
-              <p className="mt-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                {kpi.label}
-              </p>
+            <p className="mt-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              {kpi.label}
+            </p>
 
-              <p className="mt-1 break-words text-2xl font-extrabold text-slate-900 dark:text-white">
-                {kpi.value}
-              </p>
+            <p className="mt-1 break-words text-2xl font-extrabold text-slate-900 dark:text-white">
+              {kpi.value}
+            </p>
 
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {kpi.sub}
-              </p>
-            </motion.div>
-          ),
-        )}
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {kpi.sub}
+            </p>
+          </motion.div>
+        ))}
       </div>
 
       <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -1516,133 +1135,86 @@ export function AnalyticsDashboard() {
             </div>
 
             <h2 className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">
-              Báo cáo doanh thu
+              Revenue report
             </h2>
 
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Xem theo một ngày,
-              tuần, tháng, 7 ngày,
-              30 ngày hoặc khoảng
-              tùy chọn.
+              View data by day, week, month, the last 7 days, the last 30 days,
+              or a custom range.
             </p>
           </div>
 
           <PeriodFilters
-            period={
-              revenuePeriod
-            }
-            setPeriod={
-              setRevenuePeriod
-            }
-            selectedDate={
-              revenueDate
-            }
-            setSelectedDate={
-              setRevenueDate
-            }
-            customFromDate={
-              revenueFromDate
-            }
-            setCustomFromDate={
-              setRevenueFromDate
-            }
-            customToDate={
-              revenueToDate
-            }
-            setCustomToDate={
-              setRevenueToDate
-            }
-            loading={
-              revenueLoading
-            }
-            onRefresh={() =>
-              void loadRevenue()
-            }
+            period={revenuePeriod}
+            setPeriod={setRevenuePeriod}
+            selectedDate={revenueDate}
+            setSelectedDate={setRevenueDate}
+            customFromDate={revenueFromDate}
+            setCustomFromDate={setRevenueFromDate}
+            customToDate={revenueToDate}
+            setCustomToDate={setRevenueToDate}
+            loading={revenueLoading}
+            onRefresh={() => void loadRevenue()}
           />
         </div>
 
         {revenueLoading ? (
-          <LoadingBlock label="Đang tải báo cáo doanh thu..." />
+          <LoadingBlock label="Loading revenue report..." />
         ) : revenueError ? (
           <ErrorBlock
-            message={
-              revenueError
-            }
-            onRetry={() =>
-              void loadRevenue()
-            }
+            message={revenueError}
+            onRetry={() => void loadRevenue()}
           />
         ) : (
           <>
             <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="rounded-2xl bg-emerald-50 p-5 dark:bg-emerald-500/10">
                 <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">
-                  Tổng doanh thu
+                  Total revenue
                 </p>
 
                 <p className="mt-2 text-2xl font-extrabold text-emerald-800 dark:text-emerald-100">
                   {formatCurrency(
                     revenue?.totalRevenue,
-                    revenue?.currency ||
-                      "VND",
+                    revenue?.currency || "VND",
                   )}
                 </p>
               </div>
 
               <div className="rounded-2xl bg-blue-50 p-5 dark:bg-blue-500/10">
                 <p className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-300">
-                  Giao dịch thành công
+                  Successful transactions
                 </p>
 
                 <p className="mt-2 text-2xl font-extrabold text-blue-800 dark:text-blue-100">
-                  {formatNumber(
-                    revenue?.successfulTransactionCount,
-                  )}
+                  {formatNumber(revenue?.successfulTransactionCount)}
                 </p>
               </div>
 
               <div className="rounded-2xl bg-slate-50 p-5 dark:bg-slate-800">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Khoảng báo cáo
+                  Report range
                 </p>
 
                 <p className="mt-2 font-extrabold text-slate-900 dark:text-white">
-                  {formatDate(
-                    revenue?.fromDate,
-                  )}{" "}
-                  -{" "}
-                  {formatDate(
-                    revenue?.toDate,
-                  )}
+                  {formatDate(revenue?.fromDate)} -{" "}
+                  {formatDate(revenue?.toDate)}
                 </p>
 
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {formatNumber(
-                    revenue?.numberOfDays,
-                  )}{" "}
-                  ngày
+                  {formatNumber(revenue?.numberOfDays)} days
                 </p>
               </div>
             </div>
 
             <div className="mt-7 h-80 dark:[&_.recharts-cartesian-axis-tick_text]:fill-slate-400 dark:[&_.recharts-cartesian-grid_line]:stroke-slate-800">
-              {revenueChartData.length >
-              0 ? (
-                <ResponsiveContainer
-                  width="100%"
-                  height="100%"
-                >
-                  <LineChart
-                    data={
-                      revenueChartData
-                    }
-                  >
+              {revenueChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={revenueChartData}>
                     <CartesianGrid
                       strokeDasharray="3 3"
                       stroke="#E2E8F0"
-                      vertical={
-                        false
-                      }
+                      vertical={false}
                     />
 
                     <XAxis
@@ -1651,52 +1223,30 @@ export function AnalyticsDashboard() {
                         fontSize: 11,
                         fill: "#64748B",
                       }}
-                      axisLine={
-                        false
-                      }
-                      tickLine={
-                        false
-                      }
+                      axisLine={false}
+                      tickLine={false}
                     />
 
                     <YAxis
-                      tickFormatter={(
-                        value,
-                      ) =>
-                        `${Math.round(
-                          Number(
-                            value,
-                          ) /
-                            1000,
-                        )}k`
+                      tickFormatter={(value) =>
+                        `${Math.round(Number(value) / 1000)}k`
                       }
                       tick={{
                         fontSize: 11,
                         fill: "#64748B",
                       }}
-                      axisLine={
-                        false
-                      }
-                      tickLine={
-                        false
-                      }
+                      axisLine={false}
+                      tickLine={false}
                     />
 
                     <Tooltip
                       contentStyle={{
                         borderRadius: 12,
-                        border:
-                          "1px solid #E2E8F0",
+                        border: "1px solid #E2E8F0",
                         fontSize: 12,
                       }}
-                      formatter={(
-                        value,
-                      ) => [
-                        formatCurrency(
-                          value,
-                          revenue?.currency ||
-                            "VND",
-                        ),
+                      formatter={(value) => [
+                        formatCurrency(value, revenue?.currency || "VND"),
                         "Doanh thu",
                       ]}
                     />
@@ -1718,8 +1268,7 @@ export function AnalyticsDashboard() {
                 </ResponsiveContainer>
               ) : (
                 <div className="h-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-                  Khoảng này chưa có
-                  dữ liệu biểu đồ.
+                  No chart data is available for this period.
                 </div>
               )}
             </div>
@@ -1739,100 +1288,74 @@ export function AnalyticsDashboard() {
             </div>
 
             <h2 className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">
-              Dung lượng theo người
-              dùng
+              Storage by user
             </h2>
 
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Xem tổng dung lượng của
-              tất cả tài khoản hoặc
-              chọn một tài khoản cụ
-              thể.
+              View total storage across all accounts or select a specific
+              account.
             </p>
           </div>
 
           <div className="flex flex-wrap items-end gap-3">
             <UserFilter
               users={users}
-              value={
-                storageUserId
-              }
-              onChange={
-                setStorageUserId
-              }
-              label="Phạm vi người dùng"
+              value={storageUserId}
+              onChange={setStorageUserId}
+              label="User scope"
             />
 
             <button
               type="button"
-              onClick={() =>
-                void loadStorage()
-              }
-              disabled={
-                storageLoading
-              }
+              onClick={() => void loadStorage()}
+              disabled={storageLoading}
               className="inline-flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-60"
             >
               <RefreshCw
-                className={`w-4 h-4 ${
-                  storageLoading
-                    ? "animate-spin"
-                    : ""
-                }`}
+                className={`w-4 h-4 ${storageLoading ? "animate-spin" : ""}`}
               />
-
-              Xem dung lượng
+              View storage
             </button>
           </div>
         </div>
 
         {storageLoading ? (
-          <LoadingBlock label="Đang tải báo cáo dung lượng..." />
+          <LoadingBlock label="Loading storage report..." />
         ) : storageError ? (
           <ErrorBlock
-            message={
-              storageError
-            }
-            onRetry={() =>
-              void loadStorage()
-            }
+            message={storageError}
+            onRetry={() => void loadStorage()}
           />
         ) : (
           <>
             <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="rounded-2xl bg-violet-50 p-5 dark:bg-violet-500/10">
                 <p className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-300">
-                  Tổng dung lượng
+                  Total storage
                 </p>
 
                 <p className="mt-2 text-2xl font-extrabold text-violet-800 dark:text-violet-100">
-                  {formatBytes(
-                    storage?.totalStorageBytes,
-                  )}
+                  {formatBytes(storage?.totalStorageBytes)}
                 </p>
               </div>
 
               <div className="rounded-2xl bg-blue-50 p-5 dark:bg-blue-500/10">
                 <p className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-300">
-                  Số người dùng
+                  Users
                 </p>
 
                 <p className="mt-2 text-2xl font-extrabold text-blue-800 dark:text-blue-100">
-                  {formatNumber(
-                    storage?.userCount,
-                  )}
+                  {formatNumber(storage?.userCount)}
                 </p>
               </div>
 
               <div className="rounded-2xl bg-amber-50 p-5 dark:bg-amber-500/10">
                 <p className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-300">
-                  Số tài liệu
+                  Documents
                 </p>
 
                 <p className="mt-2 text-2xl font-extrabold text-amber-800 dark:text-amber-100">
-                  {formatNumber(
-                    storage?.documentCount,
-                  )}
+                  {formatNumber(storage?.documentCount)}
                 </p>
               </div>
             </div>
@@ -1840,20 +1363,13 @@ export function AnalyticsDashboard() {
             <div className="mt-7 grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1.25fr]">
               <div className="h-80 rounded-2xl border border-slate-200 p-4 dark:border-slate-700 dark:[&_.recharts-cartesian-axis-tick_text]:fill-slate-400 dark:[&_.recharts-cartesian-grid_line]:stroke-slate-800">
                 <h3 className="mb-3 text-sm font-extrabold text-slate-800 dark:text-slate-200">
-                  Top dung lượng theo
-                  user (MB)
+                  Top users by storage (MB)
                 </h3>
 
-                {storageChartData.length >
-                0 ? (
-                  <ResponsiveContainer
-                    width="100%"
-                    height="90%"
-                  >
+                {storageChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="90%">
                     <BarChart
-                      data={
-                        storageChartData
-                      }
+                      data={storageChartData}
                       layout="vertical"
                       margin={{
                         left: 10,
@@ -1862,9 +1378,7 @@ export function AnalyticsDashboard() {
                       <CartesianGrid
                         strokeDasharray="3 3"
                         stroke="#E2E8F0"
-                        horizontal={
-                          false
-                        }
+                        horizontal={false}
                       />
 
                       <XAxis
@@ -1873,12 +1387,8 @@ export function AnalyticsDashboard() {
                           fontSize: 10,
                           fill: "#64748B",
                         }}
-                        axisLine={
-                          false
-                        }
-                        tickLine={
-                          false
-                        }
+                        axisLine={false}
+                        tickLine={false}
                       />
 
                       <YAxis
@@ -1889,40 +1399,29 @@ export function AnalyticsDashboard() {
                           fontSize: 10,
                           fill: "#64748B",
                         }}
-                        axisLine={
-                          false
-                        }
-                        tickLine={
-                          false
-                        }
+                        axisLine={false}
+                        tickLine={false}
                       />
 
                       <Tooltip
                         contentStyle={{
                           borderRadius: 12,
-                          border:
-                            "1px solid #E2E8F0",
+                          border: "1px solid #E2E8F0",
                           fontSize: 12,
                         }}
                       />
 
                       <Bar
                         dataKey="storageMb"
-                        name="Dung lượng (MB)"
+                        name="Storage (MB)"
                         fill="#7C3AED"
-                        radius={[
-                          0,
-                          5,
-                          5,
-                          0,
-                        ]}
+                        radius={[0, 5, 5, 0]}
                       />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
                   <div className="h-[90%] flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-                    Chưa có dữ liệu
-                    dung lượng.
+                    No storage data is available.
                   </div>
                 )}
               </div>
@@ -1930,109 +1429,61 @@ export function AnalyticsDashboard() {
               <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
                 <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700">
                   <h3 className="font-extrabold text-slate-900 dark:text-white">
-                    Chi tiết người dùng
+                    User details
                   </h3>
-
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2 text-slate-400" />
-
-                    <input
-                      value={
-                        userSearch
-                      }
-                      onChange={(
-                        event,
-                      ) =>
-                        setUserSearch(
-                          event.target
-                            .value,
-                        )
-                      }
-                      placeholder="Tìm ID, tên hoặc email..."
-                      className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-blue-500 sm:w-64 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    />
-                  </div>
                 </div>
 
                 <div className="max-h-80 overflow-auto">
                   <table className="w-full min-w-[620px] text-left text-sm">
                     <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                       <tr>
-                        <th className="px-4 py-3">
-                          User
-                        </th>
+                        <th className="px-4 py-3">User</th>
 
-                        <th className="px-4 py-3">
-                          Email
-                        </th>
+                        <th className="px-4 py-3">Email</th>
 
-                        <th className="px-4 py-3 text-right">
-                          Tài liệu
-                        </th>
+                        <th className="px-4 py-3 text-right">Documents</th>
 
-                        <th className="px-4 py-3 text-right">
-                          Dung lượng
-                        </th>
+                        <th className="px-4 py-3 text-right">Storage</th>
                       </tr>
                     </thead>
 
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {filteredStorageUsers.map(
-                        (user) => (
-                          <tr
-                            key={
-                              user.userId
-                            }
-                            className="hover:bg-slate-50 dark:hover:bg-slate-800/60"
-                          >
-                            <td className="px-4 py-3">
-                              <p className="font-bold text-slate-900 dark:text-white">
-                                {user.fullName ||
-                                  "Chưa có tên"}
-                              </p>
+                      {filteredStorageUsers.map((user) => (
+                        <tr
+                          key={user.userId}
+                          className="hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                        >
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-slate-900 dark:text-white">
+                              {user.fullName || "Unnamed user"}
+                            </p>
 
-                              <p className="text-xs text-slate-400">
-                                ID{" "}
-                                {
-                                  user.userId
-                                }
-                              </p>
-                            </td>
+                            <p className="text-xs text-slate-400">
+                              ID {user.userId}
+                            </p>
+                          </td>
 
-                            <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                              {
-                                user.email
-                              }
-                            </td>
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                            {user.email}
+                          </td>
 
-                            <td className="px-4 py-3 text-right font-semibold text-slate-700 dark:text-slate-200">
-                              {formatNumber(
-                                user.documentCount,
-                              )}
-                            </td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-700 dark:text-slate-200">
+                            {formatNumber(user.documentCount)}
+                          </td>
 
-                            <td className="px-4 py-3 text-right font-extrabold text-violet-600 dark:text-violet-300">
-                              {formatBytes(
-                                user.totalStorageBytes,
-                              )}
-                            </td>
-                          </tr>
-                        ),
-                      )}
+                          <td className="px-4 py-3 text-right font-extrabold text-violet-600 dark:text-violet-300">
+                            {formatBytes(user.totalStorageBytes)}
+                          </td>
+                        </tr>
+                      ))}
 
-                      {filteredStorageUsers.length ===
-                        0 && (
+                      {filteredStorageUsers.length === 0 && (
                         <tr>
                           <td
-                            colSpan={
-                              4
-                            }
+                            colSpan={4}
                             className="px-4 py-10 text-center text-slate-500 dark:text-slate-400"
                           >
-                            Không tìm
-                            thấy người
-                            dùng phù
-                            hợp.
+                            No matching users found.
                           </td>
                         </tr>
                       )}
@@ -2057,15 +1508,12 @@ export function AnalyticsDashboard() {
             </div>
 
             <h2 className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">
-              Mức sử dụng token AI
+              AI token usage
             </h2>
 
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Lọc theo một user hoặc
-              tất cả user, kết hợp
-              ngày, tuần, tháng, 7
-              ngày, 30 ngày hoặc
-              khoảng tùy chọn.
+              Filter by one user or all users, combined with a day, week, month,
+              the last 7 days, the last 30 days, or a custom range.
             </p>
           </div>
 
@@ -2073,55 +1521,31 @@ export function AnalyticsDashboard() {
             <UserFilter
               users={users}
               value={tokenUserId}
-              onChange={
-                setTokenUserId
-              }
-              label="Phạm vi người dùng"
+              onChange={setTokenUserId}
+              label="User scope"
             />
 
             <PeriodFilters
-              period={
-                tokenPeriod
-              }
-              setPeriod={
-                setTokenPeriod
-              }
-              selectedDate={
-                tokenDate
-              }
-              setSelectedDate={
-                setTokenDate
-              }
-              customFromDate={
-                tokenFromDate
-              }
-              setCustomFromDate={
-                setTokenFromDate
-              }
-              customToDate={
-                tokenToDate
-              }
-              setCustomToDate={
-                setTokenToDate
-              }
-              loading={
-                tokenLoading
-              }
-              onRefresh={() =>
-                void loadTokenUsage()
-              }
+              period={tokenPeriod}
+              setPeriod={setTokenPeriod}
+              selectedDate={tokenDate}
+              setSelectedDate={setTokenDate}
+              customFromDate={tokenFromDate}
+              setCustomFromDate={setTokenFromDate}
+              customToDate={tokenToDate}
+              setCustomToDate={setTokenToDate}
+              loading={tokenLoading}
+              onRefresh={() => void loadTokenUsage()}
             />
           </div>
         </div>
 
         {tokenLoading ? (
-          <LoadingBlock label="Đang tải báo cáo token..." />
+          <LoadingBlock label="Loading token usage report..." />
         ) : tokenError ? (
           <ErrorBlock
             message={tokenError}
-            onRetry={() =>
-              void loadTokenUsage()
-            }
+            onRetry={() => void loadTokenUsage()}
           />
         ) : (
           <>
@@ -2129,89 +1553,58 @@ export function AnalyticsDashboard() {
               {[
                 [
                   "Chat",
-                  tokenUsage?.totals
-                    ?.chatTokens,
+                  tokenUsage?.totals?.chatTokens,
                   "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300",
                 ],
                 [
                   "Summary",
-                  tokenUsage?.totals
-                    ?.summaryTokens,
+                  tokenUsage?.totals?.summaryTokens,
                   "bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300",
                 ],
                 [
                   "Quiz",
-                  tokenUsage?.totals
-                    ?.quizTokens,
+                  tokenUsage?.totals?.quizTokens,
                   "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300",
                 ],
                 [
                   "Extract",
-                  tokenUsage?.totals
-                    ?.extractTokens,
+                  tokenUsage?.totals?.extractTokens,
                   "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300",
                 ],
                 [
                   "Feature total",
-                  tokenUsage?.totals
-                    ?.totalTokens,
+                  tokenUsage?.totals?.totalTokens,
                   "bg-pink-50 text-pink-700 dark:bg-pink-500/10 dark:text-pink-300",
                 ],
                 [
                   "Overall",
-                  tokenUsage?.totals
-                    ?.overallTokens,
+                  tokenUsage?.totals?.overallTokens,
                   "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-white",
                 ],
-              ].map(
-                ([
-                  label,
-                  value,
-                  className,
-                ]) => (
-                  <div
-                    key={String(
-                      label,
-                    )}
-                    className={`rounded-2xl p-4 ${String(
-                      className,
-                    )}`}
-                  >
-                    <p className="text-xs font-bold uppercase tracking-wider opacity-75">
-                      {String(
-                        label,
-                      )}
-                    </p>
+              ].map(([label, value, className]) => (
+                <div
+                  key={String(label)}
+                  className={`rounded-2xl p-4 ${String(className)}`}
+                >
+                  <p className="text-xs font-bold uppercase tracking-wider opacity-75">
+                    {String(label)}
+                  </p>
 
-                    <p className="mt-2 text-xl font-extrabold">
-                      {formatNumber(
-                        value,
-                      )}
-                    </p>
-                  </div>
-                ),
-              )}
+                  <p className="mt-2 text-xl font-extrabold">
+                    {formatNumber(value)}
+                  </p>
+                </div>
+              ))}
             </div>
 
             <div className="mt-7 h-96 dark:[&_.recharts-cartesian-axis-tick_text]:fill-slate-400 dark:[&_.recharts-cartesian-grid_line]:stroke-slate-800">
-              {tokenChartData.length >
-              0 ? (
-                <ResponsiveContainer
-                  width="100%"
-                  height="100%"
-                >
-                  <BarChart
-                    data={
-                      tokenChartData
-                    }
-                    barSize={16}
-                  >
+              {tokenChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={tokenChartData} barSize={16}>
                     <CartesianGrid
                       strokeDasharray="3 3"
                       stroke="#E2E8F0"
-                      vertical={
-                        false
-                      }
+                      vertical={false}
                     />
 
                     <XAxis
@@ -2220,48 +1613,28 @@ export function AnalyticsDashboard() {
                         fontSize: 11,
                         fill: "#64748B",
                       }}
-                      axisLine={
-                        false
-                      }
-                      tickLine={
-                        false
-                      }
+                      axisLine={false}
+                      tickLine={false}
                     />
 
                     <YAxis
-                      tickFormatter={(
-                        value,
-                      ) =>
-                        formatNumber(
-                          value,
-                        )
-                      }
+                      tickFormatter={(value) => formatNumber(value)}
                       tick={{
                         fontSize: 11,
                         fill: "#64748B",
                       }}
-                      axisLine={
-                        false
-                      }
-                      tickLine={
-                        false
-                      }
+                      axisLine={false}
+                      tickLine={false}
                     />
 
                     <Tooltip
                       contentStyle={{
                         borderRadius: 12,
-                        border:
-                          "1px solid #E2E8F0",
+                        border: "1px solid #E2E8F0",
                         fontSize: 12,
                       }}
-                      formatter={(
-                        value,
-                        name,
-                      ) => [
-                        formatNumber(
-                          value,
-                        ),
+                      formatter={(value, name) => [
+                        formatNumber(value),
                         String(name),
                       ]}
                     />
@@ -2294,55 +1667,38 @@ export function AnalyticsDashboard() {
                       name="Extract"
                       stackId="tokens"
                       fill="#F59E0B"
-                      radius={[
-                        4,
-                        4,
-                        0,
-                        0,
-                      ]}
+                      radius={[4, 4, 0, 0]}
                     />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="h-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-                  Khoảng này chưa có
-                  dữ liệu token.
+                  No token usage data is available for this period.
                 </div>
               )}
             </div>
 
             <div className="mt-4 flex flex-wrap gap-x-8 gap-y-2 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               <span>
-                Phạm vi:{" "}
+                Scope:{" "}
                 <strong>
                   {tokenUserId
-                    ? selectedTokenUser
-                        ?.fullName ||
-                      `User ${tokenUserId}`
-                    : "Tất cả người dùng"}
+                    ? selectedTokenUser?.fullName || `User ${tokenUserId}`
+                    : "All users"}
                 </strong>
               </span>
 
               <span>
-                Thời gian:{" "}
+                Period:{" "}
                 <strong>
-                  {formatDate(
-                    tokenUsage?.fromDate,
-                  )}{" "}
-                  -{" "}
-                  {formatDate(
-                    tokenUsage?.toDate,
-                  )}
+                  {formatDate(tokenUsage?.fromDate)} -{" "}
+                  {formatDate(tokenUsage?.toDate)}
                 </strong>
               </span>
 
               <span>
-                Số ngày:{" "}
-                <strong>
-                  {formatNumber(
-                    tokenUsage?.numberOfDays,
-                  )}
-                </strong>
+                Number of days:{" "}
+                <strong>{formatNumber(tokenUsage?.numberOfDays)}</strong>
               </span>
             </div>
           </>

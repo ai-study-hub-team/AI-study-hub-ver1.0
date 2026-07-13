@@ -13,6 +13,18 @@ export type ReportPeriod =
 export type BackendReportPeriod =
   ReportPeriod;
 
+
+export interface AdminActiveUserItem {
+  id: number;
+  fullName: string;
+  email: string;
+  role: string;
+  status: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  totalStorageUsedBytes: number;
+}
+
 export interface RevenueDailyItem {
   date: string;
   totalRevenue: number;
@@ -107,6 +119,13 @@ export interface TokenUsageReportParams {
 }
 
 export const adminAnalyticsApi = {
+  /** GET /api/admin/dashboard/active-users */
+  getActiveUsers: () => {
+    return apiClient.get<AdminActiveUserItem[]>(
+      "/api/admin/dashboard/active-users",
+    );
+  },
+
   /**
    * GET /api/admin/dashboard/revenue
    */

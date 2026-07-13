@@ -2,6 +2,8 @@ package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.config.VnpayConfig;
 import com.aistudyhub.backend.config.VnpayProperties;
+import com.aistudyhub.backend.dto.response.VnpayPaymentCreation;
+import com.aistudyhub.backend.dto.response.VnpayReturnResult;
 import com.aistudyhub.backend.entity.NotificationType;
 import com.aistudyhub.backend.entity.PaymentTransaction;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
@@ -62,10 +64,10 @@ public class VnpayService {
      * @param userId  the ID of the user making the payment
      * @param planCode the subscription plan code to purchase
      * @param request the HTTP request (used to extract client IP)
-     * @return the full VNPAY payment URL
+     * @return payment creation details including the redirect URL and internal order code
      */
     @Transactional
-    public String createPaymentUrl(Long userId, String planCode, HttpServletRequest request) {
+    public VnpayPaymentCreation createPayment(Long userId, String planCode, HttpServletRequest request) {
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -77,8 +79,7 @@ public class VnpayService {
             throw new RuntimeException("Plan is currently inactive and cannot be purchased.");
         }
 
-        // We assume a 30-day purchase for now. Could be dynamic later.
-        int purchasedDays = 30;
+        int purchasedDays = resolvePurchasedDays(plan);
         BigDecimal amount = plan.getPrice();
 
         // --- Match official ajaxServlet.java ---
@@ -188,7 +189,10 @@ public class VnpayService {
         String paymentUrl = vnpayProperties.getPayUrl() + "?" + queryUrl;
 
         log.info("Created VNPAY payment URL for order: {}, vnpTxnRef: {}", orderCode, vnp_TxnRef);
-        return paymentUrl;
+        return VnpayPaymentCreation.builder()
+                .paymentUrl(paymentUrl)
+                .orderCode(orderCode)
+                .build();
     }
 
     /**
@@ -208,7 +212,7 @@ public class VnpayService {
      * @param params the VNPAY return URL parameters
      */
     @Transactional
-    public void processReturn(Map<String, String> params) {
+    public VnpayReturnResult processReturn(Map<String, String> params) {
         String vnp_SecureHash = params.get("vnp_SecureHash");
         if (vnp_SecureHash == null) {
             throw new PaymentException("Missing secure hash");
@@ -236,7 +240,12 @@ public class VnpayService {
 
         if (transaction.getStatus() != PaymentStatus.PENDING) {
             log.warn("Transaction {} is already processed (Status: {})", vnpTxnRef, transaction.getStatus());
-            return;
+            return VnpayReturnResult.builder()
+                    .orderCode(transaction.getOrderCode())
+                    .status(transaction.getStatus().name())
+                    .success(transaction.getStatus() == PaymentStatus.SUCCESS)
+                    .message("Payment was already processed")
+                    .build();
         }
 
         transaction.setTransactionNo(transactionNo);
@@ -272,6 +281,13 @@ public class VnpayService {
                     transaction.getId(),
                     "/app/subscription"
             );
+
+            return VnpayReturnResult.builder()
+                    .orderCode(transaction.getOrderCode())
+                    .status(transaction.getStatus().name())
+                    .success(true)
+                    .message("Payment successful")
+                    .build();
         } else {
             transaction.setStatus(PaymentStatus.FAILED);
             transaction.setFailureReason("VNPAY Response Code: " + responseCode);
@@ -294,6 +310,25 @@ public class VnpayService {
                     transaction.getId(),
                     "/app/subscription"
             );
+
+            return VnpayReturnResult.builder()
+                    .orderCode(transaction.getOrderCode())
+                    .status(transaction.getStatus().name())
+                    .success(false)
+                    .message(transaction.getFailureReason())
+                    .build();
         }
+    }
+
+    private int resolvePurchasedDays(SubscriptionPlan plan) {
+        Integer durationDays = plan.getDurationDays();
+
+        if (durationDays == null || durationDays <= 0) {
+            throw new PaymentException(
+                    "Plan duration is not configured for plan: " + plan.getCode()
+            );
+        }
+
+        return durationDays;
     }
 }

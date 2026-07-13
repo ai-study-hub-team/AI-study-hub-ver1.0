@@ -32,6 +32,11 @@ export interface DocumentResponse {
   processedAt: string;
   processErrorMessage: string;
   chunkCount: number;
+
+  isTrashed: boolean;
+  trashedAt: string | null;
+  deleteAfter: string | null;
+  trashedBy: number | null;
 }
 
 export interface DocumentListItemResponse extends DocumentResponse {
