@@ -1,19 +1,11 @@
 package com.aistudyhub.backend.controller;
 
-import com.aistudyhub.backend.dto.request.LoginRequest;
-import com.aistudyhub.backend.dto.request.LogoutRequest;
-import com.aistudyhub.backend.dto.request.RefreshTokenRequest;
-import com.aistudyhub.backend.dto.request.RegisterRequest;
+import com.aistudyhub.backend.dto.request.*;
 import com.aistudyhub.backend.dto.response.AuthResponse;
 import com.aistudyhub.backend.dto.response.MessageResponse;
 import com.aistudyhub.backend.dto.response.UserResponse;
-import com.aistudyhub.backend.dto.request.GoogleLoginRequest;
-import com.aistudyhub.backend.dto.request.ResendVerificationEmailRequest;
 import com.aistudyhub.backend.dto.response.EmailVerificationResponse;
-import com.aistudyhub.backend.service.GoogleAuthService;
-import com.aistudyhub.backend.service.AuthService;
-import com.aistudyhub.backend.service.UserService;
-import com.aistudyhub.backend.service.EmailVerificationService;
+import com.aistudyhub.backend.service.*;
 import jakarta.servlet.http.HttpServletRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
@@ -32,6 +24,7 @@ public class AuthController {
     private final UserService userService;
     private final GoogleAuthService googleAuthService;
     private final EmailVerificationService emailVerificationService;
+    private final PasswordResetService passwordResetService;
 
     @PostMapping("/register")
     public ResponseEntity<EmailVerificationResponse> register(
@@ -47,6 +40,29 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request
     ) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<MessageResponse> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(
+                passwordResetService.requestPasswordReset(
+                        request.getEmail(),
+                        httpRequest.getRemoteAddr(),
+                        httpRequest.getHeader("User-Agent")
+                )
+        );
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<MessageResponse> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request
+    ) {
+        return ResponseEntity.ok(
+                passwordResetService.resetPassword(request)
+        );
     }
 
     @GetMapping("/verify-email")

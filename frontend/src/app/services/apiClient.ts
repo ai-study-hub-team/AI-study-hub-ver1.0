@@ -1,4 +1,4 @@
-import axios, { AxiosHeaders } from "axios";
+import axios, { AxiosHeaders, type InternalAxiosRequestConfig } from "axios";
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:8080",
@@ -6,40 +6,228 @@ export const apiClient = axios.create({
 
 export const getAuthToken = (): string | null => {
   const token =
-    localStorage.getItem("token") ||
     localStorage.getItem("accessToken") ||
+    localStorage.getItem("token") ||
     localStorage.getItem("jwt");
 
-  if (!token) {
+  if (!token || token === "null" || token === "undefined") {
     return null;
   }
 
-  return token.replace(/^Bearer\s+/i, "").trim();
+  return token.trim();
 };
 
+const isValidJwtStructure = (token: string): boolean => {
+  const parts = token.split(".");
+  return parts.length === 3 && parts.every((part) => part.length > 0);
+};
+
+export const clearAuthStorage = (): void => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("jwt");
+  localStorage.removeItem("refreshToken");
+  localStorage.removeItem("user");
+  localStorage.removeItem("userId");
+  localStorage.removeItem("role");
+  localStorage.removeItem("email");
+  localStorage.removeItem("fullName");
+  localStorage.removeItem("name");
+  localStorage.removeItem("avatarUrl");
+  sessionStorage.clear();
+};
+
+const publicAuthEndpoints = [
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/google",
+  "/api/auth/refresh",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/auth/resend-verification",
+  "/api/auth/verify-email",
+  "/api/auth/verify-reset-code",
+  "/api/auth/check-email",
+  "/auth/login",
+  "/auth/register",
+  "/auth/refresh",
+];
+
+const isPublicEndpoint = (url?: string): boolean => {
+  if (!url) return false;
+
+  if (url.includes("/api/public/")) return true;
+
+  return publicAuthEndpoints.some(
+    (endpoint) =>
+      url === endpoint ||
+      url.startsWith(`${endpoint}?`) ||
+      url.includes(endpoint),
+  );
+};
+
+export const getAuthHeader = (): Record<string, string> => {
+  const token = getAuthToken();
+
+  if (!token || !isValidJwtStructure(token)) {
+    return {};
+  }
+
+  return { Authorization: `Bearer ${token}` };
+};
+
+apiClient.interceptors.request.use(
+  (config) => {
+    const headers = AxiosHeaders.from(config.headers);
+
+    if (isPublicEndpoint(config.url)) {
+      headers.delete("Authorization");
+      config.headers = headers;
+      return config;
+    }
+
+    const token = getAuthToken();
+
+    if (token && isValidJwtStructure(token)) {
+      headers.set("Authorization", `Bearer ${token}`);
+    } else {
+      headers.delete("Authorization");
+
+      if (token) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("jwt");
+      }
+    }
+
+    config.headers = headers;
+    return config;
+  },
+  (error) => Promise.reject(error),
+);
+
+type RetryableRequestConfig = InternalAxiosRequestConfig & {
+  _retryAfterRefresh?: boolean;
+};
+
+type RefreshResponse = {
+  accessToken?: string;
+  token?: string;
+  jwt?: string;
+  refreshToken?: string;
+};
+
+let refreshRequest: Promise<string> | null = null;
+
+const refreshAccessToken = (): Promise<string> => {
+  if (refreshRequest) return refreshRequest;
+
+  const refreshToken = localStorage.getItem("refreshToken")?.trim();
+  if (!refreshToken) {
+    return Promise.reject(new Error("No refresh token is available"));
+  }
+
+  refreshRequest = apiClient
+    .post<RefreshResponse>("/api/auth/refresh", { refreshToken })
+    .then(({ data }) => {
+      const accessToken = (data.accessToken || data.token || data.jwt)?.trim();
+
+      if (!accessToken || !isValidJwtStructure(accessToken)) {
+        throw new Error("The refresh response does not contain a valid access token");
+      }
+
+      localStorage.setItem("accessToken", accessToken);
+      localStorage.setItem("token", accessToken);
+
+      if (data.refreshToken?.trim()) {
+        localStorage.setItem("refreshToken", data.refreshToken.trim());
+      }
+
+      return accessToken;
+    })
+    .finally(() => {
+      refreshRequest = null;
+    });
+
+  return refreshRequest;
+};
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const status = error?.response?.status;
+    const requestUrl = String(error?.config?.url || "");
+    const isAuthenticationRequest = isPublicEndpoint(requestUrl);
+    const originalRequest = error?.config as RetryableRequestConfig | undefined;
+
+    if (
+      status === 401 &&
+      !isAuthenticationRequest &&
+      originalRequest &&
+      !originalRequest._retryAfterRefresh
+    ) {
+      originalRequest._retryAfterRefresh = true;
+
+      try {
+        const accessToken = await refreshAccessToken();
+        const headers = AxiosHeaders.from(originalRequest.headers);
+        headers.set("Authorization", `Bearer ${accessToken}`);
+        originalRequest.headers = headers;
+
+        return apiClient(originalRequest);
+      } catch {
+        // The refresh token is missing, expired, revoked, or otherwise invalid.
+      }
+    }
+
+    if (status === 401 && !isAuthenticationRequest) {
+      clearAuthStorage();
+
+      const currentPath = window.location.pathname;
+      const isPublicPage =
+        currentPath === "/login" ||
+        currentPath === "/register" ||
+        currentPath === "/forgot-password" ||
+        currentPath.startsWith("/reset-password") ||
+        currentPath.startsWith("/verify-email");
+
+      if (!isPublicPage) {
+        window.location.replace("/login");
+      }
+    }
+
+    return Promise.reject(error);
+  },
+);
+
 export const getCurrentUserId = (): number | null => {
-  const storedUserId = localStorage.getItem("userId");
+  const storedUserId = Number(localStorage.getItem("userId"));
+  if (Number.isInteger(storedUserId) && storedUserId > 0) {
+    return storedUserId;
+  }
 
-  if (storedUserId) {
-    const userId = Number(storedUserId);
+  try {
+    const storedUser = JSON.parse(localStorage.getItem("user") || "{}") as {
+      id?: number | string;
+      userId?: number | string;
+    };
 
+    const userId = Number(storedUser.id ?? storedUser.userId);
     if (Number.isInteger(userId) && userId > 0) {
       return userId;
     }
+  } catch {
+    // Continue by reading the JWT payload.
   }
 
   try {
     const token = getAuthToken();
-    const encodedPayload = token?.split(".")[1];
-
-    if (!encodedPayload) {
+    if (!token || !isValidJwtStructure(token)) {
       return null;
     }
 
-    const normalizedPayload = encodedPayload
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-
+    const encodedPayload = token.split(".")[1];
+    const normalizedPayload = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
     const paddedPayload = normalizedPayload.padEnd(
       Math.ceil(normalizedPayload.length / 4) * 4,
       "=",
@@ -51,124 +239,9 @@ export const getCurrentUserId = (): number | null => {
       sub?: number | string;
     };
 
-    const userId = Number(
-      payload.userId ??
-        payload.id ??
-        payload.sub,
-    );
-
-    return Number.isInteger(userId) && userId > 0
-      ? userId
-      : null;
+    const userId = Number(payload.userId ?? payload.id ?? payload.sub);
+    return Number.isInteger(userId) && userId > 0 ? userId : null;
   } catch {
     return null;
   }
 };
-
-export const clearAuthStorage = () => {
-  localStorage.removeItem("token");
-  localStorage.removeItem("accessToken");
-  localStorage.removeItem("jwt");
-  localStorage.removeItem("refreshToken");
-  localStorage.removeItem("userId");
-  localStorage.removeItem("user");
-  localStorage.removeItem("role");
-  localStorage.removeItem("email");
-  localStorage.removeItem("fullName");
-  localStorage.removeItem("name");
-};
-
-export const getAuthHeader = () => {
-  const token = getAuthToken();
-
-  return {
-    headers: {
-      Authorization: token ? `Bearer ${token}` : "",
-    },
-  };
-};
-
-const isPublicApi = (url?: string): boolean => {
-  if (!url) {
-    return false;
-  }
-
-  return (
-  url.includes("/api/public/") ||
-  url.includes("/api/auth/login") ||
-  url.includes("/api/auth/google") ||
-  url.includes("/api/auth/register") ||
-  url.includes("/api/auth/refresh") ||
-  url.includes("/api/auth/forgot-password") ||
-  url.includes("/api/auth/reset-password") ||
-  url.includes("/api/auth/verify-email") ||
-  url.includes("/api/auth/resend-verification") ||
-  url.includes("/api/auth/verify-reset-code") ||
-  url.includes("/auth/login") ||
-  url.includes("/auth/register") ||
-  url.includes("/auth/refresh")
-);
-};
-apiClient.interceptors.request.use(
-  (config) => {
-    config.headers =
-      AxiosHeaders.from(
-        config.headers,
-      );
-
-    const token =
-      localStorage.getItem(
-        "accessToken",
-      ) ||
-      localStorage.getItem("token") ||
-      localStorage.getItem("jwt");
-
-    if (token) {
-      config.headers.set(
-        "Authorization",
-        `Bearer ${token}`,
-      );
-    }
-
-    return config;
-  },
-  (error) =>
-    Promise.reject(error),
-);
-
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    const status = error.response?.status;
-    const requestUrl = String(error.config?.url || "");
-
-    /*
-     * Không tự logout khi API login hoặc xác thực email trả 401.
-     * Chỉ logout khi một API cần đăng nhập trả 401.
-     */
-    if (
-      status === 401 &&
-      !isPublicApi(requestUrl)
-    ) {
-      console.warn(
-        "Access token không hợp lệ hoặc đã hết hạn.",
-      );
-
-      clearAuthStorage();
-
-      const currentPath = window.location.pathname;
-
-      if (
-        !currentPath.includes("/login") &&
-        !currentPath.includes("/register") &&
-        !currentPath.includes("/verify-email")
-      ) {
-        window.location.href = "/login";
-      }
-    }
-
-    return Promise.reject(error);
-  },
-);
-
-export default apiClient;

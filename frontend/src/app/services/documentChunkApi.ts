@@ -24,6 +24,21 @@ export interface DocumentChunkResponse {
   createdAt?: string;
 }
 
+
+export interface ChunkResolveItemRequest {
+  documentId: number;
+  chunkIndex: number;
+}
+
+export interface ChunkResolveItemResponse extends ChunkResolveItemRequest {
+  chunkText?: string | null;
+  found: boolean;
+}
+
+export interface ChunkResolveBatchResponse {
+  chunks: ChunkResolveItemResponse[];
+}
+
 export interface PageChunkResponse {
   content: DocumentChunkResponse[];
   totalElements: number;
@@ -85,6 +100,14 @@ export const documentChunkApi = {
         size,
       },
     });
+
+    return response.data;
+  },
+  resolveChunks: async (chunks: ChunkResolveItemRequest[]): Promise<ChunkResolveBatchResponse> => {
+    const response = await apiClient.post<ChunkResolveBatchResponse>(
+      "/api/internal/chunks/resolve",
+      { chunks },
+    );
 
     return response.data;
   },

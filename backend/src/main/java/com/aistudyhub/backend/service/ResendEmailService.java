@@ -37,6 +37,7 @@ public class ResendEmailService {
     private static final String FOLDER_SHARED_SUBJECT = "A folder has been shared with you";
     private static final String EMAIL_VERIFICATION_SUBJECT = "Verify your AI Study Hub email";
     private static final DateTimeFormatter EMAIL_DATE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final String PASSWORD_RESET_SUBJECT = "Reset your AI Study Hub password";
     private final EmailNotificationLogRepository emailNotificationLogRepository;
 
     private final ResendProperties resendProperties;
@@ -566,4 +567,119 @@ public class ResendEmailService {
         }
     }
 
+    public void sendPasswordResetEmail(
+            User user,
+            String resetToken,
+            LocalDateTime expiredAt
+    ) {
+        if (user == null || user.getEmail() == null || user.getEmail().isBlank()) {
+            log.warn("Skip sending password reset email because user email is missing");
+            return;
+        }
+
+        if (isBlank(resetToken)) {
+            log.warn("Skip sending password reset email because token is missing");
+            return;
+        }
+
+        if (isBlank(resendProperties.getApiKey())) {
+            log.warn("Skip sending password reset email because RESEND_API_KEY is not configured");
+            return;
+        }
+
+        if (isBlank(resendProperties.getFromEmail())) {
+            log.warn("Skip sending password reset email because resend.from-email is not configured");
+            return;
+        }
+
+        String resetUrl = buildPasswordResetUrl(resetToken);
+        String html = buildPasswordResetHtml(user, resetUrl, expiredAt);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("from", resendProperties.getFromEmail());
+        body.put("to", List.of(user.getEmail()));
+        body.put("subject", PASSWORD_RESET_SUBJECT);
+        body.put("html", html);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(resendProperties.getApiKey());
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<Map<String, Object>> requestEntity =
+                new HttpEntity<>(body, headers);
+
+        try {
+            restTemplate.postForEntity(
+                    RESEND_EMAIL_API_URL,
+                    requestEntity,
+                    String.class
+            );
+
+            log.info(
+                    "Password reset email sent. userId={}, email={}",
+                    user.getId(),
+                    user.getEmail()
+            );
+        } catch (RestClientException ex) {
+            log.warn(
+                    "Failed to send password reset email. userId={}, email={}",
+                    user.getId(),
+                    user.getEmail(),
+                    ex
+            );
+            throw ex;
+        }
+    }
+
+    private String buildPasswordResetUrl(String token) {
+        String frontendUrl = resendProperties.getFrontendUrl();
+
+        if (isBlank(frontendUrl)) {
+            frontendUrl = "http://localhost:5173";
+        }
+
+        return trimTrailingSlash(frontendUrl)
+                + "/reset-password?token="
+                + URLEncoder.encode(token, StandardCharsets.UTF_8);
+    }
+
+    private String buildPasswordResetHtml(
+            User user,
+            String resetUrl,
+            LocalDateTime expiredAt
+    ) {
+        String name = isBlank(user.getFullName())
+                ? user.getEmail()
+                : user.getFullName();
+
+        String expiresAtText = expiredAt == null
+                ? "the configured expiry time"
+                : expiredAt.format(EMAIL_DATE_TIME_FORMAT);
+
+        return """
+            <!doctype html>
+            <html>
+            <body style="font-family: Arial, sans-serif; color: #111827; line-height: 1.5;">
+                <p>Hello %s,</p>
+                <p>We received a request to reset your <strong>AI Study Hub</strong> password.</p>
+                <p>
+                    <a href="%s"
+                       style="display:inline-block;padding:10px 16px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;">
+                        Reset password
+                    </a>
+                </p>
+                <p>This password reset link expires at <strong>%s</strong>.</p>
+                <p>If the button does not work, copy and paste this link into your browser:</p>
+                <p><a href="%s">%s</a></p>
+                <p>If you did not request a password reset, you can safely ignore this email.</p>
+            </body>
+            </html>
+            """.formatted(
+                escapeHtml(name),
+                escapeHtml(resetUrl),
+                escapeHtml(expiresAtText),
+                escapeHtml(resetUrl),
+                escapeHtml(resetUrl)
+        );
+    }
 }

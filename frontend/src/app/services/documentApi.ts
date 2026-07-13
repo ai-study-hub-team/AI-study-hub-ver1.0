@@ -100,6 +100,11 @@ export interface SemanticSearchResponse {
   error?: string;
 }
 
+type BackendDocumentResponse = DocumentResponse & {
+  // Spring/Jackson may serialize a primitive boolean field named isTrashed as "trashed".
+  trashed?: boolean;
+};
+
 type DocumentWithFolderMeta = DocumentResponse & {
   folderId?: number | null;
   folderName?: string | null;
@@ -151,16 +156,25 @@ const getDocumentFolderName = (document: DocumentResponse): string => {
 
 const mapDocumentResponse = (
   document: DocumentResponse,
-): DocumentListItemResponse => ({
-  ...document,
-  id: document.id,
-  name: document.title || document.originalName || document.fileName,
-  type: document.fileType,
-  documentStatus: mapDocumentStatus(document.status),
-  aiStatus: mapAiStatus(document.processStatus),
-  uploadedAt: document.createdAt,
-  folder: getDocumentFolderName(document),
-});
+): DocumentListItemResponse => {
+  const backendDocument = document as BackendDocumentResponse;
+
+  return {
+    ...document,
+    id: document.id,
+    name: document.title || document.originalName || document.fileName,
+    type: document.fileType,
+    documentStatus: mapDocumentStatus(document.status),
+    aiStatus: mapAiStatus(document.processStatus),
+    uploadedAt: document.createdAt,
+    folder: getDocumentFolderName(document),
+    // Normalize both possible backend JSON property names.
+    isTrashed:
+      typeof document.isTrashed === "boolean"
+        ? document.isTrashed
+        : backendDocument.trashed === true,
+  };
+};
 
 const mapPageDocumentResponse = (
   page: PageDocumentResponse,
@@ -197,36 +211,19 @@ const buildDocumentListParams = (params?: GetDocumentsParams) => {
 };
 
 export const documentApi = {
-  // GET /api/documents
-  // GET /api/documents?folderId=5
-  // GET /api/documents?rootOnly=true
-getDocuments(params?: GetDocumentsParams) {
-  const queryParams = buildDocumentListParams(params);
+  // GET /api/documents/search-filter
+  getDocuments(params?: GetDocumentsParams) {
+    const queryParams = buildDocumentListParams(params);
 
-  return api
-    .get<PageDocumentResponse>("/api/documents", {
-      params: queryParams,
-    })
-    .then((response) => ({
-      ...response,
-      data: mapPageDocumentResponse(response.data),
-    }))
-    .catch((error) => {
-      console.warn(
-        "GET /api/documents failed, fallback to /api/documents/search-filter",
-        error,
-      );
-
-      return api
-        .get<PageDocumentResponse>("/api/documents/search-filter", {
-          params: queryParams,
-        })
-        .then((response) => ({
-          ...response,
-          data: mapPageDocumentResponse(response.data),
-        }));
-    });
-},
+    return api
+      .get<PageDocumentResponse>("/api/documents/search-filter", {
+        params: queryParams,
+      })
+      .then((response) => ({
+        ...response,
+        data: mapPageDocumentResponse(response.data),
+      }));
+  },
 
   /**
    * Giữ lại hàm này để các page cũ không bị lỗi TypeScript.
@@ -291,9 +288,44 @@ getDocuments(params?: GetDocumentsParams) {
       }));
   },
 
-  // DELETE /api/documents/{id}
+  // DELETE /api/documents/{id} - move to trash
   deleteDocument(id: number) {
-    return api.delete(`/api/documents/${id}`);
+    return api
+      .delete<DocumentResponse>(`/api/documents/${id}`)
+      .then((response) => ({
+        ...response,
+        data: mapDocumentResponse(response.data),
+      }));
+  },
+
+  // Explicit alias for the current trash workflow.
+  moveDocumentToTrash(id: number) {
+    return this.deleteDocument(id);
+  },
+
+  // GET /api/documents/trash
+  getTrashDocuments() {
+    return api
+      .get<DocumentResponse[]>("/api/documents/trash")
+      .then((response) => ({
+        ...response,
+        data: (response.data ?? []).map(mapDocumentResponse),
+      }));
+  },
+
+  // POST /api/documents/{id}/restore
+  restoreDocument(id: number) {
+    return api
+      .post<DocumentResponse>(`/api/documents/${id}/restore`)
+      .then((response) => ({
+        ...response,
+        data: mapDocumentResponse(response.data),
+      }));
+  },
+
+  // DELETE /api/documents/{id}/permanent - returns 204 No Content
+  permanentlyDeleteDocument(id: number) {
+    return api.delete<void>(`/api/documents/${id}/permanent`);
   },
 
   // POST /api/documents/upload
@@ -390,29 +422,21 @@ getDocuments(params?: GetDocumentsParams) {
     });
   },
 
-  // Dùng cho dropdown/select
-getAllDocumentsForSelect(_userId?: number) {
-  const currentUserId = _userId ?? getCurrentUserId();
+  // Used by dropdowns and selectors.
+  getAllDocumentsForSelect(_userId?: number) {
+    const currentUserId = _userId ?? getCurrentUserId();
 
-  return api
-    .get<PageDocumentResponse>("/api/documents", {
-      params: {
-        page: 0,
-        size: 100,
-      },
-    })
-    .catch(() =>
-      api.get<PageDocumentResponse>("/api/documents/search-filter", {
+    return api
+      .get<PageDocumentResponse>("/api/documents/search-filter", {
         params: {
           page: 0,
           size: 100,
         },
-      }),
-    )
-    .then((response) =>
-      filterMyDocuments(response.data.content ?? [], currentUserId).map(
-        mapDocumentResponse,
-      ),
-    );
-},
+      })
+      .then((response) =>
+        filterMyDocuments(response.data.content ?? [], currentUserId).map(
+          mapDocumentResponse,
+        ),
+      );
+  },
 };

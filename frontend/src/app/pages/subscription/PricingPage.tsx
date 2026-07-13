@@ -1,259 +1,666 @@
-import { Check, X, Zap, Star, Building2, ArrowRight, HelpCircle, ChevronDown, ChevronUp } from "lucide-react";
-import { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { toast } from "sonner";
+import {
+  ArrowRight,
+  Bot,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Cloud,
+  CreditCard,
+  FileUp,
+  HelpCircle,
+  LayoutDashboard,
+  LogIn,
+  RefreshCw,
+  ShieldCheck,
+  Star,
+  X,
+  Zap,
+} from "lucide-react";
+import {
+  AnimatePresence,
+  motion,
+} from "motion/react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
 
-const plans = [
+import {
+  getAuthToken,
+} from "../../services/apiClient";
+import {
+  subscriptionApi,
+  type PlanResponse,
+  type SubscriptionResponse,
+} from "../../services/subscriptionApi";
+
+type ApiError = {
+  response?: {
+    data?: {
+      message?: string;
+      error?: string;
+    };
+  };
+  message?: string;
+};
+
+type PlanFeature = {
+  label: string;
+  included: boolean;
+};
+
+const FAQS = [
   {
-    id: "free",
-    name: "Free",
-    price: { monthly: 0, annual: 0 },
-    description: "Perfect for getting started with AI-assisted studying",
-    icon: Star,
-    color: "slate",
-    badge: null,
-    features: [
-      { label: "1 GB Cloud Storage", included: true },
-      { label: "5 AI Questions per day", included: true },
-      { label: "3 Document uploads per month", included: true },
-      { label: "Basic AI summaries", included: true },
-      { label: "5 Quiz generations per month", included: true },
-      { label: "Community support", included: true },
-      { label: "Unlimited AI Questions", included: false },
-      { label: "Priority AI processing", included: false },
-      { label: "Advanced analytics", included: false },
-      { label: "Priority support", included: false },
-    ],
-    cta: "Get Started Free",
+    question: "Thông tin gói trên trang này lấy từ đâu?",
+    answer:
+      "Tên gói, giá, dung lượng, giới hạn token và quyền tải tệp được tải trực tiếp từ API GET /api/plans.",
   },
   {
-    id: "pro",
-    name: "Pro",
-    price: { monthly: 19, annual: 15 },
-    description: "For serious students who want the full AI advantage",
-    icon: Zap,
-    color: "blue",
-    badge: "Most Popular",
-    features: [
-      { label: "100 GB Cloud Storage", included: true },
-      { label: "Unlimited AI Questions", included: true },
-      { label: "Unlimited Document uploads", included: true },
-      { label: "Advanced AI summaries", included: true },
-      { label: "Unlimited Quiz generations", included: true },
-      { label: "Priority support", included: true },
-      { label: "Priority AI processing", included: true },
-      { label: "Advanced analytics", included: true },
-      { label: "Citation references", included: true },
-      { label: "Export to PDF & DOCX", included: true },
-    ],
-    cta: "Start Pro Trial",
+    question: "Thanh toán gói trả phí bằng cách nào?",
+    answer:
+      "Sau khi đăng nhập, hệ thống gọi API tạo thanh toán VNPAY rồi chuyển bạn đến cổng thanh toán VNPAY.",
   },
   {
-    id: "enterprise",
-    name: "Enterprise",
-    price: { monthly: 49, annual: 39 },
-    description: "For institutions, teams, and power users",
-    icon: Building2,
-    color: "purple",
-    badge: "Best Value",
-    features: [
-      { label: "Unlimited Cloud Storage", included: true },
-      { label: "Unlimited AI Questions", included: true },
-      { label: "Unlimited Document uploads", included: true },
-      { label: "Custom AI summaries", included: true },
-      { label: "Unlimited Quiz generations", included: true },
-      { label: "Dedicated account manager", included: true },
-      { label: "Priority AI processing", included: true },
-      { label: "Advanced analytics & reporting", included: true },
-      { label: "API access", included: true },
-      { label: "White-label options", included: true },
-    ],
-    cta: "Contact Sales",
+    question: "Khi nào tài khoản được nâng cấp?",
+    answer:
+      "Gói chỉ được cập nhật sau khi backend xác nhận giao dịch VNPAY thành công. Giao dịch thất bại không làm thay đổi gói hiện tại.",
+  },
+  {
+    question: "Mỗi lần mua gói trả phí có thời hạn bao lâu?",
+    answer:
+      "Luồng thanh toán hiện tại của hệ thống cấp 30 ngày cho mỗi lần mua thành công.",
+  },
+  {
+    question: "Tôi xem lịch sử thanh toán ở đâu?",
+    answer:
+      "Sau khi đăng nhập, mở trang Subscription trong ứng dụng để xem gói hiện tại và lịch sử thanh toán.",
   },
 ];
 
-const faqs = [
-  {
-    q: "Can I switch plans anytime?",
-    a: "Yes, you can upgrade or downgrade your plan at any time. Changes take effect immediately, and we'll prorate any charges or credits.",
-  },
-  {
-    q: "Is there a free trial for Pro?",
-    a: "Yes! Pro comes with a 14-day free trial. No credit card required to start.",
-  },
-  {
-    q: "What payment methods do you accept?",
-    a: "We accept all major credit cards (Visa, MasterCard, Amex), PayPal, and bank transfers for Enterprise plans.",
-  },
-  {
-    q: "What happens to my data if I downgrade?",
-    a: "Your data is safe. If you exceed the free plan storage limit after downgrading, you'll have 30 days to reduce your storage before any files are affected.",
-  },
-  {
-    q: "Do you offer student discounts?",
-    a: "Yes! Students with a valid .edu email address get 50% off the Pro plan. Contact support to apply the discount.",
-  },
-];
+const getErrorMessage = (
+  error: unknown,
+  fallbackMessage: string,
+): string => {
+  const apiError = error as ApiError;
+
+  return (
+    apiError.response?.data?.message ||
+    apiError.response?.data?.error ||
+    apiError.message ||
+    fallbackMessage
+  );
+};
+
+const toSafeNumber = (value: unknown): number => {
+  const parsedValue = Number(value);
+
+  return Number.isFinite(parsedValue)
+    ? Math.max(0, parsedValue)
+    : 0;
+};
+
+const formatNumber = (value: unknown): string => {
+  return Math.floor(toSafeNumber(value)).toLocaleString(
+    "vi-VN",
+  );
+};
+
+const formatCurrency = (value: unknown): string => {
+  const amount = toSafeNumber(value);
+
+  if (amount <= 0) {
+    return "Miễn phí";
+  }
+
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
+const formatStorage = (value: unknown): string => {
+  const storageMb = toSafeNumber(value);
+
+  if (storageMb >= 1024) {
+    const storageGb = storageMb / 1024;
+
+    return `${Number.isInteger(storageGb)
+      ? storageGb
+      : storageGb.toFixed(1)} GB`;
+  }
+
+  return `${formatNumber(storageMb)} MB`;
+};
+
+const normalizePlanCode = (value?: string): string => {
+  return String(value || "")
+    .trim()
+    .toUpperCase();
+};
+
+const createPlanFeatures = (
+  plan: PlanResponse,
+): PlanFeature[] => {
+  const storageLimit = toSafeNumber(plan.storageLimitMb);
+  const tokenLimit = toSafeNumber(plan.dailyTokenLimit);
+  const fileLimit = toSafeNumber(
+    plan.maxUploadSizePerFileMb,
+  );
+
+  return [
+    {
+      label: `${formatStorage(storageLimit)} Cloud Storage`,
+      included: storageLimit > 0,
+    },
+    {
+      label: `${formatNumber(tokenLimit)} AI token mỗi ngày`,
+      included: tokenLimit > 0,
+    },
+    {
+      label: `Tối đa ${formatNumber(fileLimit)} MB mỗi tệp`,
+      included: fileLimit > 0,
+    },
+    {
+      label: "Tải tài liệu",
+      included: Boolean(plan.allowDocumentUpload),
+    },
+    {
+      label: "Tải hình ảnh",
+      included: Boolean(plan.allowImageUpload),
+    },
+    {
+      label: "Tải video",
+      included: Boolean(plan.allowVideoUpload),
+    },
+    {
+      label: "Tải âm thanh",
+      included: Boolean(plan.allowAudioUpload),
+    },
+  ];
+};
+
+function PlanIcon({
+  planCode,
+}: {
+  planCode: string;
+}) {
+  if (planCode === "FREE") {
+    return <Star className="w-6 h-6" />;
+  }
+
+  if (planCode === "PRO") {
+    return <Zap className="w-6 h-6" />;
+  }
+
+  return <ShieldCheck className="w-6 h-6" />;
+}
 
 export function PricingPage() {
-  const [isAnnual, setIsAnnual] = useState(false);
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
   const navigate = useNavigate();
+  const isLoggedIn = Boolean(getAuthToken());
 
-  const handleSelectPlan = (planId: string) => {
-    if (planId === "free") {
-      navigate("/register");
-    } else if (planId === "enterprise") {
-      toast.success("Redirecting to contact sales...");
-    } else {
-      navigate("/app/subscription/upgrade");
+  const [plans, setPlans] = useState<PlanResponse[]>([]);
+  const [subscription, setSubscription] =
+    useState<SubscriptionResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [processingPlanCode, setProcessingPlanCode] =
+    useState("");
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+
+  const loadPlans = useCallback(async (): Promise<void> => {
+    setLoading(true);
+    setLoadError("");
+
+    try {
+      const plansResponse =
+        await subscriptionApi.getActivePlans();
+
+      const activePlans = Array.isArray(plansResponse.data)
+        ? plansResponse.data
+            .filter((plan) => plan.isActive !== false)
+            .sort(
+              (firstPlan, secondPlan) =>
+                toSafeNumber(firstPlan.price) -
+                toSafeNumber(secondPlan.price),
+            )
+        : [];
+
+      setPlans(activePlans);
+
+      if (isLoggedIn) {
+        try {
+          const subscriptionResponse =
+            await subscriptionApi.getCurrentSubscription();
+
+          setSubscription(subscriptionResponse.data);
+        } catch (error) {
+          console.error(
+            "Load current subscription failed:",
+            error,
+          );
+        }
+      } else {
+        setSubscription(null);
+      }
+    } catch (error) {
+      console.error("Load active plans failed:", error);
+
+      const message = getErrorMessage(
+        error,
+        "Không thể tải danh sách gói dịch vụ.",
+      );
+
+      setLoadError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    void loadPlans();
+  }, [loadPlans]);
+
+  const currentPlanCode = useMemo(
+    () => normalizePlanCode(subscription?.plan?.code),
+    [subscription?.plan?.code],
+  );
+
+  const handleSelectPlan = async (
+    plan: PlanResponse,
+  ): Promise<void> => {
+    const planCode = normalizePlanCode(plan.code);
+    const isCurrentPlan =
+      Boolean(currentPlanCode) && currentPlanCode === planCode;
+    const isFreePlan =
+      planCode === "FREE" || toSafeNumber(plan.price) <= 0;
+
+    if (isCurrentPlan) {
+      navigate("/app/subscription");
+      return;
+    }
+
+    if (isFreePlan) {
+      navigate(isLoggedIn ? "/app/subscription" : "/register");
+      return;
+    }
+
+    if (!isLoggedIn) {
+      sessionStorage.setItem("selectedPlanCode", planCode);
+      toast.info("Vui lòng đăng nhập để tiếp tục thanh toán.");
+      navigate("/login");
+      return;
+    }
+
+    if (processingPlanCode) {
+      return;
+    }
+
+    setProcessingPlanCode(planCode);
+
+    try {
+      const response =
+        await subscriptionApi.createVnpayPayment(planCode);
+
+      const paymentUrl = response.data?.paymentUrl?.trim();
+
+      if (!paymentUrl) {
+        throw new Error(
+          "Backend không trả về đường dẫn thanh toán VNPAY.",
+        );
+      }
+
+      window.location.assign(paymentUrl);
+    } catch (error) {
+      console.error("Create VNPAY payment failed:", error);
+
+      toast.error(
+        getErrorMessage(
+          error,
+          "Không thể tạo giao dịch thanh toán.",
+        ),
+      );
+    } finally {
+      setProcessingPlanCode("");
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      {/* Header */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 py-4 px-6">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <button onClick={() => navigate("/")} className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">A</div>
-            <span className="font-bold text-slate-900 dark:text-white">AI Study Hub</span>
+      <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="flex items-center gap-2"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 font-extrabold text-white">
+              A
+            </div>
+            <span className="font-extrabold text-slate-900 dark:text-white">
+              AI Study Hub
+            </span>
           </button>
-          <div className="flex items-center gap-4">
-            <button onClick={() => navigate("/login")} className="text-slate-700 dark:text-slate-300 font-semibold hover:text-slate-900 dark:hover:text-white transition-colors">Login</button>
-            <button onClick={() => navigate("/register")} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors">Get Started</button>
-          </div>
-        </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-20">
-        {/* Hero */}
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 rounded-full text-sm font-bold mb-6 border border-blue-100 dark:border-blue-500/30">
-            <Zap className="w-4 h-4" /> Simple, transparent pricing
-          </div>
-          <h1 className="text-5xl font-extrabold text-slate-900 dark:text-white mb-5">
-            Study smarter,<br />
-            <span className="text-blue-600">not harder</span>
-          </h1>
-          <p className="text-xl text-slate-500 dark:text-slate-400 max-w-2xl mx-auto mb-10">
-            Choose the plan that fits your study goals. Upgrade or downgrade anytime.
-          </p>
-
-          {/* Billing Toggle */}
-          <div className="inline-flex items-center gap-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-2">
-            <button
-              onClick={() => setIsAnnual(false)}
-              className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${!isAnnual ? "bg-blue-600 text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"}`}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setIsAnnual(true)}
-              className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 ${isAnnual ? "bg-blue-600 text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"}`}
-            >
-              Annual
-              <span className="px-2 py-0.5 bg-emerald-500 text-white text-xs rounded-lg font-bold">-20%</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Plans Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20">
-          {plans.map((plan, i) => {
-            const price = isAnnual ? plan.price.annual : plan.price.monthly;
-            const isPopular = plan.id === "pro";
-
-            return (
-              <motion.div
-                key={plan.id}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
-                className={`relative bg-white dark:bg-slate-900 rounded-[2rem] border-2 p-8 shadow-sm transition-all hover:shadow-xl hover:-translate-y-1 ${
-                  isPopular ? "border-blue-500 shadow-blue-100 shadow-xl" : "border-slate-200 dark:border-slate-700"
-                }`}
+          <div className="flex items-center gap-3">
+            {isLoggedIn ? (
+              <button
+                type="button"
+                onClick={() => navigate("/app/subscription")}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700"
               >
-                {plan.badge && (
-                  <div className={`absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wider ${
-                    isPopular ? "bg-blue-600 text-white" : "bg-purple-600 text-white"
-                  }`}>
-                    {plan.badge}
-                  </div>
-                )}
-
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-5 ${
-                  plan.color === "blue" ? "bg-blue-50 dark:bg-blue-500/10" : plan.color === "purple" ? "bg-purple-50 dark:bg-purple-500/10" : "bg-slate-50 dark:bg-slate-800"
-                }`}>
-                  <plan.icon className={`w-6 h-6 ${
-                    plan.color === "blue" ? "text-blue-600 dark:text-blue-300" : plan.color === "purple" ? "text-purple-600 dark:text-purple-300" : "text-slate-500 dark:text-slate-400"
-                  }`} />
-                </div>
-
-                <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mb-1">{plan.name}</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">{plan.description}</p>
-
-                <div className="mb-6">
-                  <div className="flex items-end gap-1">
-                    <span className="text-5xl font-extrabold text-slate-900 dark:text-white">${price}</span>
-                    <span className="text-slate-500 dark:text-slate-400 mb-2">/mo</span>
-                  </div>
-                  {isAnnual && plan.price.monthly > 0 && (
-                    <p className="text-sm text-slate-500 dark:text-slate-400 line-through">${plan.price.monthly}/mo billed monthly</p>
-                  )}
-                </div>
+                <LayoutDashboard className="w-4 h-4" />
+                Subscription
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate("/login")}
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-bold text-slate-700 transition hover:text-blue-600 dark:text-slate-300"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Đăng nhập
+                </button>
 
                 <button
-                  onClick={() => handleSelectPlan(plan.id)}
-                  className={`w-full py-3.5 font-extrabold rounded-2xl transition-all mb-8 flex items-center justify-center gap-2 ${
-                    isPopular
-                      ? "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20"
-                      : plan.color === "purple"
-                      ? "bg-purple-600 text-white hover:bg-purple-700 shadow-lg shadow-purple-500/20"
-                      : "bg-white dark:bg-slate-800 text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                  type="button"
+                  onClick={() => navigate("/register")}
+                  className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700"
+                >
+                  Đăng ký
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-6 py-16">
+        <section className="mx-auto max-w-3xl text-center">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
+            <Zap className="w-4 h-4" />
+            Dữ liệu gói được tải từ hệ thống
+          </div>
+
+          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl dark:text-white">
+            Chọn gói phù hợp với việc học của bạn
+          </h1>
+
+          <p className="mt-5 text-lg leading-8 text-slate-500 dark:text-slate-400">
+            Giá, dung lượng và giới hạn AI bên dưới được lấy trực
+            tiếp từ API. Gói trả phí được thanh toán qua VNPAY.
+          </p>
+        </section>
+
+        {loading ? (
+          <div className="flex min-h-[420px] items-center justify-center">
+            <div className="flex items-center gap-3 font-semibold text-slate-500 dark:text-slate-400">
+              <RefreshCw className="w-5 h-5 animate-spin" />
+              Đang tải danh sách gói...
+            </div>
+          </div>
+        ) : loadError ? (
+          <div className="mx-auto mt-12 max-w-xl rounded-[2rem] border border-red-200 bg-red-50 p-8 text-center dark:border-red-500/30 dark:bg-red-500/10">
+            <p className="font-bold text-red-700 dark:text-red-300">
+              {loadError}
+            </p>
+            <button
+              type="button"
+              onClick={() => void loadPlans()}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-3 font-bold text-white hover:bg-red-700"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Tải lại
+            </button>
+          </div>
+        ) : plans.length === 0 ? (
+          <div className="mx-auto mt-12 max-w-xl rounded-[2rem] border border-slate-200 bg-white p-8 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+            Hiện chưa có gói nào đang hoạt động.
+          </div>
+        ) : (
+          <section
+            className={`mt-14 grid gap-7 ${
+              plans.length === 1
+                ? "mx-auto max-w-md grid-cols-1"
+                : plans.length === 2
+                  ? "mx-auto max-w-4xl grid-cols-1 md:grid-cols-2"
+                  : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+            }`}
+          >
+            {plans.map((plan, index) => {
+              const planCode = normalizePlanCode(plan.code);
+              const isCurrentPlan =
+                Boolean(currentPlanCode) &&
+                currentPlanCode === planCode;
+              const isPaid = toSafeNumber(plan.price) > 0;
+              const isProcessing =
+                processingPlanCode === planCode;
+              const features = createPlanFeatures(plan);
+
+              return (
+                <motion.article
+                  key={plan.id || planCode}
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.08 }}
+                  className={`relative flex flex-col rounded-[2rem] border-2 bg-white p-7 shadow-sm transition hover:-translate-y-1 hover:shadow-xl dark:bg-slate-900 ${
+                    isCurrentPlan
+                      ? "border-emerald-500 shadow-emerald-100/60 dark:shadow-none"
+                      : planCode === "PRO"
+                        ? "border-blue-500 shadow-blue-100/60 dark:shadow-none"
+                        : "border-slate-200 dark:border-slate-700"
                   }`}
                 >
-                  {plan.cta} <ArrowRight className="w-4 h-4" />
-                </button>
-
-                <div className="space-y-3">
-                  {plan.features.map((feat) => (
-                    <div key={feat.label} className="flex items-center gap-3">
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${feat.included ? "bg-emerald-50 dark:bg-emerald-500/10" : "bg-slate-50 dark:bg-slate-800"}`}>
-                        {feat.included
-                          ? <Check className="w-3 h-3 text-emerald-500" />
-                          : <X className="w-3 h-3 text-slate-400 dark:text-slate-500" />}
-                      </div>
-                      <span className={`text-sm ${feat.included ? "text-slate-700 dark:text-slate-300" : "text-slate-500 dark:text-slate-400 line-through"}`}>
-                        {feat.label}
-                      </span>
+                  {(isCurrentPlan || planCode === "PRO") && (
+                    <div
+                      className={`absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-extrabold uppercase tracking-wider text-white ${
+                        isCurrentPlan ? "bg-emerald-600" : "bg-blue-600"
+                      }`}
+                    >
+                      {isCurrentPlan ? "Gói hiện tại" : "Gói trả phí"}
                     </div>
-                  ))}
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
+                  )}
 
-        {/* FAQ */}
-        <div className="max-w-3xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-3">Frequently Asked Questions</h2>
-            <p className="text-slate-500 dark:text-slate-400">Everything you need to know about our pricing</p>
+                  <div
+                    className={`mb-5 flex h-12 w-12 items-center justify-center rounded-2xl ${
+                      planCode === "FREE"
+                        ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                        : planCode === "PRO"
+                          ? "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300"
+                          : "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300"
+                    }`}
+                  >
+                    <PlanIcon planCode={planCode} />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-extrabold uppercase tracking-widest text-slate-400">
+                        {planCode || "PLAN"}
+                      </p>
+                      <h2 className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
+                        {plan.name || planCode}
+                      </h2>
+                    </div>
+
+                    {plan.isActive !== false && (
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
+                        Đang hoạt động
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="mt-3 min-h-12 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                    {plan.description ||
+                      "Gói học tập do hệ thống cung cấp."}
+                  </p>
+
+                  <div className="mt-6 border-b border-slate-100 pb-6 dark:border-slate-800">
+                    <p className="text-4xl font-extrabold text-slate-900 dark:text-white">
+                      {formatCurrency(plan.price)}
+                    </p>
+                    {isPaid && (
+                      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                        cho 30 ngày sử dụng
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-6 flex-1 space-y-3">
+                    {features.map((feature) => (
+                      <div
+                        key={feature.label}
+                        className="flex items-start gap-3"
+                      >
+                        <div
+                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                            feature.included
+                              ? "bg-emerald-50 dark:bg-emerald-500/10"
+                              : "bg-slate-100 dark:bg-slate-800"
+                          }`}
+                        >
+                          {feature.included ? (
+                            <Check className="w-3 h-3 text-emerald-500" />
+                          ) : (
+                            <X className="w-3 h-3 text-slate-400" />
+                          )}
+                        </div>
+
+                        <span
+                          className={`text-sm ${
+                            feature.included
+                              ? "text-slate-700 dark:text-slate-300"
+                              : "text-slate-400 line-through dark:text-slate-500"
+                          }`}
+                        >
+                          {feature.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleSelectPlan(plan)}
+                    disabled={Boolean(processingPlanCode)}
+                    className={`mt-8 inline-flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 font-extrabold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      isCurrentPlan
+                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                        : isPaid
+                          ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700"
+                          : "border border-slate-200 bg-white text-slate-900 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    }`}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Đang tạo thanh toán...
+                      </>
+                    ) : isCurrentPlan ? (
+                      <>
+                        Xem gói hiện tại
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    ) : isPaid ? (
+                      <>
+                        {isLoggedIn
+                          ? `Chọn ${plan.name}`
+                          : "Đăng nhập để mua"}
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    ) : (
+                      <>
+                        {isLoggedIn
+                          ? "Xem gói của tôi"
+                          : "Bắt đầu miễn phí"}
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </motion.article>
+              );
+            })}
+          </section>
+        )}
+
+        <section className="mt-16 grid gap-5 md:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+            <Cloud className="w-5 h-5 text-blue-600" />
+            <h3 className="mt-3 font-extrabold text-slate-900 dark:text-white">
+              Dung lượng theo gói
+            </h3>
+            <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              Giới hạn Cloud Storage được lấy từ trường
+              storageLimitMb của API.
+            </p>
           </div>
-          <div className="space-y-3">
-            {faqs.map((faq, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+            <Bot className="w-5 h-5 text-violet-600" />
+            <h3 className="mt-3 font-extrabold text-slate-900 dark:text-white">
+              Token AI mỗi ngày
+            </h3>
+            <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              Giới hạn token hiển thị theo dailyTokenLimit do backend
+              trả về.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+            <CreditCard className="w-5 h-5 text-emerald-600" />
+            <h3 className="mt-3 font-extrabold text-slate-900 dark:text-white">
+              Thanh toán VNPAY
+            </h3>
+            <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              Frontend không thu thập thông tin thẻ; người dùng được
+              chuyển đến cổng VNPAY.
+            </p>
+          </div>
+        </section>
+
+        <section className="mx-auto mt-20 max-w-3xl">
+          <div className="text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
+              <HelpCircle className="w-6 h-6" />
+            </div>
+            <h2 className="mt-4 text-3xl font-extrabold text-slate-900 dark:text-white">
+              Câu hỏi thường gặp
+            </h2>
+          </div>
+
+          <div className="mt-8 space-y-3">
+            {FAQS.map((faq, index) => (
+              <div
+                key={faq.question}
+                className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900"
+              >
                 <button
-                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  className="w-full flex items-center justify-between p-6 text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  type="button"
+                  onClick={() =>
+                    setOpenFaq(openFaq === index ? null : index)
+                  }
+                  className="flex w-full items-center justify-between p-5 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
-                  <span className="font-bold text-slate-900 dark:text-white pr-4">{faq.q}</span>
-                  {openFaq === i ? <ChevronUp className="w-5 h-5 text-slate-500 dark:text-slate-400 shrink-0" /> : <ChevronDown className="w-5 h-5 text-slate-500 dark:text-slate-400 shrink-0" />}
+                  <span className="pr-4 font-bold text-slate-900 dark:text-white">
+                    {faq.question}
+                  </span>
+
+                  {openFaq === index ? (
+                    <ChevronUp className="w-5 h-5 shrink-0 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 shrink-0 text-slate-400" />
+                  )}
                 </button>
-                <AnimatePresence>
-                  {openFaq === i && (
+
+                <AnimatePresence initial={false}>
+                  {openFaq === index && (
                     <motion.div
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: "auto", opacity: 1 }}
@@ -261,25 +668,41 @@ export function PricingPage() {
                       transition={{ duration: 0.2 }}
                       className="overflow-hidden"
                     >
-                      <p className="px-6 pb-6 text-slate-500 dark:text-slate-400 leading-relaxed">{faq.a}</p>
+                      <p className="px-5 pb-5 text-sm leading-7 text-slate-500 dark:text-slate-400">
+                        {faq.answer}
+                      </p>
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
             ))}
           </div>
+        </section>
 
-          <div className="mt-10 text-center">
-            <p className="text-slate-500 dark:text-slate-400 mb-4">Still have questions?</p>
-            <button
-              onClick={() => toast.success("Opening support chat...")}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <HelpCircle className="w-5 h-5" /> Contact Support
-            </button>
+        <section className="mt-16 rounded-[2rem] bg-gradient-to-r from-blue-600 to-indigo-700 p-8 text-white md:flex md:items-center md:justify-between md:gap-8">
+          <div>
+            <FileUp className="w-7 h-7" />
+            <h2 className="mt-4 text-2xl font-extrabold">
+              Bắt đầu với AI Study Hub
+            </h2>
+            <p className="mt-2 text-white/75">
+              Tạo tài khoản để nhận gói miễn phí hoặc đăng nhập để
+              mua gói trả phí qua VNPAY.
+            </p>
           </div>
-        </div>
-      </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              navigate(isLoggedIn ? "/app/subscription" : "/register")
+            }
+            className="mt-6 inline-flex shrink-0 items-center gap-2 rounded-2xl bg-white px-6 py-3.5 font-extrabold text-blue-700 transition hover:bg-blue-50 md:mt-0"
+          >
+            {isLoggedIn ? "Quản lý gói" : "Đăng ký miễn phí"}
+            <ArrowRight className="w-5 h-5" />
+          </button>
+        </section>
+      </main>
     </div>
   );
 }

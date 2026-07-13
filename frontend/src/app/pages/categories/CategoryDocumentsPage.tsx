@@ -27,6 +27,7 @@ import { getCurrentUserId } from "../../services/apiClient";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
+import { DocumentInformationModal } from "../../components/ui/DocumentInformationModal";
 
 const statusBadgeClass: Record<AiStatus, string> = {
   UPLOADED: "bg-blue-50 text-blue-700 ring-blue-200",
@@ -73,6 +74,7 @@ export function CategoryDocumentsPage() {
   const [documents, setDocuments] = useState<DocumentListItemResponse[]>([]);
   const [favorites, setFavorites] = useState<Record<number, boolean>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [viewingDocumentInfo, setViewingDocumentInfo] = useState<DocumentListItemResponse | null>(null);
 
   const [editingDocument, setEditingDocument] =
     useState<DocumentListItemResponse | null>(null);
@@ -339,7 +341,11 @@ export function CategoryDocumentsPage() {
             documents.map((document) => (
               <div
                 key={document.id}
-                className="grid grid-cols-[320px_150px_150px_120px_150px_150px_72px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70"
+                role="button"
+                tabIndex={0}
+                onClick={() => handleViewFile(document.id)}
+                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") handleViewFile(document.id); }}
+                className="grid cursor-pointer grid-cols-[320px_150px_150px_120px_150px_150px_72px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
@@ -385,7 +391,7 @@ export function CategoryDocumentsPage() {
                 <div className="flex min-w-[72px] items-center justify-center">
                   <RowActionMenu>
                     <ActionMenuItem icon={Star} label={favorites[document.id] ? "Remove favorite" : "Add favorite"} onClick={() => toggleFavorite(document.id)} />
-                    <ActionMenuItem icon={Eye} label="View file" onClick={() => handleViewFile(document.id)} />
+                    <ActionMenuItem icon={Eye} label="View information" onClick={() => setViewingDocumentInfo(document)} />
                     <ActionMenuItem icon={Pencil} label="Rename" onClick={() => handleOpenEdit(document)} />
                     <ActionMenuItem icon={Download} label="Download" onClick={() => handleDownload(document.id, document.name)} />
                     <ActionMenuItem icon={Share2} label="Share document" onClick={() => createAndCopyPublicLink(document.id)} disabled={loadingDocumentId === document.id} />
@@ -402,6 +408,10 @@ export function CategoryDocumentsPage() {
           )}
         </div>
       </div>
+
+      {viewingDocumentInfo && (
+        <DocumentInformationModal document={{ ...viewingDocumentInfo, category: viewingDocumentInfo.categoryName }} onClose={() => setViewingDocumentInfo(null)} />
+      )}
 
       {editingDocument && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
-import { Download, FileText, Loader2, AlertTriangle } from "lucide-react";
+import { Download, FileText, Loader2, AlertTriangle, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import mammoth from "mammoth";
 import { PptxViewer, RECOMMENDED_ZIP_LIMITS } from "@aiden0z/pptx-renderer";
@@ -10,6 +10,7 @@ import {
   publicShareApi,
   type PublicDocumentResponse,
 } from "../../services/publicShareApi";
+import { ReportDocumentModal } from "../shares/components/ReportDocumentModal";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
@@ -122,6 +123,7 @@ export function PublicDocumentPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [isReportOpen, setIsReportOpen] = useState(false);
 
   const title = useMemo(() => {
     return (
@@ -514,16 +516,27 @@ export function PublicDocumentPage() {
             )}
           </div>
 
-          {documentData.allowDownload && fileUrl && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={handleDownload}
-              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+              onClick={() => setIsReportOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
             >
-              <Download className="h-4 w-4" />
-              Download
+              <ShieldAlert className="h-4 w-4" />
+              Report
             </button>
-          )}
+
+            {documentData.allowDownload && fileUrl && (
+              <button
+                type="button"
+                onClick={handleDownload}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -532,6 +545,14 @@ export function PublicDocumentPage() {
           {renderPreview()}
         </section>
       </main>
+
+      {isReportOpen && (
+        <ReportDocumentModal
+          documentId={documentData.documentId}
+          documentTitle={title}
+          onClose={() => setIsReportOpen(false)}
+        />
+      )}
     </div>
   );
 }

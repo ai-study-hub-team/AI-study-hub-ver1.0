@@ -35,6 +35,7 @@ import { useTheme } from "../../../layouts/ThemeProvider";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 import { FolderShareModal } from "../library/components/FolderShareModal";
 import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
+import { DocumentInformationModal } from "../../components/ui/DocumentInformationModal";
 
 type ListResponse<T> = T[] | { content?: T[] };
 
@@ -220,6 +221,7 @@ function DocumentRow({
   onShare,
   sharingDocumentId,
   onViewFile,
+  onViewInfo,
   onEdit,
   onMove,
 }: {
@@ -231,12 +233,17 @@ function DocumentRow({
   onShare: (documentId: number) => void | Promise<void>;
   sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
+  onViewInfo: (document: LibraryDocument) => void;
   onEdit: (document: LibraryDocument) => void;
   onMove: (document: LibraryDocument) => void;
 }) {
   return (
     <div
-      className={`${documentListGridClass} border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70`}
+      role="button"
+      tabIndex={0}
+      onClick={() => onViewFile(document.id)}
+      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onViewFile(document.id); }}
+      className={`${documentListGridClass} cursor-pointer border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70`}
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
@@ -279,7 +286,7 @@ function DocumentRow({
       <div className="flex min-w-[72px] items-center justify-center">
         <RowActionMenu>
           <ActionMenuItem icon={Star} label={document.fav ? "Remove favorite" : "Add favorite"} onClick={() => onToggleFavorite(document.id)} />
-          <ActionMenuItem icon={Eye} label="View file" onClick={() => onViewFile(document.id)} />
+          <ActionMenuItem icon={Eye} label="View information" onClick={() => onViewInfo(document)} />
           <ActionMenuItem icon={Pencil} label="Rename" onClick={() => onEdit(document)} />
           <ActionMenuItem icon={Folder} label="Move" onClick={() => onMove(document)} />
           <ActionMenuItem icon={Download} label="Download" onClick={() => onDownload(document.id, document.name)} />
@@ -301,6 +308,7 @@ function DocumentCard({
   onShare,
   sharingDocumentId,
   onViewFile,
+  onViewInfo,
   onEdit,
   onMove,
 }: {
@@ -312,11 +320,12 @@ function DocumentCard({
   onShare: (documentId: number) => void | Promise<void>;
   sharingDocumentId: number | null;
   onViewFile: (documentId: number) => void;
+  onViewInfo: (document: LibraryDocument) => void;
   onEdit: (document: LibraryDocument) => void;
   onMove: (document: LibraryDocument) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+    <div role="button" tabIndex={0} onClick={() => onViewFile(document.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onViewFile(document.id); }} className="cursor-pointer rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-start justify-between gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
           <FileText className="h-6 w-6" />
@@ -387,7 +396,7 @@ function DocumentCard({
 
       <div className="mt-5 flex items-center justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
         <RowActionMenu>
-          <ActionMenuItem icon={Eye} label="View file" onClick={() => onViewFile(document.id)} />
+          <ActionMenuItem icon={Eye} label="View information" onClick={() => onViewInfo(document)} />
           <ActionMenuItem icon={Pencil} label="Rename" onClick={() => onEdit(document)} />
           <ActionMenuItem icon={Folder} label="Move" onClick={() => onMove(document)} />
           <ActionMenuItem icon={Download} label="Download" onClick={() => onDownload(document.id, document.name)} />
@@ -460,6 +469,8 @@ export function FolderDocumentsPage() {
 
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [deleteDocumentId, setDeleteDocumentId] = useState<number | null>(null);
+  const [viewingDocumentInfo, setViewingDocumentInfo] = useState<LibraryDocument | null>(null);
+
   const [editingDocument, setEditingDocument] =
     useState<LibraryDocument | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -1503,6 +1514,7 @@ export function FolderDocumentsPage() {
                       onShare={createAndCopyPublicLink}
                       sharingDocumentId={loadingDocumentId}
                       onViewFile={handleViewFile}
+                      onViewInfo={setViewingDocumentInfo}
                       onEdit={handleOpenEditDocument}
                       onMove={handleOpenMoveDocument}
                     />
@@ -1541,6 +1553,7 @@ export function FolderDocumentsPage() {
                   onShare={createAndCopyPublicLink}
                   sharingDocumentId={loadingDocumentId}
                   onViewFile={handleViewFile}
+                  onViewInfo={setViewingDocumentInfo}
                   onEdit={handleOpenEditDocument}
                   onMove={handleOpenMoveDocument}
                 />
@@ -1813,6 +1826,10 @@ export function FolderDocumentsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {viewingDocumentInfo && (
+        <DocumentInformationModal document={viewingDocumentInfo} onClose={() => setViewingDocumentInfo(null)} />
       )}
 
       {editingDocument && (

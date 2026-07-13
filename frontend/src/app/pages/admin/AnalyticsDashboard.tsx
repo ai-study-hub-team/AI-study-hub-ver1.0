@@ -1,209 +1,1503 @@
 import {
-  Users, FileText, Zap, HardDrive, TrendingUp, Activity,
-  ArrowUpRight, ArrowDownRight, Globe, Clock, Calendar
+  AlertCircle,
+  Bot,
+  CalendarDays,
+  CheckCircle2,
+  Coins,
+  FileText,
+  HardDrive,
+  RefreshCw,
+  Search,
+  WalletCards,
 } from "lucide-react";
-import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis,
-  Tooltip, CartesianGrid, ResponsiveContainer, PieChart, Pie, Cell
-} from "recharts";
-import { useState } from "react";
 import { motion } from "motion/react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
-const periods = ["7 days", "30 days", "90 days", "1 year"];
+import {
+  adminAnalyticsApi,
+  type BackendReportPeriod,
+  type RevenueReportParams,
+  type RevenueReportResponse,
+  type StorageReportResponse,
+  type TokenUsageReportParams,
+  type TokenUsageReportResponse,
+} from "../../services/adminAnalyticsApi";
+import { userApi, type UserResponse } from "../../services/userApi";
 
-const userGrowth = [
-  { date: "May 5", users: 10800, active: 7200 },
-  { date: "May 12", users: 11000, active: 7600 },
-  { date: "May 19", users: 11400, active: 8100 },
-  { date: "May 26", users: 11700, active: 8400 },
-  { date: "Jun 2", users: 12000, active: 8700 },
-  { date: "Jun 5", users: 12482, active: 9100 },
+type UiReportPeriod =
+  "DAY" | "WEEK" | "MONTH" | "LAST_7_DAYS" | "LAST_30_DAYS" | "CUSTOM";
+
+type ApiError = {
+  response?: {
+    data?: {
+      message?: string;
+      error?: string;
+    };
+  };
+  message?: string;
+};
+
+const DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+const PERIOD_OPTIONS: Array<{
+  value: UiReportPeriod;
+  label: string;
+}> = [
+  {
+    value: "DAY",
+    label: "1 day",
+  },
+  {
+    value: "WEEK",
+    label: "Weekly",
+  },
+  {
+    value: "MONTH",
+    label: "Monthly",
+  },
+  {
+    value: "LAST_7_DAYS",
+    label: "Last 7 days",
+  },
+  {
+    value: "LAST_30_DAYS",
+    label: "Last 30 days",
+  },
+  {
+    value: "CUSTOM",
+    label: "Custom",
+  },
 ];
 
-const aiUsage = [
-  { day: "Mon", questions: 3400, summaries: 890, quizzes: 420 },
-  { day: "Tue", questions: 4200, summaries: 1100, quizzes: 560 },
-  { day: "Wed", questions: 5100, summaries: 1400, quizzes: 680 },
-  { day: "Thu", questions: 4600, summaries: 1200, quizzes: 590 },
-  { day: "Fri", questions: 5800, summaries: 1600, quizzes: 780 },
-  { day: "Sat", questions: 3200, summaries: 800, quizzes: 340 },
-  { day: "Sun", questions: 2800, summaries: 700, quizzes: 290 },
-];
+const todayInputValue = (): string => {
+  const date = new Date();
 
-const docUploads = [
-  { month: "Jan", uploads: 2100 },
-  { month: "Feb", uploads: 3400 },
-  { month: "Mar", uploads: 4200 },
-  { month: "Apr", uploads: 3800 },
-  { month: "May", uploads: 5600 },
-  { month: "Jun", uploads: 6900 },
-];
+  const year = date.getFullYear();
 
-const subjectDistribution = [
-  { name: "STEM", value: 45, fill: "#2563EB" },
-  { name: "Humanities", value: 25, fill: "#8B5CF6" },
-  { name: "Business", value: 18, fill: "#10B981" },
-  { name: "Arts", value: 8, fill: "#F59E0B" },
-  { name: "Other", value: 4, fill: "#6B7280" },
-];
+  const month = String(date.getMonth() + 1).padStart(2, "0");
 
-const kpis = [
-  { label: "Total Users", value: "12,482", growth: "+14.2%", positive: true, sub: "vs last month", icon: Users, color: "blue" },
-  { label: "Active Users", value: "9,100", growth: "+8.6%", positive: true, sub: "daily average", icon: Activity, color: "emerald" },
-  { label: "Total Documents", value: "48,291", growth: "+22.4%", positive: true, sub: "ever uploaded", icon: FileText, color: "purple" },
-  { label: "AI Queries Today", value: "28,943", growth: "+31%", positive: true, sub: "questions asked", icon: Zap, color: "amber" },
-  { label: "Storage Used", value: "2.4 TB", growth: "+18%", positive: true, sub: "across all users", icon: HardDrive, color: "red" },
-  { label: "Avg Session", value: "24 min", growth: "+5%", positive: true, sub: "per user visit", icon: Clock, color: "indigo" },
-];
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const isValidDateInput = (value: string): boolean => {
+  if (!value || !DATE_INPUT_PATTERN.test(value)) {
+    return false;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+
+  return (
+    !Number.isNaN(date.getTime()) &&
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+};
+
+const shiftDate = (value: string, days: number): string => {
+  if (!isValidDateInput(value)) {
+    return "";
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+
+  /*
+   * Use noon to avoid date shifts across time zones.
+   */
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+
+  date.setDate(date.getDate() + days);
+
+  const shiftedYear = date.getFullYear();
+
+  const shiftedMonth = String(date.getMonth() + 1).padStart(2, "0");
+
+  const shiftedDay = String(date.getDate()).padStart(2, "0");
+
+  return `${shiftedYear}-${shiftedMonth}-${shiftedDay}`;
+};
+
+const getErrorMessage = (error: unknown, fallbackMessage: string): string => {
+  const apiError = error as ApiError;
+
+  return (
+    apiError.response?.data?.message ||
+    apiError.response?.data?.error ||
+    apiError.message ||
+    fallbackMessage
+  );
+};
+
+const toSafeNumber = (value: unknown): number => {
+  const numberValue = Number(value);
+
+  return Number.isFinite(numberValue) ? Math.max(0, numberValue) : 0;
+};
+
+const formatNumber = (value: unknown): string => {
+  return Math.floor(toSafeNumber(value)).toLocaleString("en-US");
+};
+
+const formatCurrency = (value: unknown, currency = "VND"): string => {
+  const amount = toSafeNumber(value);
+
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency || "VND",
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${formatNumber(amount)} ${currency || "VND"}`;
+  }
+};
+
+const formatBytes = (value: unknown): string => {
+  const bytes = toSafeNumber(value);
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+
+  if (bytes === 0) {
+    return "0 B";
+  }
+
+  const unitIndex = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1,
+  );
+
+  const converted = bytes / 1024 ** unitIndex;
+
+  return `${converted.toFixed(
+    converted >= 10 || unitIndex === 0 ? 1 : 2,
+  )} ${units[unitIndex]}`;
+};
+
+const formatDate = (value?: string | null): string => {
+  if (!value) {
+    return "—";
+  }
+
+  const normalized = value.slice(0, 10);
+
+  if (!isValidDateInput(normalized)) {
+    return value;
+  }
+
+  const [year, month, day] = normalized.split("-").map(Number);
+
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+
+  return date.toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
+const formatChartDate = (value: string): string => {
+  if (!isValidDateInput(value)) {
+    return value;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+
+  return date.toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+};
+
+const buildDateParams = (
+  period: UiReportPeriod,
+  selectedDate: string,
+  customFromDate: string,
+  customToDate: string,
+): {
+  period: BackendReportPeriod;
+  date?: string;
+  fromDate?: string;
+  toDate?: string;
+} => {
+  const referenceDate = isValidDateInput(selectedDate)
+    ? selectedDate
+    : todayInputValue();
+
+  if (period === "LAST_7_DAYS") {
+    return {
+      period: "CUSTOM",
+      fromDate: shiftDate(referenceDate, -6),
+      toDate: referenceDate,
+    };
+  }
+
+  if (period === "LAST_30_DAYS") {
+    return {
+      period: "CUSTOM",
+      fromDate: shiftDate(referenceDate, -29),
+      toDate: referenceDate,
+    };
+  }
+
+  if (period === "CUSTOM") {
+    return {
+      period: "CUSTOM",
+      fromDate: customFromDate,
+      toDate: customToDate,
+    };
+  }
+
+  return {
+    period,
+    date: referenceDate,
+  };
+};
+
+const validateDateRange = (
+  period: UiReportPeriod,
+  selectedDate: string,
+  fromDate: string,
+  toDate: string,
+): string | null => {
+  if (period !== "CUSTOM") {
+    if (!isValidDateInput(selectedDate)) {
+      return "Please select a reference date or end date.";
+    }
+
+    return null;
+  }
+
+  if (!fromDate || !toDate) {
+    return "Please select both the start date and end date.";
+  }
+
+  if (!isValidDateInput(fromDate) || !isValidDateInput(toDate)) {
+    return "Invalid date. Use the YYYY-MM-DD format.";
+  }
+
+  if (fromDate > toDate) {
+    return "The start date must be earlier than or equal to the end date.";
+  }
+
+  return null;
+};
+
+function LoadingBlock({ label }: { label: string }) {
+  return (
+    <div className="min-h-64 flex items-center justify-center">
+      <div className="flex items-center gap-3 text-sm font-semibold text-slate-500 dark:text-slate-400">
+        <RefreshCw className="w-5 h-5 animate-spin" />
+
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function ErrorBlock({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="min-h-64 flex flex-col items-center justify-center text-center px-6">
+      <AlertCircle className="w-10 h-10 text-red-500" />
+
+      <p className="mt-3 text-sm font-semibold text-red-600 dark:text-red-300">
+        {message}
+      </p>
+
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-4 inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+      >
+        <RefreshCw className="w-4 h-4" />
+        Retry
+      </button>
+    </div>
+  );
+}
+
+function PeriodFilters({
+  period,
+  setPeriod,
+  selectedDate,
+  setSelectedDate,
+  customFromDate,
+  setCustomFromDate,
+  customToDate,
+  setCustomToDate,
+  loading,
+  onRefresh,
+}: {
+  period: UiReportPeriod;
+  setPeriod: (value: UiReportPeriod) => void;
+  selectedDate: string;
+  setSelectedDate: (value: string) => void;
+  customFromDate: string;
+  setCustomFromDate: (value: string) => void;
+  customToDate: string;
+  setCustomToDate: (value: string) => void;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  const selectedDateLabel =
+    period === "LAST_7_DAYS" || period === "LAST_30_DAYS"
+      ? "End date"
+      : "Reference date";
+
+  const handlePeriodChange = (nextPeriod: UiReportPeriod): void => {
+    setPeriod(nextPeriod);
+
+    const today = todayInputValue();
+
+    if (nextPeriod !== "CUSTOM" && !isValidDateInput(selectedDate)) {
+      setSelectedDate(today);
+    }
+
+    if (nextPeriod === "CUSTOM") {
+      const validToDate = isValidDateInput(customToDate) ? customToDate : today;
+
+      if (!isValidDateInput(customToDate)) {
+        setCustomToDate(today);
+      }
+
+      if (!isValidDateInput(customFromDate)) {
+        setCustomFromDate(shiftDate(validToDate, -29));
+      }
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-end gap-3">
+      <label className="space-y-1.5">
+        <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          Report period
+        </span>
+
+        <select
+          value={period}
+          onChange={(event) =>
+            handlePeriodChange(event.target.value as UiReportPeriod)
+          }
+          className="h-10 min-w-40 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+        >
+          {PERIOD_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {period !== "CUSTOM" ? (
+        <label className="space-y-1.5">
+          <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            {selectedDateLabel}
+          </span>
+
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(event) => setSelectedDate(event.target.value)}
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+          />
+        </label>
+      ) : (
+        <>
+          <label className="space-y-1.5">
+            <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              From date
+            </span>
+
+            <input
+              type="date"
+              value={customFromDate}
+              onChange={(event) => setCustomFromDate(event.target.value)}
+              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+            />
+          </label>
+
+          <label className="space-y-1.5">
+            <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              To date
+            </span>
+
+            <input
+              type="date"
+              value={customToDate}
+              onChange={(event) => setCustomToDate(event.target.value)}
+              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+            />
+          </label>
+        </>
+      )}
+
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={loading}
+        className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+        View report
+      </button>
+    </div>
+  );
+}
+
+function UserFilter({
+  users,
+  value,
+  onChange,
+  label,
+}: {
+  users: UserResponse[];
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+}) {
+  return (
+    <label className="space-y-1.5">
+      <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        {label}
+      </span>
+
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-10 min-w-64 max-w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+      >
+        <option value="">All users</option>
+
+        {users.map((user) => (
+          <option key={user.id} value={String(user.id)}>
+            ID {user.id} - {user.fullName || user.email}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 export function AnalyticsDashboard() {
-  const [period, setPeriod] = useState("30 days");
+  const today = useMemo(() => todayInputValue(), []);
+
+  const defaultFromDate = useMemo(() => shiftDate(today, -29), [today]);
+
+  const [users, setUsers] = useState<UserResponse[]>([]);
+
+  const [userSearch, setUserSearch] = useState("");
+
+  const [revenue, setRevenue] = useState<RevenueReportResponse | null>(null);
+
+  const [revenuePeriod, setRevenuePeriod] =
+    useState<UiReportPeriod>("LAST_30_DAYS");
+
+  const [revenueDate, setRevenueDate] = useState(today);
+
+  const [revenueFromDate, setRevenueFromDate] = useState(defaultFromDate);
+
+  const [revenueToDate, setRevenueToDate] = useState(today);
+
+  const [revenueLoading, setRevenueLoading] = useState(true);
+
+  const [revenueError, setRevenueError] = useState("");
+
+  const [storage, setStorage] = useState<StorageReportResponse | null>(null);
+
+  const [storageUserId, setStorageUserId] = useState("");
+
+  const [storageLoading, setStorageLoading] = useState(true);
+
+  const [storageError, setStorageError] = useState("");
+
+  const [tokenUsage, setTokenUsage] = useState<TokenUsageReportResponse | null>(
+    null,
+  );
+
+  const [tokenUserId, setTokenUserId] = useState("");
+
+  const [tokenPeriod, setTokenPeriod] =
+    useState<UiReportPeriod>("LAST_30_DAYS");
+
+  const [tokenDate, setTokenDate] = useState(today);
+
+  const [tokenFromDate, setTokenFromDate] = useState(defaultFromDate);
+
+  const [tokenToDate, setTokenToDate] = useState(today);
+
+  const [tokenLoading, setTokenLoading] = useState(true);
+
+  const [tokenError, setTokenError] = useState("");
+
+  const loadUsers = useCallback(async (): Promise<void> => {
+    try {
+      const response = await userApi.getUsers();
+
+      const rawUsers = response.data;
+
+      const userList = Array.isArray(rawUsers) ? rawUsers : [];
+
+      const sortedUsers = [...userList].sort(
+        (firstUser, secondUser) => firstUser.id - secondUser.id,
+      );
+
+      setUsers(sortedUsers);
+    } catch (error) {
+      console.error("Load users failed:", error);
+
+      toast.error(getErrorMessage(error, "Unable to load the user list."));
+    }
+  }, []);
+
+  const loadRevenue = useCallback(async (): Promise<void> => {
+    const validationMessage = validateDateRange(
+      revenuePeriod,
+      revenueDate,
+      revenueFromDate,
+      revenueToDate,
+    );
+
+    if (validationMessage) {
+      setRevenueError(validationMessage);
+
+      toast.error(validationMessage);
+
+      return;
+    }
+
+    setRevenueLoading(true);
+    setRevenueError("");
+
+    try {
+      const params = buildDateParams(
+        revenuePeriod,
+        revenueDate,
+        revenueFromDate,
+        revenueToDate,
+      ) as RevenueReportParams;
+
+      const response = await adminAnalyticsApi.getRevenue(params);
+
+      setRevenue(response.data);
+    } catch (error) {
+      console.error("Load revenue report failed:", error);
+
+      const message = getErrorMessage(
+        error,
+        "Unable to load the revenue report.",
+      );
+
+      setRevenueError(message);
+
+      toast.error(message);
+    } finally {
+      setRevenueLoading(false);
+    }
+  }, [revenueDate, revenueFromDate, revenuePeriod, revenueToDate]);
+
+  const loadStorage = useCallback(async (): Promise<void> => {
+    setStorageLoading(true);
+    setStorageError("");
+
+    try {
+      const userId = storageUserId ? Number(storageUserId) : undefined;
+
+      if (userId !== undefined && (!Number.isInteger(userId) || userId <= 0)) {
+        throw new Error("Invalid user ID.");
+      }
+
+      const response = await adminAnalyticsApi.getStorage(userId);
+
+      setStorage(response.data);
+    } catch (error) {
+      console.error("Load storage report failed:", error);
+
+      const message = getErrorMessage(
+        error,
+        "Unable to load the storage report.",
+      );
+
+      setStorageError(message);
+
+      toast.error(message);
+    } finally {
+      setStorageLoading(false);
+    }
+  }, [storageUserId]);
+
+  const loadTokenUsage = useCallback(async (): Promise<void> => {
+    const validationMessage = validateDateRange(
+      tokenPeriod,
+      tokenDate,
+      tokenFromDate,
+      tokenToDate,
+    );
+
+    if (validationMessage) {
+      setTokenError(validationMessage);
+
+      toast.error(validationMessage);
+
+      return;
+    }
+
+    setTokenLoading(true);
+    setTokenError("");
+
+    try {
+      const dateParams = buildDateParams(
+        tokenPeriod,
+        tokenDate,
+        tokenFromDate,
+        tokenToDate,
+      );
+
+      const parsedUserId = tokenUserId ? Number(tokenUserId) : undefined;
+
+      if (
+        parsedUserId !== undefined &&
+        (!Number.isInteger(parsedUserId) || parsedUserId <= 0)
+      ) {
+        throw new Error("Invalid user ID.");
+      }
+
+      const params: TokenUsageReportParams = {
+        ...dateParams,
+        ...(parsedUserId !== undefined
+          ? {
+              userId: parsedUserId,
+            }
+          : {}),
+      };
+
+      const response = await adminAnalyticsApi.getTokenUsage(params);
+
+      setTokenUsage(response.data);
+    } catch (error) {
+      console.error("Load token report failed:", error);
+
+      const message = getErrorMessage(
+        error,
+        "Unable to load the token usage report.",
+      );
+
+      setTokenError(message);
+
+      toast.error(message);
+    } finally {
+      setTokenLoading(false);
+    }
+  }, [tokenDate, tokenFromDate, tokenPeriod, tokenToDate, tokenUserId]);
+
+  useEffect(() => {
+    void loadUsers();
+    void loadRevenue();
+    void loadStorage();
+    void loadTokenUsage();
+
+    /*
+     * Load the default reports only once when the page opens.
+     */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const filteredStorageUsers = useMemo(() => {
+    const reportUsers = storage?.users || [];
+
+    const keyword = userSearch.trim().toLowerCase();
+
+    if (!keyword) {
+      return reportUsers;
+    }
+
+    return reportUsers.filter((user) =>
+      [String(user.userId), user.fullName || "", user.email || ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword),
+    );
+  }, [storage?.users, userSearch]);
+
+  const storageChartData = useMemo(
+    () =>
+      [...(storage?.users || [])]
+        .sort(
+          (firstUser, secondUser) =>
+            secondUser.totalStorageBytes - firstUser.totalStorageBytes,
+        )
+        .slice(0, 10)
+        .map((user) => ({
+          name: user.fullName || `User ${user.userId}`,
+          storageMb: Number(
+            (toSafeNumber(user.totalStorageBytes) / 1024 ** 2).toFixed(2),
+          ),
+        })),
+    [storage?.users],
+  );
+
+  const revenueChartData = useMemo(
+    () =>
+      (revenue?.dailyRevenue || []).map((item) => ({
+        ...item,
+        label: formatChartDate(item.date),
+        totalRevenue: toSafeNumber(item.totalRevenue),
+      })),
+    [revenue?.dailyRevenue],
+  );
+
+  const tokenChartData = useMemo(
+    () =>
+      (tokenUsage?.dailyUsage || []).map((item) => ({
+        ...item,
+        label: formatChartDate(item.date),
+      })),
+    [tokenUsage?.dailyUsage],
+  );
+
+  const selectedStorageUser = useMemo(
+    () => users.find((user) => String(user.id) === storageUserId),
+    [storageUserId, users],
+  );
+
+  const selectedTokenUser = useMemo(
+    () => users.find((user) => String(user.id) === tokenUserId),
+    [tokenUserId, users],
+  );
+
+  const kpis = [
+    {
+      label: "Total revenue",
+      value: formatCurrency(revenue?.totalRevenue, revenue?.currency || "VND"),
+      sub: revenue?.fromDate
+        ? `${formatDate(revenue.fromDate)} - ${formatDate(revenue.toDate)}`
+        : "Selected period",
+      icon: WalletCards,
+      boxClass: "bg-emerald-50 dark:bg-emerald-500/10",
+      iconClass: "text-emerald-600 dark:text-emerald-300",
+    },
+    {
+      label: "Successful transactions",
+      value: formatNumber(revenue?.successfulTransactionCount),
+      sub: "Only SUCCESS transactions are included",
+      icon: CheckCircle2,
+      boxClass: "bg-blue-50 dark:bg-blue-500/10",
+      iconClass: "text-blue-600 dark:text-blue-300",
+    },
+    {
+      label: "Storage used",
+      value: formatBytes(storage?.totalStorageBytes),
+      sub: storageUserId
+        ? selectedStorageUser?.fullName || "Single user"
+        : `${formatNumber(storage?.userCount)} users`,
+      icon: HardDrive,
+      boxClass: "bg-violet-50 dark:bg-violet-500/10",
+      iconClass: "text-violet-600 dark:text-violet-300",
+    },
+    {
+      label: "Total documents",
+      value: formatNumber(storage?.documentCount),
+      sub: storageUserId ? "For the selected user" : "All users",
+      icon: FileText,
+      boxClass: "bg-amber-50 dark:bg-amber-500/10",
+      iconClass: "text-amber-600 dark:text-amber-300",
+    },
+    {
+      label: "Total AI tokens",
+      value: formatNumber(tokenUsage?.totals?.overallTokens),
+      sub: tokenUserId
+        ? selectedTokenUser?.fullName || "Single user"
+        : "All users",
+      icon: Bot,
+      boxClass: "bg-pink-50 dark:bg-pink-500/10",
+      iconClass: "text-pink-600 dark:text-pink-300",
+    },
+    {
+      label: "Token AI Chat",
+      value: formatNumber(tokenUsage?.totals?.chatTokens),
+      sub: tokenUsage?.fromDate
+        ? `${formatDate(tokenUsage.fromDate)} - ${formatDate(
+            tokenUsage.toDate,
+          )}`
+        : "Selected period",
+      icon: Coins,
+      boxClass: "bg-cyan-50 dark:bg-cyan-500/10",
+      iconClass: "text-cyan-600 dark:text-cyan-300",
+    },
+  ];
 
   return (
     <div className="space-y-8 bg-slate-50 dark:bg-slate-950">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Platform Analytics</h1>
-          <p className="text-slate-500 dark:text-slate-400">Comprehensive platform metrics and usage insights</p>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
+            Platform Analytics
+          </h1>
+
+          <p className="text-slate-500 dark:text-slate-400">
+            Revenue, storage usage, and AI token consumption based on live data.
+          </p>
         </div>
-        <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-1.5">
-          {periods.map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                period === p ? "bg-blue-600 text-white hover:bg-blue-700" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-              }`}
-            >
-              {p}
-            </button>
-          ))}
+
+        <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <CalendarDays className="w-4 h-4" />
+          Updated: {formatDate(today)}
         </div>
       </div>
 
-      {/* KPI Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-5">
-        {kpis.map((kpi, i) => (
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        {kpis.map((kpi, index) => (
           <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.07 }}
-            className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm"
+            key={kpi.label}
+            initial={{
+              opacity: 0,
+              y: 18,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            transition={{
+              delay: index * 0.05,
+            }}
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900"
           >
-            <div className="flex items-start justify-between mb-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-${kpi.color}-50 dark:bg-slate-800`}>
-                <kpi.icon className={`w-5 h-5 text-${kpi.color}-600`} />
-              </div>
-              <div className={`flex items-center gap-1 text-xs font-bold ${kpi.positive ? "text-emerald-500" : "text-red-500"}`}>
-                {kpi.positive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                {kpi.growth}
-              </div>
+            <div
+              className={`w-11 h-11 rounded-xl flex items-center justify-center ${kpi.boxClass}`}
+            >
+              <kpi.icon className={`w-5 h-5 ${kpi.iconClass}`} />
             </div>
-            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">{kpi.label}</p>
-            <p className="text-2xl font-extrabold text-slate-900 dark:text-white">{kpi.value}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{kpi.sub}</p>
+
+            <p className="mt-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              {kpi.label}
+            </p>
+
+            <p className="mt-1 break-words text-2xl font-extrabold text-slate-900 dark:text-white">
+              {kpi.value}
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {kpi.sub}
+            </p>
           </motion.div>
         ))}
       </div>
 
-      {/* User Growth Chart */}
-      <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 dark:[&_.recharts-cartesian-axis-tick_text]:fill-slate-400 dark:[&_.recharts-cartesian-grid_line]:stroke-slate-800 dark:[&_.recharts-default-tooltip]:!bg-slate-900 dark:[&_.recharts-default-tooltip]:!border-slate-700 dark:[&_.recharts-tooltip-label]:!text-white dark:[&_.recharts-tooltip-item]:!text-slate-300">
-        <div className="flex items-center justify-between mb-5">
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">User Growth</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Total registered vs. daily active users</p>
-          </div>
-          <div className="flex items-center gap-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
-            <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-600" /> Total Users</div>
-            <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-emerald-500" /> Active Users</div>
-          </div>
-        </div>
-        <ResponsiveContainer width="100%" height={240}>
-          <AreaChart data={userGrowth}>
-            <defs>
-              <linearGradient id="totalGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#2563EB" stopOpacity={0.12} />
-                <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="activeGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#10B981" stopOpacity={0.12} />
-                <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-            <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-            <YAxis tickFormatter={(v) => v >= 1000 ? `${v/1000}k` : v} tick={{ fontSize: 12, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={{ borderRadius: "12px", border: "1px solid #E2E8F0", fontSize: "12px" }} />
-            <Area type="monotone" dataKey="users" name="Total Users" stroke="#2563EB" strokeWidth={2.5} fill="url(#totalGrad)" />
-            <Area type="monotone" dataKey="active" name="Active Users" stroke="#10B981" strokeWidth={2.5} fill="url(#activeGrad)" />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-300">
+              <WalletCards className="w-5 h-5" />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* AI Usage */}
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 dark:[&_.recharts-cartesian-axis-tick_text]:fill-slate-400 dark:[&_.recharts-cartesian-grid_line]:stroke-slate-800 dark:[&_.recharts-default-tooltip]:!bg-slate-900 dark:[&_.recharts-default-tooltip]:!border-slate-700 dark:[&_.recharts-tooltip-label]:!text-white dark:[&_.recharts-tooltip-item]:!text-slate-300">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-5">AI Feature Usage (This Week)</h2>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={aiUsage} barSize={16}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-              <XAxis dataKey="day" tick={{ fontSize: 12, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 12, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ borderRadius: "12px", border: "1px solid #E2E8F0", fontSize: "12px" }} />
-              <Bar dataKey="questions" name="AI Questions" fill="#2563EB" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="summaries" name="Summaries" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="quizzes" name="Quizzes" fill="#10B981" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+              <span className="text-xs font-extrabold uppercase tracking-widest">
+                Revenue Analytics
+              </span>
+            </div>
+
+            <h2 className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">
+              Revenue report
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              View data by day, week, month, the last 7 days, the last 30 days,
+              or a custom range.
+            </p>
+          </div>
+
+          <PeriodFilters
+            period={revenuePeriod}
+            setPeriod={setRevenuePeriod}
+            selectedDate={revenueDate}
+            setSelectedDate={setRevenueDate}
+            customFromDate={revenueFromDate}
+            setCustomFromDate={setRevenueFromDate}
+            customToDate={revenueToDate}
+            setCustomToDate={setRevenueToDate}
+            loading={revenueLoading}
+            onRefresh={() => void loadRevenue()}
+          />
         </div>
 
-        {/* Document Distribution */}
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 dark:[&_.recharts-cartesian-axis-tick_text]:fill-slate-400 dark:[&_.recharts-default-tooltip]:!bg-slate-900 dark:[&_.recharts-default-tooltip]:!border-slate-700 dark:[&_.recharts-tooltip-label]:!text-white dark:[&_.recharts-tooltip-item]:!text-slate-300">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-5">Documents by Subject</h2>
-          <div className="flex items-center gap-6">
-            <ResponsiveContainer width={160} height={160}>
-              <PieChart>
-                <Pie
-                  data={subjectDistribution}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={45}
-                  outerRadius={70}
-                  dataKey="value"
-                  strokeWidth={0}
-                >
-                  {subjectDistribution.map((entry, i) => (
-                    <Cell key={i} fill={entry.fill} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex-1 space-y-2.5">
-              {subjectDistribution.map((s) => (
-                <div key={s.name} className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: s.fill }} />
-                  <div className="flex-1 flex justify-between text-sm">
-                    <span className="font-medium text-slate-700 dark:text-slate-300">{s.name}</span>
-                    <span className="font-bold text-slate-900 dark:text-white">{s.value}%</span>
+        {revenueLoading ? (
+          <LoadingBlock label="Loading revenue report..." />
+        ) : revenueError ? (
+          <ErrorBlock
+            message={revenueError}
+            onRetry={() => void loadRevenue()}
+          />
+        ) : (
+          <>
+            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="rounded-2xl bg-emerald-50 p-5 dark:bg-emerald-500/10">
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">
+                  Total revenue
+                </p>
+
+                <p className="mt-2 text-2xl font-extrabold text-emerald-800 dark:text-emerald-100">
+                  {formatCurrency(
+                    revenue?.totalRevenue,
+                    revenue?.currency || "VND",
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-blue-50 p-5 dark:bg-blue-500/10">
+                <p className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-300">
+                  Successful transactions
+                </p>
+
+                <p className="mt-2 text-2xl font-extrabold text-blue-800 dark:text-blue-100">
+                  {formatNumber(revenue?.successfulTransactionCount)}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-5 dark:bg-slate-800">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Report range
+                </p>
+
+                <p className="mt-2 font-extrabold text-slate-900 dark:text-white">
+                  {formatDate(revenue?.fromDate)} -{" "}
+                  {formatDate(revenue?.toDate)}
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {formatNumber(revenue?.numberOfDays)} days
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-7 h-80 dark:[&_.recharts-cartesian-axis-tick_text]:fill-slate-400 dark:[&_.recharts-cartesian-grid_line]:stroke-slate-800">
+              {revenueChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={revenueChartData}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="#E2E8F0"
+                      vertical={false}
+                    />
+
+                    <XAxis
+                      dataKey="label"
+                      tick={{
+                        fontSize: 11,
+                        fill: "#64748B",
+                      }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+
+                    <YAxis
+                      tickFormatter={(value) =>
+                        `${Math.round(Number(value) / 1000)}k`
+                      }
+                      tick={{
+                        fontSize: 11,
+                        fill: "#64748B",
+                      }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: 12,
+                        border: "1px solid #E2E8F0",
+                        fontSize: 12,
+                      }}
+                      formatter={(value) => [
+                        formatCurrency(value, revenue?.currency || "VND"),
+                        "Doanh thu",
+                      ]}
+                    />
+
+                    <Line
+                      type="monotone"
+                      dataKey="totalRevenue"
+                      name="Doanh thu"
+                      stroke="#059669"
+                      strokeWidth={3}
+                      dot={{
+                        r: 3,
+                      }}
+                      activeDot={{
+                        r: 5,
+                      }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+                  No chart data is available for this period.
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-violet-600 dark:text-violet-300">
+              <HardDrive className="w-5 h-5" />
+
+              <span className="text-xs font-extrabold uppercase tracking-widest">
+                Storage Analytics
+              </span>
+            </div>
+
+            <h2 className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">
+              Storage by user
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              View total storage across all accounts or select a specific
+              account.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <UserFilter
+              users={users}
+              value={storageUserId}
+              onChange={setStorageUserId}
+              label="User scope"
+            />
+
+            <button
+              type="button"
+              onClick={() => void loadStorage()}
+              disabled={storageLoading}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-60"
+            >
+              <RefreshCw
+                className={`w-4 h-4 ${storageLoading ? "animate-spin" : ""}`}
+              />
+              View storage
+            </button>
+          </div>
+        </div>
+
+        {storageLoading ? (
+          <LoadingBlock label="Loading storage report..." />
+        ) : storageError ? (
+          <ErrorBlock
+            message={storageError}
+            onRetry={() => void loadStorage()}
+          />
+        ) : (
+          <>
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl bg-violet-50 p-5 dark:bg-violet-500/10">
+                <p className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-300">
+                  Total storage
+                </p>
+
+                <p className="mt-2 text-2xl font-extrabold text-violet-800 dark:text-violet-100">
+                  {formatBytes(storage?.totalStorageBytes)}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-blue-50 p-5 dark:bg-blue-500/10">
+                <p className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-300">
+                  Users
+                </p>
+
+                <p className="mt-2 text-2xl font-extrabold text-blue-800 dark:text-blue-100">
+                  {formatNumber(storage?.userCount)}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-amber-50 p-5 dark:bg-amber-500/10">
+                <p className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-300">
+                  Documents
+                </p>
+
+                <p className="mt-2 text-2xl font-extrabold text-amber-800 dark:text-amber-100">
+                  {formatNumber(storage?.documentCount)}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-7 grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1.25fr]">
+              <div className="h-80 rounded-2xl border border-slate-200 p-4 dark:border-slate-700 dark:[&_.recharts-cartesian-axis-tick_text]:fill-slate-400 dark:[&_.recharts-cartesian-grid_line]:stroke-slate-800">
+                <h3 className="mb-3 text-sm font-extrabold text-slate-800 dark:text-slate-200">
+                  Top users by storage (MB)
+                </h3>
+
+                {storageChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="90%">
+                    <BarChart
+                      data={storageChartData}
+                      layout="vertical"
+                      margin={{
+                        left: 10,
+                      }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="#E2E8F0"
+                        horizontal={false}
+                      />
+
+                      <XAxis
+                        type="number"
+                        tick={{
+                          fontSize: 10,
+                          fill: "#64748B",
+                        }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={100}
+                        tick={{
+                          fontSize: 10,
+                          fill: "#64748B",
+                        }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+
+                      <Tooltip
+                        contentStyle={{
+                          borderRadius: 12,
+                          border: "1px solid #E2E8F0",
+                          fontSize: 12,
+                        }}
+                      />
+
+                      <Bar
+                        dataKey="storageMb"
+                        name="Storage (MB)"
+                        fill="#7C3AED"
+                        radius={[0, 5, 5, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[90%] flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+                    No storage data is available.
                   </div>
+                )}
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700">
+                  <h3 className="font-extrabold text-slate-900 dark:text-white">
+                    User details
+                  </h3>
+
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2 text-slate-400" />
+
+                    <input
+                      value={userSearch}
+                      onChange={(event) => setUserSearch(event.target.value)}
+                      placeholder="Search by ID, name, or email..."
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-blue-500 sm:w-64 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="max-h-80 overflow-auto">
+                  <table className="w-full min-w-[620px] text-left text-sm">
+                    <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      <tr>
+                        <th className="px-4 py-3">User</th>
+
+                        <th className="px-4 py-3">Email</th>
+
+                        <th className="px-4 py-3 text-right">Documents</th>
+
+                        <th className="px-4 py-3 text-right">Storage</th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {filteredStorageUsers.map((user) => (
+                        <tr
+                          key={user.userId}
+                          className="hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                        >
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-slate-900 dark:text-white">
+                              {user.fullName || "Unnamed user"}
+                            </p>
+
+                            <p className="text-xs text-slate-400">
+                              ID {user.userId}
+                            </p>
+                          </td>
+
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                            {user.email}
+                          </td>
+
+                          <td className="px-4 py-3 text-right font-semibold text-slate-700 dark:text-slate-200">
+                            {formatNumber(user.documentCount)}
+                          </td>
+
+                          <td className="px-4 py-3 text-right font-extrabold text-violet-600 dark:text-violet-300">
+                            {formatBytes(user.totalStorageBytes)}
+                          </td>
+                        </tr>
+                      ))}
+
+                      {filteredStorageUsers.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={4}
+                            className="px-4 py-10 text-center text-slate-500 dark:text-slate-400"
+                          >
+                            No matching users found.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-col gap-5">
+          <div>
+            <div className="flex items-center gap-2 text-pink-600 dark:text-pink-300">
+              <Bot className="w-5 h-5" />
+
+              <span className="text-xs font-extrabold uppercase tracking-widest">
+                Token Analytics
+              </span>
+            </div>
+
+            <h2 className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">
+              AI token usage
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Filter by one user or all users, combined with a day, week, month,
+              the last 7 days, the last 30 days, or a custom range.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <UserFilter
+              users={users}
+              value={tokenUserId}
+              onChange={setTokenUserId}
+              label="User scope"
+            />
+
+            <PeriodFilters
+              period={tokenPeriod}
+              setPeriod={setTokenPeriod}
+              selectedDate={tokenDate}
+              setSelectedDate={setTokenDate}
+              customFromDate={tokenFromDate}
+              setCustomFromDate={setTokenFromDate}
+              customToDate={tokenToDate}
+              setCustomToDate={setTokenToDate}
+              loading={tokenLoading}
+              onRefresh={() => void loadTokenUsage()}
+            />
+          </div>
+        </div>
+
+        {tokenLoading ? (
+          <LoadingBlock label="Loading token usage report..." />
+        ) : tokenError ? (
+          <ErrorBlock
+            message={tokenError}
+            onRetry={() => void loadTokenUsage()}
+          />
+        ) : (
+          <>
+            <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+              {[
+                [
+                  "Chat",
+                  tokenUsage?.totals?.chatTokens,
+                  "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300",
+                ],
+                [
+                  "Summary",
+                  tokenUsage?.totals?.summaryTokens,
+                  "bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300",
+                ],
+                [
+                  "Quiz",
+                  tokenUsage?.totals?.quizTokens,
+                  "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300",
+                ],
+                [
+                  "Extract",
+                  tokenUsage?.totals?.extractTokens,
+                  "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300",
+                ],
+                [
+                  "Feature total",
+                  tokenUsage?.totals?.totalTokens,
+                  "bg-pink-50 text-pink-700 dark:bg-pink-500/10 dark:text-pink-300",
+                ],
+                [
+                  "Overall",
+                  tokenUsage?.totals?.overallTokens,
+                  "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-white",
+                ],
+              ].map(([label, value, className]) => (
+                <div
+                  key={String(label)}
+                  className={`rounded-2xl p-4 ${String(className)}`}
+                >
+                  <p className="text-xs font-bold uppercase tracking-wider opacity-75">
+                    {String(label)}
+                  </p>
+
+                  <p className="mt-2 text-xl font-extrabold">
+                    {formatNumber(value)}
+                  </p>
                 </div>
               ))}
             </div>
-          </div>
 
-          <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-700">
-            <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Monthly Document Uploads</h3>
-            <ResponsiveContainer width="100%" height={80}>
-              <BarChart data={docUploads} barSize={20}>
-                <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ borderRadius: "8px", border: "1px solid #E2E8F0", fontSize: "11px" }} />
-                <Bar dataKey="uploads" name="Uploads" fill="#2563EB" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
+            <div className="mt-7 h-96 dark:[&_.recharts-cartesian-axis-tick_text]:fill-slate-400 dark:[&_.recharts-cartesian-grid_line]:stroke-slate-800">
+              {tokenChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={tokenChartData} barSize={16}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="#E2E8F0"
+                      vertical={false}
+                    />
+
+                    <XAxis
+                      dataKey="label"
+                      tick={{
+                        fontSize: 11,
+                        fill: "#64748B",
+                      }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+
+                    <YAxis
+                      tickFormatter={(value) => formatNumber(value)}
+                      tick={{
+                        fontSize: 11,
+                        fill: "#64748B",
+                      }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: 12,
+                        border: "1px solid #E2E8F0",
+                        fontSize: 12,
+                      }}
+                      formatter={(value, name) => [
+                        formatNumber(value),
+                        String(name),
+                      ]}
+                    />
+
+                    <Legend />
+
+                    <Bar
+                      dataKey="chatTokens"
+                      name="Chat"
+                      stackId="tokens"
+                      fill="#2563EB"
+                    />
+
+                    <Bar
+                      dataKey="summaryTokens"
+                      name="Summary"
+                      stackId="tokens"
+                      fill="#8B5CF6"
+                    />
+
+                    <Bar
+                      dataKey="quizTokens"
+                      name="Quiz"
+                      stackId="tokens"
+                      fill="#10B981"
+                    />
+
+                    <Bar
+                      dataKey="extractTokens"
+                      name="Extract"
+                      stackId="tokens"
+                      fill="#F59E0B"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+                  No token usage data is available for this period.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-x-8 gap-y-2 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <span>
+                Scope:{" "}
+                <strong>
+                  {tokenUserId
+                    ? selectedTokenUser?.fullName || `User ${tokenUserId}`
+                    : "All users"}
+                </strong>
+              </span>
+
+              <span>
+                Period:{" "}
+                <strong>
+                  {formatDate(tokenUsage?.fromDate)} -{" "}
+                  {formatDate(tokenUsage?.toDate)}
+                </strong>
+              </span>
+
+              <span>
+                Number of days:{" "}
+                <strong>{formatNumber(tokenUsage?.numberOfDays)}</strong>
+              </span>
+            </div>
+          </>
+        )}
+      </section>
     </div>
   );
 }
