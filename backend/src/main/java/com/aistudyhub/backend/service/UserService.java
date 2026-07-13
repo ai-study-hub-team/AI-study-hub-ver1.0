@@ -1,9 +1,7 @@
 package com.aistudyhub.backend.service;
 
-import com.aistudyhub.backend.dto.request.ChangePasswordRequest;
-import com.aistudyhub.backend.dto.request.UserUpdateRequest;
+import com.aistudyhub.backend.dto.request.*;
 import com.aistudyhub.backend.dto.response.UserResponse;
-import com.aistudyhub.backend.dto.request.UpdateProfileRequest;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.enums.UserRole;
 import com.aistudyhub.backend.enums.UserStatus;
@@ -12,6 +10,8 @@ import com.aistudyhub.backend.exception.ForbiddenException;
 import com.aistudyhub.backend.repository.UserRepository;
 import com.aistudyhub.backend.exception.BadRequestException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,24 +23,32 @@ import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final AvatarStorageService avatarStorageService;
-
+    private final CurrentUserService currentUserService;
+    private final RolePolicyService rolePolicyService;
 
     @Transactional(readOnly = true)
     public List<UserResponse> getAll() {
+        User currentUser = currentUserService.getCurrentUser();
+
         return userRepository.findAll()
                 .stream()
+                .filter(user -> rolePolicyService.canSeeUserInManagement(currentUser, user))
                 .map(this::toResponse)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public UserResponse getById(Long id) {
-        return toResponse(findUserById(id));
+        User currentUser = currentUserService.getCurrentUser();
+        User targetUser = findUserById(id);
+        rolePolicyService.requireCanManageAccount(currentUser, targetUser);
+        return toResponse(targetUser);
     }
 
     @Transactional(readOnly = true)
@@ -52,27 +60,16 @@ public class UserService {
      * Updates a user from the admin user-management API.
      */
     @Transactional
-    public UserResponse update(Long id, UserUpdateRequest request) {
+    public UserResponse update(Long id, AdminUpdateUserRequest request) {
+        User currentUser = currentUserService.getCurrentUser();
         User user = findUserById(id);
+
+        rolePolicyService.requireCanManageAccount(currentUser, user);
+
         user.setFullName(request.getFullName().trim());
-
-        if (request.getRole() != null && !request.getRole().isBlank()) {
-            UserRole newRole = UserRole.valueOf(
-                    request.getRole().trim().toUpperCase(Locale.ROOT)
-            );
-            ensureNotRemovingLastActiveAdmin(user, newRole, user.getStatus());
-            user.setRole(newRole);
-        }
-
-        if (request.getStatus() != null && !request.getStatus().isBlank()) {
-            UserStatus newStatus = UserStatus.valueOf(
-                    request.getStatus().trim().toUpperCase(Locale.ROOT)
-            );
-            ensureNotRemovingLastActiveAdmin(user, user.getRole(), newStatus);
-            user.setStatus(newStatus);
-        }
-
+        user.setAvatarUrl(trimToNull(request.getAvatarUrl()));
         user.setUpdatedAt(LocalDateTime.now());
+
         return toResponse(userRepository.save(user));
     }
 
@@ -96,7 +93,11 @@ public class UserService {
 
     @Transactional
     public UserResponse updateStatus(Long id, String status) {
+        User currentUser = currentUserService.getCurrentUser();
         User user = findUserById(id);
+
+        rolePolicyService.requireCanManageAccount(currentUser, user);
+
         UserStatus newStatus = UserStatus.valueOf(
                 status.trim().toUpperCase(Locale.ROOT)
         );
@@ -109,8 +110,12 @@ public class UserService {
 
     @Transactional
     public void softDelete(Long id) {
+        User currentUser = currentUserService.getCurrentUser();
         User user = findUserById(id);
+
+        rolePolicyService.requireCanManageAccount(currentUser, user);
         ensureNotRemovingLastActiveAdmin(user, user.getRole(), UserStatus.INACTIVE);
+
         user.setStatus(UserStatus.INACTIVE);
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
@@ -272,5 +277,46 @@ public class UserService {
         avatarStorageService.deleteLocalAvatarByUrl(oldAvatarUrl);
 
         return toResponse(saved);
+    }
+
+    @Transactional
+    public UserResponse createManager(CreateManagerRequest request) {
+        User currentUser = currentUserService.getCurrentUser();
+        rolePolicyService.requireAdmin(
+                currentUser,
+                "Only administrators can create manager accounts"
+        );
+
+        String email = normalizeEmail(request.getEmail());
+
+        if (userRepository.existsByEmail(email)) {
+            throw new EmailAlreadyUsedException();
+        }
+
+        User manager = User.builder()
+                .email(email)
+                .password(passwordEncoder.encode(request.getPassword()))
+                .fullName(request.getFullName().trim())
+                .role(UserRole.MANAGER)
+                .status(UserStatus.ACTIVE)
+                .emailVerified(true)
+                .emailVerifiedAt(LocalDateTime.now())
+                .provider(com.aistudyhub.backend.enums.UserAuthProvider.LOCAL)
+                .build();
+
+        try {
+            manager = userRepository.saveAndFlush(manager);
+        } catch (DataIntegrityViolationException ex) {
+            throw new EmailAlreadyUsedException();
+        }
+
+        log.info(
+                "Admin userId={} created manager userId={} email={}",
+                currentUser.getId(),
+                manager.getId(),
+                manager.getEmail()
+        );
+
+        return toResponse(manager);
     }
 }

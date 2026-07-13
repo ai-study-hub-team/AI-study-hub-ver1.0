@@ -18,10 +18,13 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+
 
 import java.util.List;
 
 @Configuration
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -68,8 +71,12 @@ public class SecurityConfig {
                                 "/api/public/**"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/plans").permitAll()
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/users/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/managers/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/plans/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/admin/dashboard/revenue").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/users/*/subscription").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers("/api/internal/**").denyAll()
                         .anyRequest().authenticated()
                 )

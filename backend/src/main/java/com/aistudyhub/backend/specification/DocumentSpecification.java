@@ -192,7 +192,7 @@ DocumentSpecification {
                 return cb.disjunction();
             }
 
-            if (user.getRole() == UserRole.ADMIN) {
+            if (isManagementAccount(user)) {
                 return cb.conjunction();
             }
 
@@ -237,5 +237,11 @@ DocumentSpecification {
                     sharedByFolder
             );
         };
+    }
+
+    private static boolean isManagementAccount(User user) {
+        return user != null
+                && (user.getRole() == UserRole.ADMIN
+                || user.getRole() == UserRole.MANAGER);
     }
 }

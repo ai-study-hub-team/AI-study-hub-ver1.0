@@ -18,6 +18,7 @@ public class FolderAccessService {
     private final FolderRepository folderRepository;
     private final FolderShareRepository folderShareRepository;
     private final CurrentUserService currentUserService;
+    private final RolePolicyService rolePolicyService;
 
     @Transactional(readOnly = true)
     public Folder getAccessibleFolder(Long folderId) {
@@ -42,7 +43,7 @@ public class FolderAccessService {
             return false;
         }
 
-        if (user.getRole() == UserRole.ADMIN) {
+        if (rolePolicyService.isManagementAccount(user)) {
             return true;
         }
 
@@ -59,7 +60,7 @@ public class FolderAccessService {
             return false;
         }
 
-        if (user.getRole() == UserRole.ADMIN) {
+        if (rolePolicyService.isManagementAccount(user)) {
             return true;
         }
 

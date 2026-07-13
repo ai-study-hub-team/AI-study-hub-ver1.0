@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.controller;
 
+import com.aistudyhub.backend.dto.request.AdminUpdateUserRequest;
 import com.aistudyhub.backend.dto.request.UserPlanUpdateRequest;
 import com.aistudyhub.backend.dto.request.UserStatusUpdateRequest;
 import com.aistudyhub.backend.dto.request.UserUpdateRequest;
@@ -38,7 +39,7 @@ public class UserController {
     @PutMapping("/{id}")
     public ResponseEntity<UserResponse> update(
             @PathVariable Long id,
-            @Valid @RequestBody UserUpdateRequest request) {
+            @Valid @RequestBody AdminUpdateUserRequest request) {
         return ResponseEntity.ok(userService.update(id, request));
     }
 
