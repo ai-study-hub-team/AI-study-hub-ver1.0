@@ -32,10 +32,17 @@ public class DocumentShareLink {
 
     /**
      * SHA-256 hash of the public token.
-     * The plain token is never persisted.
+     * The plain token is never persisted. (Note: historical comment; plain token is now optionally persisted)
      */
     @Column(name = "token_hash", nullable = false, unique = true, length = 64)
     private String tokenHash;
+
+    /**
+     * The original generated token, stored so User A can view and copy the link later.
+     * Null for old links created before this field was added.
+     */
+    @Column(name = "plain_token", length = 255)
+    private String plainToken;
 
     /** Display title shown to User B on the public upload page. */
     @Column(length = 255)

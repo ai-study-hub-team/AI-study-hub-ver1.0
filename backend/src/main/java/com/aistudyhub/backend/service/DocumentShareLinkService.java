@@ -60,6 +60,7 @@ public class DocumentShareLinkService {
         DocumentShareLink link = DocumentShareLink.builder()
                 .owner(owner)
                 .tokenHash(tokenHash)
+                .plainToken(plainToken)
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .status(DocumentShareStatus.ACTIVE)
@@ -78,8 +79,8 @@ public class DocumentShareLinkService {
 
         log.info("[ShareLink] Created share link id={} for userId={}", saved.getId(), owner.getId());
 
-        // The token is returned ONLY at creation time; subsequent calls return null
         DocumentShareLinkResponse response = toResponse(saved);
+        // Explicitly set these just in case (though toResponse should handle it now)
         response.setToken(plainToken);
         response.setShareUrl(shareUrl);
         return response;
@@ -94,7 +95,7 @@ public class DocumentShareLinkService {
         }
         return shareLinkRepository.findByOwnerIdOrderByCreatedAtDesc(userId)
                 .stream()
-                .map(this::toResponse)  // token = null in list view
+                .map(this::toResponse)
                 .collect(Collectors.toList());
     }
 
@@ -165,6 +166,9 @@ public class DocumentShareLinkService {
         Long folderId = link.getDefaultFolder() != null ? link.getDefaultFolder().getId() : null;
         String folderName = link.getDefaultFolder() != null ? link.getDefaultFolder().getName() : null;
 
+        String token = link.getPlainToken();
+        String shareUrl = (token != null) ? (frontendBaseUrl + "/shared-upload/" + token) : null;
+
         return DocumentShareLinkResponse.builder()
                 .id(link.getId())
                 .ownerUserId(link.getOwner().getId())
@@ -176,7 +180,8 @@ public class DocumentShareLinkService {
                 .currentUploads(link.getCurrentUploads())
                 .defaultFolderId(folderId)
                 .defaultFolderName(folderName)
-                // token intentionally left null — only set at creation
+                .token(token)
+                .shareUrl(shareUrl)
                 .createdAt(link.getCreatedAt())
                 .updatedAt(link.getUpdatedAt())
                 .build();
