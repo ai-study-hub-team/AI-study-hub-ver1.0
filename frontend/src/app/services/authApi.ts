@@ -34,33 +34,23 @@ export type EmailVerificationResponse = {
   nextAction: string;
 };
 
-export type RegisterPayload = {
+export type MessageResponse = {
+  message: string;
+};
+
+// Register
+export const registerApi = (data: {
   fullName: string;
   email: string;
   password: string;
-};
-
-export type UpdateMyAccountPayload = {
-  fullName?: string;
-  avatarUrl?: string;
-  phone?: string;
-  bio?: string;
-};
-
-export type ChangePasswordPayload = {
-  currentPassword: string;
-  newPassword: string;
-};
-
-// Register a new account.
-export const registerApi = (data: RegisterPayload) => {
+}) => {
   return apiClient.post<EmailVerificationResponse>(
     "/api/auth/register",
     data,
   );
 };
 
-// Sign in with email and password.
+// Login with email and password
 export const loginApi = (
   email: string,
   password: string,
@@ -74,8 +64,10 @@ export const loginApi = (
   );
 };
 
-// Sign in with a Google ID token.
-export const googleLoginApi = (idToken: string) => {
+// Login with Google ID token
+export const googleLoginApi = (
+  idToken: string,
+) => {
   return apiClient.post<AuthResponse>(
     "/api/auth/google",
     {
@@ -84,18 +76,24 @@ export const googleLoginApi = (idToken: string) => {
   );
 };
 
-// Verify an email address.
-export const verifyEmailApi = (token: string) => {
+// Verify email
+export const verifyEmailApi = (
+  token: string,
+) => {
   return apiClient.get<EmailVerificationResponse>(
     "/api/auth/verify-email",
     {
-      params: { token },
+      params: {
+        token,
+      },
     },
   );
 };
 
-// Resend the verification email.
-export const resendVerificationApi = (email: string) => {
+// Resend verification email
+export const resendVerificationApi = (
+  email: string,
+) => {
   return apiClient.post<EmailVerificationResponse>(
     "/api/auth/resend-verification",
     {
@@ -104,13 +102,39 @@ export const resendVerificationApi = (email: string) => {
   );
 };
 
-// Get the currently authenticated user.
+// Request a password reset email
+export const forgotPasswordApi = (
+  email: string,
+) => {
+  return apiClient.post<MessageResponse>(
+    "/api/auth/forgot-password",
+    {
+      email,
+    },
+  );
+};
+
+// Reset password using the token from the email
+export const resetPasswordApi = (data: {
+  token: string;
+  newPassword: string;
+  confirmPassword: string;
+}) => {
+  return apiClient.post<MessageResponse>(
+    "/api/auth/reset-password",
+    data,
+  );
+};
+
+// Get authenticated user
 export const getAuthMeApi = () => {
   return apiClient.get("/api/auth/me");
 };
 
-// Refresh the access token.
-export const refreshTokenApi = (refreshToken: string) => {
+// Refresh access token
+export const refreshTokenApi = (
+  refreshToken: string,
+) => {
   return apiClient.post<AuthResponse>(
     "/api/auth/refresh",
     {
@@ -119,29 +143,37 @@ export const refreshTokenApi = (refreshToken: string) => {
   );
 };
 
-// Sign out and invalidate the refresh token.
+// Logout
 export const logoutApi = () => {
   return apiClient.post("/api/auth/logout", {
-    refreshToken: localStorage.getItem("refreshToken"),
+    refreshToken:
+      localStorage.getItem("refreshToken"),
   });
 };
 
-// Get the current user's account profile.
+// Get profile
 export const getMyAccountApi = () => {
   return apiClient.get("/api/account/me");
 };
 
-// Update the current user's account profile.
-export const updateMyAccountApi = (
-  data: UpdateMyAccountPayload,
-) => {
-  return apiClient.put("/api/account/me", data);
+// Update profile
+export const updateMyAccountApi = (data: {
+  fullName?: string;
+  avatarUrl?: string;
+  phone?: string;
+  bio?: string;
+}) => {
+  return apiClient.put(
+    "/api/account/me",
+    data,
+  );
 };
 
-// Change the current user's password.
-export const changePasswordApi = (
-  data: ChangePasswordPayload,
-) => {
+// Change password
+export const changePasswordApi = (data: {
+  currentPassword: string;
+  newPassword: string;
+}) => {
   return apiClient.put(
     "/api/account/change-password",
     data,
