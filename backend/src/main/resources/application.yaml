@@ -10,7 +10,7 @@ application:
 
 resend:
   api-key: ${RESEND_API_KEY}
-  from-email: "AI Study Hub <noreply@aistudyhub.com>"
+  from-email: "AI Study Hub <onboarding@resend.dev>"
   frontend-url: http://localhost:5173
 
 email-verification:

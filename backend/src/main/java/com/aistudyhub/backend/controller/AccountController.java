@@ -7,9 +7,11 @@ import com.aistudyhub.backend.service.UserService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/account")
@@ -49,6 +51,17 @@ public class AccountController {
                         authentication.getName(),
                         request
                 )
+        );
+    }
+
+
+    @PatchMapping(value = "/me/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<UserResponse> updateMyAvatar(
+            Authentication authentication,
+            @RequestParam("file") MultipartFile file
+    ) {
+        return ResponseEntity.ok(
+                userService.updateCurrentUserAvatar(authentication.getName(), file)
         );
     }
 }
