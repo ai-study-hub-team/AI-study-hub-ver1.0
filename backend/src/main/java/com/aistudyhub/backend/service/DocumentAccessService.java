@@ -26,6 +26,7 @@ public class DocumentAccessService {
     private final DocumentShareRepository documentShareRepository;
     private final FolderShareRepository folderShareRepository;
     private final CurrentUserService currentUserService;
+    private final RolePolicyService rolePolicyService;
 
     @Transactional(readOnly = true)
     public Document getAccessibleDocument(Long documentId) {
@@ -79,7 +80,7 @@ public class DocumentAccessService {
             return false;
         }
 
-        if (user.getRole() == UserRole.ADMIN) {
+        if (rolePolicyService.isManagementAccount(user)) {
             return true;
         }
 
@@ -106,7 +107,7 @@ public class DocumentAccessService {
             return false;
         }
 
-        if (user.getRole() == UserRole.ADMIN) {
+        if (rolePolicyService.isManagementAccount(user)) {
             return true;
         }
 
