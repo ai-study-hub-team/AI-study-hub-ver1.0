@@ -18,15 +18,28 @@ public class StorageQuotaService {
 
     private final SubscriptionService subscriptionService;
     private final UserRepository userRepository;
+    private final RolePolicyService rolePolicyService;
+
+
+    private User findUser(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+    }
 
     @Transactional(readOnly = true)
     // check dung lượng theo gói
     public void validateStorageLimit(Long userId, Long newFileBytes) {
+        User user = findUser(userId);
+
+        if (rolePolicyService.isManagementAccount(user)) {
+            log.info("[Quota] Bypass storage limit for management account userId={}, role={}",
+                    user.getId(), user.getRole());
+            return;
+        }
+
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
         SubscriptionPlan plan = subscription.getPlan();
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
         Long currentStorageBytes = user.getTotalStorageUsedBytes() != null
                 ? user.getTotalStorageUsedBytes()
                 : 0L;
@@ -74,6 +87,14 @@ public class StorageQuotaService {
     @Transactional(readOnly = true)
     // check size file theo gói
     public void validateFileSize(Long userId, Long newFileBytes) {
+        User user = findUser(userId);
+
+        if (rolePolicyService.isManagementAccount(user)) {
+            log.info("[Quota] Bypass file size limit for management account userId={}, role={}",
+                    user.getId(), user.getRole());
+            return;
+        }
+
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
         SubscriptionPlan plan = subscription.getPlan();
 
@@ -88,15 +109,22 @@ public class StorageQuotaService {
 
     @Transactional(readOnly = true)
     // check video audio theo gói
-
     public void validateFileRestrictions(Long userId, String mimeType) {
+        User user = findUser(userId);
+
+        if (rolePolicyService.isManagementAccount(user)) {
+            log.info("[Quota] Bypass file restriction for management account userId={}, role={}",
+                    user.getId(), user.getRole());
+            return;
+        }
+
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
         SubscriptionPlan plan = subscription.getPlan();
 
         if (mimeType == null) {
             return;
         }
-        
+
         mimeType = mimeType.toLowerCase();
 
         if (mimeType.startsWith("video/") && !plan.getAllowVideoUpload()) {
@@ -108,13 +136,13 @@ public class StorageQuotaService {
         if (mimeType.startsWith("image/") && !plan.getAllowImageUpload()) {
             throw new PlanRestrictionException("Image uploads are not allowed on your current plan.");
         }
-        // Simplified check for documents
-        boolean isDocument = mimeType.equals("application/pdf") || 
-                             mimeType.equals("application/msword") || 
-                             mimeType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document") ||
-                             mimeType.equals("text/plain") ||
-                             mimeType.startsWith("application/vnd.ms-");
-                             
+
+        boolean isDocument = mimeType.equals("application/pdf") ||
+                mimeType.equals("application/msword") ||
+                mimeType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document") ||
+                mimeType.equals("text/plain") ||
+                mimeType.startsWith("application/vnd.ms-");
+
         if (isDocument && !plan.getAllowDocumentUpload()) {
             throw new PlanRestrictionException("Document uploads are not allowed on your current plan.");
         }

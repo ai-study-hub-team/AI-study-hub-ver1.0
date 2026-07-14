@@ -1,0 +1,12 @@
+.env
+cloudrun.env.yaml
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.idea/
+.vscode/
+.pytest_cache/

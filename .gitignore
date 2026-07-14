@@ -14,3 +14,16 @@ venv/
 __pycache__/
 *.pyc
 *.md
+# Deployment secrets
+ai-service/.env
+ai-service/cloudrun.env.yaml
+backend/.env
+backend/cloudrun-backend.env.yaml
+
+# Frontend environment
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# Frontend build output
+frontend/dist/

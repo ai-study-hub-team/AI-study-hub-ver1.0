@@ -8,6 +8,7 @@ import com.aistudyhub.backend.entity.UserSubscription;
 import com.aistudyhub.backend.exception.QuotaExceededException;
 import com.aistudyhub.backend.repository.TokenUsageLogRepository;
 import com.aistudyhub.backend.repository.UserDailyUsageRepository;
+import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,8 @@ public class TokenUsageService {
     private final SubscriptionService subscriptionService;
     private final UserDailyUsageRepository userDailyUsageRepository;
     private final TokenUsageLogRepository tokenUsageLogRepository;
+    private final UserRepository userRepository;
+    private final RolePolicyService rolePolicyService;
 
     @Transactional(readOnly = true)
     public CurrentUserTodayTokenUsageResponse getTodayUsage(Long userId) {
@@ -50,8 +53,18 @@ public class TokenUsageService {
     @Transactional(readOnly = true)
     // so sánh token hằng ngày
     public void validateTokenQuota(Long userId, String featureType) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+
+        if (rolePolicyService.isManagementAccount(user)) {
+            log.info("[TokenQuota][{}] bypass for management account userId={}, role={}",
+                    featureType, user.getId(), user.getRole());
+            return;
+        }
+
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
         Long dailyLimit = subscription.getPlan().getDailyTokenLimit();
+
         LocalDate today = LocalDate.now();
 
         UserDailyUsage usage = userDailyUsageRepository.findByUserIdAndUsageDate(userId, today)
@@ -63,13 +76,8 @@ public class TokenUsageService {
                 featureType, userId, today, used, dailyLimit);
 
         if (used >= dailyLimit) {
-            log.warn("[TokenQuota][{}] QUOTA EXCEEDED userId={}, used={}, limit={}",
-                    featureType, userId, used, dailyLimit);
             throw new QuotaExceededException("Daily token quota exceeded. Please upgrade your plan or try again tomorrow.");
         }
-        
-        log.info("[TokenQuota][{}] allowed userId={}, used={}, limit={}",
-                featureType, userId, used, dailyLimit);
     }
 
     @Transactional

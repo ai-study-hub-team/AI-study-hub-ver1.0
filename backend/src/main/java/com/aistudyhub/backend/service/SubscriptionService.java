@@ -7,6 +7,7 @@ import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.UserSubscription;
 import com.aistudyhub.backend.enums.SubscriptionStatus;
+import com.aistudyhub.backend.enums.UserRole;
 import com.aistudyhub.backend.repository.SubscriptionPlanRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import com.aistudyhub.backend.repository.UserSubscriptionRepository;
@@ -28,10 +29,18 @@ public class SubscriptionService {
     private final ResendEmailService resendEmailService;
     private final NotificationService notificationService;
     private final UserRepository userRepository;
+    private final CurrentUserService currentUserService;
+    private final RolePolicyService rolePolicyService;
 
     @Transactional
     // user đăng ký tài khoản auto freeplan
     public void assignFreePlan(User user) {
+        if (user.getRole() != UserRole.USER) {
+            log.info("Skip assigning FREE plan to management account userId={}, role={}",
+                    user.getId(), user.getRole());
+            return;
+        }
+
         SubscriptionPlan freePlan = subscriptionPlanRepository.findByCode("FREE")
                 .orElseThrow(() -> new RuntimeException("Critical: FREE plan not found in database"));
 
@@ -58,10 +67,15 @@ public class SubscriptionService {
 
     @Transactional
     public SubscriptionResponse updateUserPlanByAdmin(Long userId, String planCode) {
+        User currentUser = currentUserService.getCurrentUser();
+        rolePolicyService.requireAdmin(currentUser, "Only administrators can update subscriptions");
+
         String normalizedPlanCode = planCode.trim().toUpperCase(Locale.ROOT);
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+
+        rolePolicyService.requireUserSubscriptionTarget(user);
 
         SubscriptionPlan plan = subscriptionPlanRepository.findByCode(normalizedPlanCode)
                 .orElseThrow(() -> new RuntimeException("Plan not found: " + normalizedPlanCode));
@@ -89,6 +103,11 @@ public class SubscriptionService {
     @Transactional
     //mua proplan
     public void processSuccessfulPayment(Long userId, String planCode, Integer purchasedDays) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+
+        rolePolicyService.requireUserSubscriptionTarget(user);
+
         SubscriptionPlan newPlan = subscriptionPlanRepository.findByCode(planCode)
                 .orElseThrow(() -> new RuntimeException("Plan not found: " + planCode));
 
@@ -147,6 +166,15 @@ public class SubscriptionService {
         );
 
         for (UserSubscription sub : expiringSoon) {
+            if (rolePolicyService.isManagementAccount(sub.getUser())) {
+                log.info(
+                        "Skip subscription expiry reminder for management account userId={}, role={}",
+                        sub.getUser().getId(),
+                        sub.getUser().getRole()
+                );
+                continue;
+            }
+
             if (sub.getExpiryReminder7DaysSentAt() != null) {
                 continue;
             }
@@ -157,7 +185,6 @@ public class SubscriptionService {
                     sub.getEndDate(),
                     false
             );
-
 
             notificationService.create(
                     sub.getUser(),
@@ -191,6 +218,15 @@ public class SubscriptionService {
                 .orElseThrow(() -> new RuntimeException("Critical: FREE plan not found in database"));
 
         for (UserSubscription sub : overdueSubscriptions) {
+            if (rolePolicyService.isManagementAccount(sub.getUser())) {
+                log.info(
+                        "Skip subscription expiration for management account userId={}, role={}",
+                        sub.getUser().getId(),
+                        sub.getUser().getRole()
+                );
+                continue;
+            }
+
             if (sub.getExpiredNotificationSentAt() == null) {
                 resendEmailService.sendSubscriptionExpiryEmail(
                         sub.getUser(),
@@ -220,6 +256,7 @@ public class SubscriptionService {
             userSubscriptionRepository.save(sub);
         }
     }
+
     private SubscriptionResponse toResponse(UserSubscription subscription) {
         SubscriptionPlan plan = subscription.getPlan();
         PlanResponse planResponse = PlanResponse.builder()

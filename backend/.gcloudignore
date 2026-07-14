@@ -1,0 +1,7 @@
+target/
+.env
+cloudrun-backend.env.yaml
+.git/
+.idea/
+.vscode/
+*.log
