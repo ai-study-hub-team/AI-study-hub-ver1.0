@@ -305,9 +305,14 @@ export function UserManagement() {
     try {
       await userApi.updateUser(editUser.id, {
         fullName: editForm.fullName.trim(),
-        role: editUser.role,
-        status: editForm.status,
       });
+
+      const currentStatus = editUser.status?.toUpperCase() || "ACTIVE";
+      if (editForm.status !== currentStatus) {
+        await userApi.updateUserStatus(editUser.id, {
+          status: editForm.status,
+        });
+      }
 
       if (editForm.planCode) {
         await userApi.updateUserSubscription(editUser.id, {
