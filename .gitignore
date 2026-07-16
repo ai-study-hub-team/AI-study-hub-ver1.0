@@ -26,4 +26,4 @@ frontend/.env.local
 frontend/.env.*.local
 
 # Frontend build output
-frontend/dist/
+frontend/dist/  
