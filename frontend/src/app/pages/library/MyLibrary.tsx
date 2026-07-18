@@ -796,7 +796,7 @@ function DocumentRow({
 
 export function MyLibrary() {
   const navigate = useNavigate();
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [view, setView] = useState<"grid" | "list">("list");
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
   const [allCategories, setAllCategories] = useState<CategoryResponse[]>([]);
   const [folders, setFolders] = useState<LibraryFolder[]>([]);

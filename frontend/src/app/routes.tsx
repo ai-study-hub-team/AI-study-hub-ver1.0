@@ -67,6 +67,8 @@ import { UserManagement } from "./pages/admin/UserManagement";
 import { DocumentAdmin } from "./pages/admin/DocumentAdmin";
 import { ReportManagement } from "./pages/admin/ReportManagement";
 import { AnalyticsDashboard } from "./pages/admin/AnalyticsDashboard";
+import { PlanManagement } from "./pages/admin/PlanManagement";
+import { ActivityLogs } from "./pages/admin/ActivityLogs";
 
 export const router = createBrowserRouter([
   {
@@ -290,12 +292,20 @@ export const router = createBrowserRouter([
             element: <UserManagement />,
           },
           {
+            path: "activity-logs",
+            element: <ActivityLogs />,
+          },
+          {
             path: "documents",
             element: <DocumentAdmin />,
           },
           {
             path: "reports",
             element: <ReportManagement />,
+          },
+          {
+            path: "plans",
+            element: <PlanManagement />,
           },
           {
             path: "analytics",

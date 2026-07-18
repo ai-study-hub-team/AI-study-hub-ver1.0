@@ -6,6 +6,7 @@ import {
 } from "react-router";
 
 import {
+  Activity,
   BarChart2,
   CreditCard,
   FileSearch,
@@ -20,6 +21,7 @@ import {
   MessageSquare,
   Moon,
   Puzzle,
+  Package,
   Share2,
   ShieldCheck,
   Sun,
@@ -567,42 +569,55 @@ export function DashboardLayout({
     },
   ];
 
-  const adminLinks = [
+  const adminGroups = [
     {
-      to: "/admin",
-      icon: ShieldCheck,
-      label: "Overview",
+      title: "Overview",
+      links: [
+        {
+          to: "/admin",
+          icon: ShieldCheck,
+          label: "Overview",
+        },
+        {
+          to: "/admin/analytics",
+          icon: BarChart2,
+          label: "Analytics",
+        },
+      ],
     },
     {
-      to: "/admin/analytics",
-      icon: BarChart2,
-      label: "Analytics",
-    },
-    {
-      to: "/admin/users",
-      icon: Users,
-      label: "User Management",
-    },
-    {
-      to: "/admin/documents",
-      icon: FileText,
-      label: "Documents",
-    },
-    {
-      to: "/admin/reports",
-      icon: Flag,
-      label: "Reports",
-    },
-    {
-      to: "/app/dashboard",
-      icon: LayoutDashboard,
-      label: "User View",
+      title: "Management",
+      links: [
+        {
+          to: "/admin/users",
+          icon: Users,
+          label: "User Management",
+        },
+        {
+          to: "/admin/activity-logs",
+          icon: Activity,
+          label: "Activity Logs",
+        },
+        {
+          to: "/admin/documents",
+          icon: FileText,
+          label: "Documents",
+        },
+        {
+          to: "/admin/reports",
+          icon: Flag,
+          label: "Reports",
+        },
+        {
+          to: "/admin/plans",
+          icon: Package,
+          label: "Plan Management",
+        },
+      ],
     },
   ];
 
-  const links = isAdmin
-    ? adminLinks
-    : studentLinks;
+  const links = studentLinks;
 
   const isExactActive = (
     to: string,
@@ -741,68 +756,70 @@ export function DashboardLayout({
         </div>
 
         <nav className="flex-1 space-y-1 overflow-x-hidden overflow-y-auto px-3 py-5">
-          {isAdmin &&
-            isSidebarOpen && (
-              <p className="px-3 pb-2 text-xs font-bold uppercase tracking-widest text-slate-400">
-                Admin Panel
-              </p>
-            )}
-
-          {links.map((link) => {
-            const active =
-              isExactActive(link.to);
-
-            return (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                end={
-                  link.to === "/admin"
-                }
-                className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 ${
-                  active
-                    ? "bg-blue-600 font-medium text-white hover:bg-blue-700"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-                }`}
-                title={
-                  !isSidebarOpen
-                    ? link.label
-                    : undefined
-                }
-              >
-                <link.icon
-                  className={`h-5 w-5 shrink-0 transition-colors ${
-                    active
-                      ? "text-white"
-                      : "text-slate-400 group-hover:text-slate-600 dark:group-hover:text-white"
-                  }`}
-                />
-
-                {isSidebarOpen && (
-                  <motion.span
-                    initial={{
-                      opacity: 0,
-                    }}
-                    animate={{
-                      opacity: 1,
-                    }}
-                    className="truncate text-sm"
-                  >
-                    {link.label}
-                  </motion.span>
-                )}
-
-                {!isSidebarOpen &&
-                  link.label ===
-                    "Reports" && (
-                    <div className="absolute left-14 h-2 w-2 rounded-full bg-red-500" />
+          {isAdmin ? (
+            <div className="space-y-5">
+              {adminGroups.map((group) => (
+                <div key={group.title}>
+                  {isSidebarOpen && (
+                    <p className="px-3 pb-2 text-xs font-bold uppercase tracking-widest text-slate-400">
+                      {group.title}
+                    </p>
                   )}
-              </NavLink>
-            );
-          })}
+                  <div className="space-y-1">
+                    {group.links.map((link) => {
+                      const active = isExactActive(link.to);
+                      return (
+                        <NavLink
+                          key={link.to}
+                          to={link.to}
+                          end={link.to === "/admin"}
+                          className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 ${
+                            active
+                              ? "bg-blue-600 font-medium text-white hover:bg-blue-700"
+                              : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                          }`}
+                          title={!isSidebarOpen ? link.label : undefined}
+                        >
+                          <link.icon className={`h-5 w-5 shrink-0 transition-colors ${active ? "text-white" : "text-slate-400 group-hover:text-slate-600 dark:group-hover:text-white"}`} />
+                          {isSidebarOpen && <span className="truncate text-sm">{link.label}</span>}
+                          {!isSidebarOpen && link.label === "Reports" && <div className="absolute left-14 h-2 w-2 rounded-full bg-red-500" />}
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            links.map((link) => {
+              const active = isExactActive(link.to);
+              return (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 ${active ? "bg-blue-600 font-medium text-white hover:bg-blue-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"}`}
+                  title={!isSidebarOpen ? link.label : undefined}
+                >
+                  <link.icon className={`h-5 w-5 shrink-0 transition-colors ${active ? "text-white" : "text-slate-400 group-hover:text-slate-600 dark:group-hover:text-white"}`} />
+                  {isSidebarOpen && <span className="truncate text-sm">{link.label}</span>}
+                </NavLink>
+              );
+            })
+          )}
         </nav>
 
         <div className="shrink-0 space-y-2 border-t border-slate-100 p-3 dark:border-slate-800">
+          {isAdmin && (
+            <NavLink
+              to="/app/dashboard"
+              className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              title={!isSidebarOpen ? "Back to User View" : undefined}
+            >
+              <LayoutDashboard className="h-5 w-5 shrink-0" />
+              {isSidebarOpen && <span className="text-sm font-semibold">Back to User View</span>}
+            </NavLink>
+          )}
+
           {!isAdmin &&
             isCurrentAdmin && (
               <NavLink

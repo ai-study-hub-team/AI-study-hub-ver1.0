@@ -109,7 +109,7 @@ const toTrashDocument = (document: DocumentListItemResponse): TrashDocument => (
 });
 
 export function TrashPage() {
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [view, setView] = useState<"grid" | "list">("list");
   const [documents, setDocuments] = useState<TrashDocument[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");

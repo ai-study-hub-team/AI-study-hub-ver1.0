@@ -87,7 +87,7 @@ const summaryTypeOptions: { value: SummaryType; label: string; desc: string }[] 
           return;
         }
 
-        const data = await documentApi.getAllDocumentsForSelect(userId);
+        const data = await documentApi.getAiReadyDocumentsForSelect(userId);
         setDocuments(data);
 
         if (data.length > 0) {

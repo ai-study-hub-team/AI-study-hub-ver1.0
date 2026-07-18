@@ -6,6 +6,7 @@ import {
   MailCheck,
   MoreVertical,
   Pencil,
+  Plus,
   Search,
   Users,
   X,
@@ -19,10 +20,11 @@ import {
   type UserActivityLogResponse,
 } from "../../services/adminUserActivityApi";
 import { subscriptionApi, type PlanResponse } from "../../services/subscriptionApi";
+import { adminManagerApi } from "../../services/adminManagerApi";
 import { userApi, type UserResponse } from "../../services/userApi";
 
 type StatusFilter = "all" | "active" | "inactive";
-type RoleFilter = "all" | "USER" | "ADMIN";
+type RoleFilter = "all" | "USER" | "MANAGER" | "ADMIN";
 type CreatedDateSort = "newest" | "oldest";
 
 type UserView = {
@@ -155,6 +157,13 @@ export function UserManagement() {
     fullName: "",
     status: "ACTIVE",
     planCode: "",
+  });
+  const [showCreateManager, setShowCreateManager] = useState(false);
+  const [creatingManager, setCreatingManager] = useState(false);
+  const [managerForm, setManagerForm] = useState({
+    fullName: "",
+    email: "",
+    password: "",
   });
   const pageSize = 10;
 
@@ -296,6 +305,43 @@ export function UserManagement() {
     }
   };
 
+  const handleCreateManager = async () => {
+    const fullName = managerForm.fullName.trim();
+    const email = managerForm.email.trim();
+
+    if (!fullName || !email || !managerForm.password) {
+      toast.error("Full name, email, and password are required.");
+      return;
+    }
+
+    if (managerForm.password.length < 6) {
+      toast.error("Password must contain at least 6 characters.");
+      return;
+    }
+
+    try {
+      setCreatingManager(true);
+      await adminManagerApi.createManager({
+        fullName,
+        email,
+        password: managerForm.password,
+      });
+      toast.success("Manager account created successfully.");
+      setManagerForm({ fullName: "", email: "", password: "" });
+      setShowCreateManager(false);
+      await loadUsers();
+    } catch (error: any) {
+      console.error("Cannot create manager:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot create manager account.",
+      );
+    } finally {
+      setCreatingManager(false);
+    }
+  };
+
   const handleUpdateUser = async () => {
     if (!editUser || !editForm.fullName.trim()) {
       toast.error("Full name is required.");
@@ -335,13 +381,22 @@ export function UserManagement() {
 
   return (
     <div className="space-y-7 bg-slate-50 dark:bg-slate-950">
-      <div>
-        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
-          User Management
-        </h1>
-        <p className="mt-1 text-slate-500 dark:text-slate-400">
-          Manage user accounts, statuses, and subscription plans.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
+            User Management
+          </h1>
+          <p className="mt-1 text-slate-500 dark:text-slate-400">
+            Manage user accounts, statuses, and subscription plans.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowCreateManager(true)}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+        >
+          <Plus className="h-4 w-4" />
+          Create manager
+        </button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -396,6 +451,7 @@ export function UserManagement() {
           >
             <option value="all">All roles</option>
             <option value="USER">User</option>
+            <option value="MANAGER">Manager</option>
             <option value="ADMIN">Admin</option>
           </select>
           <select
@@ -514,6 +570,97 @@ export function UserManagement() {
           onPageChange={setCurrentPage}
         />
       </div>
+
+      {showCreateManager && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                  Create manager
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Create an account with manager permissions.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCreateManager(false)}
+                disabled={creatingManager}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-5 space-y-4">
+              <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">
+                Full name
+                <input
+                  value={managerForm.fullName}
+                  onChange={(event) =>
+                    setManagerForm((current) => ({
+                      ...current,
+                      fullName: event.target.value,
+                    }))
+                  }
+                  maxLength={150}
+                  autoFocus
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
+              <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">
+                Email
+                <input
+                  type="email"
+                  value={managerForm.email}
+                  onChange={(event) =>
+                    setManagerForm((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                  maxLength={254}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
+              <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">
+                Password
+                <input
+                  type="password"
+                  value={managerForm.password}
+                  onChange={(event) =>
+                    setManagerForm((current) => ({
+                      ...current,
+                      password: event.target.value,
+                    }))
+                  }
+                  minLength={6}
+                  maxLength={72}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+                <span className="mt-1 block text-xs font-normal text-slate-500">
+                  Use between 6 and 72 characters.
+                </span>
+              </label>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setShowCreateManager(false)}
+                disabled={creatingManager}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold disabled:opacity-50 dark:border-slate-700 dark:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleCreateManager()}
+                disabled={creatingManager}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {creatingManager ? "Creating..." : "Create manager"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {viewUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">

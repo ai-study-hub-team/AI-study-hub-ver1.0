@@ -101,6 +101,9 @@ const isPptxDocument = (contentType: string, name: string) => {
   );
 };
 
+const isTextDocument = (contentType: string, name: string) =>
+  contentType.startsWith("text/") || name.toLowerCase().endsWith(".txt");
+
 const getContentTypeFromBlob = (blob: Blob) => {
   return blob.type || "application/octet-stream";
 };
@@ -118,6 +121,7 @@ export function PublicDocumentPage() {
 
   const [docxHtml, setDocxHtml] = useState("");
   const [excelHtml, setExcelHtml] = useState("");
+  const [textContent, setTextContent] = useState("");
   const [pptxBuffer, setPptxBuffer] = useState<ArrayBuffer | null>(null);
   const [pptxError, setPptxError] = useState("");
 
@@ -219,9 +223,11 @@ export function PublicDocumentPage() {
         const isDocx = isDocxDocument(contentType, previewFileName);
         const isExcel = isExcelDocument(contentType, previewFileName);
         const isPptx = isPptxDocument(contentType, previewFileName);
+        const isText = isTextDocument(contentType, previewFileName);
 
         setDocxHtml("");
         setExcelHtml("");
+        setTextContent("");
         setPptxBuffer(null);
         setPptxError("");
 
@@ -239,6 +245,8 @@ export function PublicDocumentPage() {
         } else if (isPptx) {
           const arrayBuffer = await blob.arrayBuffer();
           setPptxBuffer(arrayBuffer);
+        } else if (isText) {
+          setTextContent(await blob.text());
         }
 
         currentBlobUrl = window.URL.createObjectURL(blob);
@@ -411,6 +419,16 @@ export function PublicDocumentPage() {
             className="docx-preview min-h-full w-full max-w-none bg-white px-8 py-10 text-slate-950"
             dangerouslySetInnerHTML={{ __html: docxHtml }}
           />
+        </div>
+      );
+    }
+
+    if (isTextDocument(fileType, fileName)) {
+      return (
+        <div className="min-h-[520px] overflow-auto bg-slate-50 p-4">
+          <pre className="min-h-[500px] whitespace-pre-wrap break-words rounded-2xl border border-slate-200 bg-white p-6 font-mono text-sm leading-6 text-slate-800 shadow-sm">
+            {textContent}
+          </pre>
         </div>
       );
     }

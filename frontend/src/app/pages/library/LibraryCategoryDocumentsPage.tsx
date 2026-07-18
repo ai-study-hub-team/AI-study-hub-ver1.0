@@ -48,12 +48,16 @@ function DocumentRow({
   document,
   onDelete,
   onShare,
+  onReprocess,
   sharingDocumentId,
+  reprocessingDocumentId,
 }: {
   document: LibraryCategoryDocument;
   onDelete: (documentId: number) => void;
   onShare: (documentId: number) => void | Promise<void>;
+  onReprocess: (documentId: number) => void | Promise<void>;
   sharingDocumentId: number | null;
+  reprocessingDocumentId: number | null;
 }) {
   return (
     <div className="grid gap-3 border-t border-slate-100 bg-white p-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70 md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_72px] md:items-center">
@@ -103,7 +107,12 @@ function DocumentRow({
           <ActionMenuItem icon={Star} label="Favorite" onClick={() => undefined} />
           <ActionMenuItem icon={Download} label="Download" onClick={() => undefined} />
           <ActionMenuItem icon={Share2} label="Share document" onClick={() => onShare(document.id)} disabled={sharingDocumentId === document.id} />
-          <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => undefined} />
+          <ActionMenuItem
+            icon={RotateCcw}
+            label={reprocessingDocumentId === document.id ? "Reprocessing..." : "Reprocess"}
+            onClick={() => onReprocess(document.id)}
+            disabled={reprocessingDocumentId === document.id}
+          />
           <ActionMenuItem icon={Trash2} label="Delete" onClick={() => onDelete(document.id)} danger />
         </RowActionMenu>
       </div>
@@ -117,7 +126,8 @@ export function LibraryCategoryDocumentsPage() {
   const { categoryId } = useParams();
   const [documents, setDocuments] = useState<LibraryCategoryDocument[]>([]);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [reprocessingDocumentId, setReprocessingDocumentId] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const { createAndCopyPublicLink, loadingDocumentId } =
     useCreatePublicLink();
 
@@ -153,6 +163,31 @@ export function LibraryCategoryDocumentsPage() {
 
     loadDocuments();
   }, [categoryId]);
+
+
+  const handleReprocess = async (documentId: number) => {
+    if (reprocessingDocumentId !== null) return;
+
+    try {
+      setReprocessingDocumentId(documentId);
+      const response = await documentApi.reprocessDocument(documentId);
+
+      setDocuments((current) =>
+        current.map((document) =>
+          document.id === documentId
+            ? { ...document, ...response.data }
+            : document,
+        ),
+      );
+
+      toast.success("Document reprocess started.");
+    } catch (error) {
+      console.error("Cannot reprocess document:", error);
+      toast.error("Cannot reprocess document.");
+    } finally {
+      setReprocessingDocumentId(null);
+    }
+  };
 
   const handleDelete = async (documentId: number): Promise<boolean> => {
     try {
@@ -292,7 +327,12 @@ export function LibraryCategoryDocumentsPage() {
                 <RowActionMenu>
                   <ActionMenuItem icon={Download} label="Download" onClick={() => undefined} />
                   <ActionMenuItem icon={Share2} label="Share document" onClick={() => createAndCopyPublicLink(document.id)} disabled={loadingDocumentId === document.id} />
-                  <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => undefined} />
+                  <ActionMenuItem
+                    icon={RotateCcw}
+                    label={reprocessingDocumentId === document.id ? "Reprocessing..." : "Reprocess"}
+                    onClick={() => handleReprocess(document.id)}
+                    disabled={reprocessingDocumentId === document.id}
+                  />
                   <ActionMenuItem icon={Trash2} label="Delete" onClick={() => setDeleteId(document.id)} danger />
                 </RowActionMenu>
               </div>
@@ -317,7 +357,9 @@ export function LibraryCategoryDocumentsPage() {
               document={document}
               onDelete={setDeleteId}
               onShare={createAndCopyPublicLink}
+              onReprocess={handleReprocess}
               sharingDocumentId={loadingDocumentId}
+              reprocessingDocumentId={reprocessingDocumentId}
             />
           ))}
         </div>

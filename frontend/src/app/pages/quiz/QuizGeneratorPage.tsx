@@ -112,7 +112,7 @@ export function QuizGeneratorPage() {
         return;
       }
 
-      const data = await documentApi.getAllDocumentsForSelect(userId);
+      const data = await documentApi.getAiReadyDocumentsForSelect(userId);
       setDocuments(data);
 
       if (data.length > 0) {
