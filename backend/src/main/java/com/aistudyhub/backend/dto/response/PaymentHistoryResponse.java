@@ -11,6 +11,10 @@ import java.time.LocalDateTime;
 @Setter
 @Builder
 public class PaymentHistoryResponse {
+    private Long userId;
+    private String userEmail;
+    private String userFullName;
+
     private String orderCode;
     private BigDecimal amount;
     private String provider;

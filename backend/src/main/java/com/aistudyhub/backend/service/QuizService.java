@@ -36,6 +36,7 @@ public class QuizService {
     private final QuizQuestionRepository quizQuestionRepository;
     private final QuizOptionRepository quizOptionRepository;
     private final TokenUsageService tokenUsageService;
+    private final TokenPricingService tokenPricingService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
@@ -144,7 +145,9 @@ public class QuizService {
             tokenUsageService.recordUsage(
                     user, 
                     "QUIZ", 
-                    "gemini-1.5-pro", 
+                    tokenPricingService.getActiveModelNameForUsage(),
+                    pythonResponse.getUsage().getPromptTokens(),
+                    pythonResponse.getUsage().getCompletionTokens(),
                     pythonResponse.getUsage().getTotalTokens(), 
                     document.getId(), 
                     java.util.UUID.randomUUID().toString()

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,6 +19,21 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
     Optional<PaymentTransaction> findByOrderCode(String orderCode);
     Optional<PaymentTransaction> findByVnpTxnRef(String vnpTxnRef);
     List<PaymentTransaction> findByUserIdOrderByCreatedAtDesc(Long userId);
+
+    @Query("""
+            SELECT p
+            FROM PaymentTransaction p
+            JOIN FETCH p.user
+            WHERE (:userId IS NULL OR p.user.id = :userId)
+              AND COALESCE(p.paymentTime, p.updatedAt, p.createdAt) BETWEEN :fromDateTime AND :toDateTime
+            ORDER BY COALESCE(p.paymentTime, p.updatedAt, p.createdAt) DESC, p.createdAt DESC
+            """)
+    List<PaymentTransaction> findHistoryForAdmin(
+            @Param("userId") Long userId,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
+
     long countByStatus(PaymentStatus status);
 
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM PaymentTransaction p WHERE p.status = com.aistudyhub.backend.enums.PaymentStatus.SUCCESS")
