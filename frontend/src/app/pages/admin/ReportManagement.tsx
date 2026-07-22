@@ -10,6 +10,7 @@ import {
 } from "../../services/adminDocumentReportApi";
 import { DocumentPreviewModal, type PreviewDocument } from "../../components/ui/DocumentPreviewModal";
 import { ReportDetailModal } from "./components/ReportDetailModal";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 const statuses: Array<{ label: string; value: "ALL" | DocumentReportStatus }> = [
   { label: "All statuses", value: "ALL" },
@@ -52,6 +53,8 @@ export function ReportManagement() {
   const [adminNote, setAdminNote] = useState("");
   const [hideDocument, setHideDocument] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<PreviewDocument | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const loadReports = useCallback(async () => {
     try {
@@ -84,6 +87,9 @@ export function ReportManagement() {
         .some((value) => String(value).toLowerCase().includes(keyword)),
     );
   }, [reports, search]);
+
+  const paginatedReports = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  useEffect(() => setCurrentPage(1), [search, status, reason]);
 
   const updateStatus = async (nextStatus: DocumentReportStatus) => {
     if (!selected) return;
@@ -151,7 +157,7 @@ export function ReportManagement() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-800"><tr><th className="p-4">Document</th><th className="p-4">Reporter</th><th className="p-4">Reason</th><th className="p-4">Status</th><th className="p-4">Created</th><th className="p-4" /></tr></thead>
-              <tbody>{filtered.map((report) => (
+              <tbody>{paginatedReports.map((report) => (
                 <tr key={report.id} className="border-t">
                   <td className="max-w-[36rem] p-4 font-semibold">
                     <button
@@ -178,6 +184,9 @@ export function ReportManagement() {
             </table>
           </div>
         )}
+        <div className="px-4 pb-4">
+          <PaginationControls currentPage={currentPage} totalItems={filtered.length} pageSize={pageSize} onPageChange={setCurrentPage} />
+        </div>
       </div>
 
       {selected && (

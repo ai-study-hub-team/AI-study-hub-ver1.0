@@ -25,6 +25,7 @@ import {
 import { folderApi, type FolderResponse } from "../../services/folderApi";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { getCurrentUserId } from "../../services/apiClient";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 type ListResponse<T> = T[] | { content?: T[] };
 
@@ -249,6 +250,9 @@ export function DocumentSharesPage() {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("links");
+  const [linksPage, setLinksPage] = useState(1);
+  const [submissionsPage, setSubmissionsPage] = useState(1);
+  const pageSize = 10;
 
   const [links, setLinks] = useState<DocumentShareLinkResponse[]>([]);
   const [submissions, setSubmissions] = useState<
@@ -919,7 +923,7 @@ export function DocumentSharesPage() {
 
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {links.length > 0 ? (
-                links.map((link) => (
+                links.slice((linksPage - 1) * pageSize, linksPage * pageSize).map((link) => (
                   <div key={getShareLinkId(link) ?? link.shareUrl ?? link.token ?? link.title} className="p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
@@ -996,6 +1000,7 @@ export function DocumentSharesPage() {
                 </div>
               )}
             </div>
+            <div className="px-5 pb-5"><PaginationControls currentPage={linksPage} totalItems={links.length} pageSize={pageSize} onPageChange={setLinksPage} /></div>
           </section>
         </>
       )}
@@ -1034,7 +1039,7 @@ export function DocumentSharesPage() {
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {submissions.length > 0 ? (
-              submissions.map((submission) => (
+              submissions.slice((submissionsPage - 1) * pageSize, submissionsPage * pageSize).map((submission) => (
                 <div key={submission.id} className="p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
@@ -1163,6 +1168,7 @@ export function DocumentSharesPage() {
               </div>
             )}
           </div>
+          <div className="px-5 pb-5"><PaginationControls currentPage={submissionsPage} totalItems={submissions.length} pageSize={pageSize} onPageChange={setSubmissionsPage} /></div>
         </section>
       )}
 

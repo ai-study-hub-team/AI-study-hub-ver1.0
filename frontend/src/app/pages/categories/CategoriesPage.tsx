@@ -15,6 +15,7 @@ import { getCurrentUserId } from "../../services/apiClient";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 import type { DocumentListItemResponse } from "../../types/documents/types";
 import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 type ListResponse<T> = T[] | { content?: T[] };
 
 const normalizeList = <T,>(data: ListResponse<T> | null | undefined): T[] => {
@@ -37,6 +38,9 @@ export function CategoriesPage() {
   const navigate = useNavigate();
 
   const [categories, setCategories] = useState<CategoryResponse[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const paginatedCategories = categories.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
@@ -281,7 +285,7 @@ export function CategoriesPage() {
 
         {categories.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {categories.map((category, index) => {
+            {paginatedCategories.map((category, index) => {
               const itemCount = categoryCounts[category.id] ?? 0;
 
               const iconColor =
@@ -340,6 +344,7 @@ export function CategoriesPage() {
             </p>
           </div>
         )}
+        <PaginationControls currentPage={currentPage} totalItems={categories.length} pageSize={pageSize} onPageChange={setCurrentPage} />
       </section>
 
       {editId !== null && (

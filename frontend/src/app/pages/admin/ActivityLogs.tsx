@@ -46,7 +46,7 @@ export function ActivityLogs() {
         fromDate: toStartOfDay(fromDate),
         toDate: toEndOfDay(toDate),
         page,
-        size: 20,
+        size: 10,
         sort,
       });
       setItems(response.data.content ?? []);
@@ -68,7 +68,7 @@ export function ActivityLogs() {
     setSelectedUser(user);
     setLogsLoading(true);
     try {
-      const response = await adminActivityApi.getUserActivities(user.userId, targetPage, 20);
+      const response = await adminActivityApi.getUserActivities(user.userId, targetPage, 10);
       setLogs(response.data.content ?? []);
       setLogPage(response.data.number ?? targetPage);
       setLogTotalPages(response.data.totalPages ?? 0);

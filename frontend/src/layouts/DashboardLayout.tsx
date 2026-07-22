@@ -7,7 +7,6 @@ import {
 
 import {
   Activity,
-  BarChart2,
   CreditCard,
   FileSearch,
   FileText,
@@ -342,21 +341,28 @@ export function DashboardLayout({
         .toUpperCase();
 
       return (
-        isAdmin ||
         role === "ADMIN" ||
         role === "ROLE_ADMIN" ||
         role === "ADMINISTRATOR"
       );
-    }, [displayRole, isAdmin]);
+    }, [displayRole]);
+
+  const isCurrentManager = useMemo(() => {
+    const role = displayRole.trim().toUpperCase();
+    return role === "MANAGER" || role === "ROLE_MANAGER";
+  }, [displayRole]);
 
   const roleText = useMemo(() => {
     if (isCurrentAdmin) {
-      return "Administrator · Pro";
+      return "Administrator";
     }
+
+    if (isCurrentManager) return "Manager";
 
     return `User · ${displayPlan}`;
   }, [
     isCurrentAdmin,
+    isCurrentManager,
     displayPlan,
   ]);
 
@@ -578,11 +584,11 @@ export function DashboardLayout({
           icon: ShieldCheck,
           label: "Overview",
         },
-        {
-          to: "/admin/analytics",
-          icon: BarChart2,
-          label: "Analytics",
-        },
+        ...(isCurrentAdmin
+          ? [{ to: "/admin/pricing", icon: CreditCard, label: "Pricing & Revenue" }]
+          : []),
+        { to: "/admin/tokens", icon: Zap, label: "Token Analytics" },
+        { to: "/admin/storage", icon: HardDrive, label: "Storage Analytics" },
       ],
     },
     {
@@ -612,10 +618,18 @@ export function DashboardLayout({
           to: "/admin/plans",
           icon: Package,
           label: "Plan Management",
+          adminOnly: true,
         },
       ],
     },
   ];
+
+  const visibleAdminGroups = adminGroups.map((group) => ({
+    ...group,
+    links: group.links.filter(
+      (link) => !("adminOnly" in link && link.adminOnly) || isCurrentAdmin,
+    ),
+  }));
 
   const links = studentLinks;
 
@@ -758,7 +772,7 @@ export function DashboardLayout({
         <nav className="flex-1 space-y-1 overflow-x-hidden overflow-y-auto px-3 py-5">
           {isAdmin ? (
             <div className="space-y-5">
-              {adminGroups.map((group) => (
+              {visibleAdminGroups.map((group) => (
                 <div key={group.title}>
                   {isSidebarOpen && (
                     <p className="px-3 pb-2 text-xs font-bold uppercase tracking-widest text-slate-400">

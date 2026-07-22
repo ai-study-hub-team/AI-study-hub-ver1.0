@@ -719,7 +719,7 @@ function UserFilter({
   );
 }
 
-export function AnalyticsDashboard() {
+export function AdminAnalyticsContent({ view }: { view: "token" | "storage" }) {
   const today = useMemo(() => todayInputValue(), []);
 
   const defaultFromDate = useMemo(() => shiftDate(today, -29), [today]);
@@ -932,9 +932,8 @@ export function AnalyticsDashboard() {
 
   useEffect(() => {
     void loadUsers();
-    void loadRevenue();
-    void loadStorage();
-    void loadTokenUsage();
+    if (view === "storage") void loadStorage();
+    if (view === "token") void loadTokenUsage();
 
     /*
      * Load the default reports only once when the page opens.
@@ -1005,7 +1004,7 @@ export function AnalyticsDashboard() {
     [tokenUserId, users],
   );
 
-  const kpis = [
+  const allKpis = [
     {
       label: "Total revenue",
       value: formatCurrency(revenue?.totalRevenue, revenue?.currency || "VND"),
@@ -1066,16 +1065,20 @@ export function AnalyticsDashboard() {
     },
   ];
 
+  const kpis = view === "storage" ? allKpis.slice(2, 4) : allKpis.slice(4, 6);
+
   return (
     <div className="space-y-8 bg-slate-50 dark:bg-slate-950">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
-            Platform Analytics
+            {view === "storage" ? "Storage Analytics" : "Token Analytics"}
           </h1>
 
           <p className="text-slate-500 dark:text-slate-400">
-            Revenue, storage usage, and AI token consumption based on live data.
+            {view === "storage"
+              ? "Storage usage and document distribution based on live data."
+              : "AI token consumption based on live data."}
           </p>
         </div>
 
@@ -1123,7 +1126,7 @@ export function AnalyticsDashboard() {
         ))}
       </div>
 
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      {false && <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-300">
@@ -1274,9 +1277,9 @@ export function AnalyticsDashboard() {
             </div>
           </>
         )}
-      </section>
+      </section>}
 
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      {view === "storage" && <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="flex items-center gap-2 text-violet-600 dark:text-violet-300">
@@ -1494,9 +1497,9 @@ export function AnalyticsDashboard() {
             </div>
           </>
         )}
-      </section>
+      </section>}
 
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      {view === "token" && <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-col gap-5">
           <div>
             <div className="flex items-center gap-2 text-pink-600 dark:text-pink-300">
@@ -1703,7 +1706,7 @@ export function AnalyticsDashboard() {
             </div>
           </>
         )}
-      </section>
+      </section>}
     </div>
   );
 }

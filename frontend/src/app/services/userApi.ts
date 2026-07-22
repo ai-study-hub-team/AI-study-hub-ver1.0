@@ -17,6 +17,7 @@ export interface UserResponse {
   emailVerified: boolean;
   avatarUrl: string | null;
   phone: string | null;
+  currentPlan?: string | null;
 }
 
 export interface UpdateUserPayload {
@@ -31,6 +32,12 @@ export interface UpdateUserStatusPayload {
 
 export interface UpdateUserSubscriptionPayload {
   planCode: string;
+}
+
+export interface CreateUserPayload {
+  fullName: string;
+  email: string;
+  password: string;
 }
 
 export interface UpdateProfilePayload {
@@ -55,6 +62,9 @@ export const userApi = {
       "/api/users",
     );
   },
+
+  createUser: (payload: CreateUserPayload) =>
+    apiClient.post<UserResponse>("/api/users", payload),
 
   getUserById: (id: number) => {
     return apiClient.get<UserResponse>(

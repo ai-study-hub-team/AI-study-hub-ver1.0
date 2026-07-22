@@ -443,6 +443,10 @@ export const documentApi = {
     });
   },
 
+  // Admin-only file access endpoint.
+  getAdminDocumentFile: (id: number) =>
+    api.get(`/api/admin/documents/${id}/file`, { responseType: "blob" }),
+
   // GET /api/documents/search
   searchDocuments(params: SearchDocumentsParams) {
     const { userId, ...safeParams } = params;

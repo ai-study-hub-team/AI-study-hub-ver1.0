@@ -17,6 +17,7 @@ import {
   type AdminPlanPayload,
   type PlanResponse,
 } from "../../services/adminPlanApi";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 type DialogMode = "create" | "edit" | "view" | null;
 
@@ -73,6 +74,8 @@ export function PlanManagement() {
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState<AdminPlanPayload>(EMPTY_FORM);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const loadPlans = useCallback(async () => {
     setLoading(true);
@@ -100,6 +103,13 @@ export function PlanManagement() {
         plan.description?.toLowerCase().includes(keyword),
     );
   }, [plans, search]);
+
+  const paginatedPlans = filteredPlans.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  useEffect(() => setCurrentPage(1), [search]);
 
   const closeDialog = (force = false) => {
     if (saving && !force) return;
@@ -283,7 +293,7 @@ export function PlanManagement() {
               ) : filteredPlans.length === 0 ? (
                 <tr><td colSpan={7} className="px-5 py-16 text-center text-slate-500">No subscription plans found.</td></tr>
               ) : (
-                filteredPlans.map((plan) => (
+                paginatedPlans.map((plan) => (
                   <tr key={plan.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                     <td className="px-5 py-4">
                       <p className="font-bold text-slate-900 dark:text-white">{plan.name}</p>
@@ -314,6 +324,9 @@ export function PlanManagement() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="px-5 pb-5">
+          <PaginationControls currentPage={currentPage} totalItems={filteredPlans.length} pageSize={pageSize} onPageChange={setCurrentPage} />
         </div>
       </div>
 

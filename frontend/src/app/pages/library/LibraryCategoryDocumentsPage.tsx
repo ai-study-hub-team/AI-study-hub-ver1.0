@@ -19,6 +19,7 @@ import { useTheme } from "../../../layouts/ThemeProvider";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 interface LibraryCategoryDocument {
   id: number;
@@ -128,6 +129,9 @@ export function LibraryCategoryDocumentsPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [reprocessingDocumentId, setReprocessingDocumentId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const paginatedDocuments = documents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const { createAndCopyPublicLink, loadingDocumentId } =
     useCreatePublicLink();
 
@@ -250,7 +254,7 @@ export function LibraryCategoryDocumentsPage() {
       </div>
       {viewMode === "grid" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {documents.map((document) => (
+          {paginatedDocuments.map((document) => (
             <div
               key={document.id}
               className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
@@ -351,7 +355,7 @@ export function LibraryCategoryDocumentsPage() {
             <span className="text-center">Actions</span>
           </div>
 
-          {documents.map((document) => (
+          {paginatedDocuments.map((document) => (
             <DocumentRow
               key={document.id}
               document={document}
@@ -364,6 +368,7 @@ export function LibraryCategoryDocumentsPage() {
           ))}
         </div>
       )}
+      <PaginationControls currentPage={currentPage} totalItems={documents.length} pageSize={pageSize} onPageChange={setCurrentPage} />
 
       {deleteId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

@@ -52,11 +52,4 @@ export const documentShareLinkApi = {
         },
       },
     ),
-
-  deleteDocumentShareLink: (id: number, userId: number) =>
-    apiClient.delete(`/api/document-share-links/${id}`, {
-      params: {
-        userId,
-      },
-    }),
 };
