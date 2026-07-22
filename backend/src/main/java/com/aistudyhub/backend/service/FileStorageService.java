@@ -251,6 +251,20 @@ public class FileStorageService {
     }
 
     /**
+     * Returns the actual byte count of a staged shared-submission file.
+     * Used to verify the true size after writing, independent of the client-reported value.
+     */
+    public long getSharedSubmissionFileSize(String storedFileName) {
+        try {
+            Path path = Paths.get(uploadDir, "shared-submissions")
+                    .resolve(storedFileName).normalize();
+            return Files.size(path);
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot read size of staged file: " + storedFileName, e);
+        }
+    }
+
+    /**
      * Returns the relative stored path for a shared submission file.
      * e.g. {@code "uploads/shared-submissions/abc123.pdf"}
      */

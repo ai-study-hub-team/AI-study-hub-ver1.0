@@ -11,9 +11,6 @@ import lombok.Setter;
 @Setter
 public class SharedDocumentApproveRequest {
 
-    /** Reviewer's user ID (User A). */
-    private Long userId;
-
     /** Official document title; defaults to submission title if not provided. */
     private String title;
 

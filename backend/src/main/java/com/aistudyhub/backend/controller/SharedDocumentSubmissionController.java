@@ -5,31 +5,33 @@ import com.aistudyhub.backend.dto.request.SharedDocumentRejectRequest;
 import com.aistudyhub.backend.dto.response.DocumentResponse;
 import com.aistudyhub.backend.dto.response.SharedDocumentSubmissionResponse;
 import com.aistudyhub.backend.entity.SharedSubmissionStatus;
+import com.aistudyhub.backend.entity.User;
+import com.aistudyhub.backend.service.CurrentUserService;
 import com.aistudyhub.backend.service.SharedDocumentSubmissionService;
-import com.aistudyhub.backend.service.SharedDocumentSubmissionService.SubmissionFileResult;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.Resource;
-import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.net.URI;
 import java.util.List;
 
 /**
- * Authenticated endpoints for User A to review shared submissions.
+ * Authenticated endpoints for User A (the link owner) to review, approve, or reject
+ * shared submissions, and preview/download via Cloudinary redirect.
  *
  * <pre>
- * GET    /api/shared-document-submissions?userId=1[&status=PENDING_REVIEW]
- * GET    /api/shared-document-submissions/{id}?userId=1
- * GET    /api/shared-document-submissions/{id}/file?userId=1
- * GET    /api/shared-document-submissions/{id}/download?userId=1
- * POST   /api/shared-document-submissions/{id}/approve
- * POST   /api/shared-document-submissions/{id}/reject
+ * GET  /api/shared-document-submissions[?status=PENDING_REVIEW]
+ * GET  /api/shared-document-submissions/{id}
+ * GET  /api/shared-document-submissions/{id}/preview   → 302 redirect to cloud URL
+ * GET  /api/shared-document-submissions/{id}/download  → 302 redirect to cloud URL
+ * POST /api/shared-document-submissions/{id}/approve
+ * POST /api/shared-document-submissions/{id}/reject
  * </pre>
+ *
+ * All operations require JWT. Owner ID is derived from the JWT — no userId parameter
+ * is accepted from clients (IDOR prevention).
  */
 @RestController
 @RequestMapping("/api/shared-document-submissions")
@@ -37,100 +39,64 @@ import java.util.List;
 public class SharedDocumentSubmissionController {
 
     private final SharedDocumentSubmissionService submissionService;
+    private final CurrentUserService currentUserService;
 
-    // GET /api/shared-document-submissions?userId=1&status=PENDING_REVIEW
     @GetMapping
     public ResponseEntity<List<SharedDocumentSubmissionResponse>> getAll(
-            @RequestParam Long userId,
             @RequestParam(required = false) SharedSubmissionStatus status) {
-        return ResponseEntity.ok(submissionService.getSubmissionsForOwner(userId, status));
+        User owner = currentUserService.getCurrentUser();
+        return ResponseEntity.ok(submissionService.getSubmissionsForOwner(owner.getId(), status));
     }
 
-    // GET /api/shared-document-submissions/{id}?userId=1
     @GetMapping("/{id}")
-    public ResponseEntity<SharedDocumentSubmissionResponse> getById(
-            @PathVariable Long id,
-            @RequestParam Long userId) {
-        return ResponseEntity.ok(submissionService.getSubmissionForOwner(id, userId));
+    public ResponseEntity<SharedDocumentSubmissionResponse> getById(@PathVariable Long id) {
+        User owner = currentUserService.getCurrentUser();
+        return ResponseEntity.ok(submissionService.getSubmissionForOwner(id, owner.getId()));
     }
 
-    // ─── GET /api/shared-document-submissions/{id}/file?userId=1 ─────────────────
-    // Streams the file inline (preview in browser). Only the owner may call this.
-    @GetMapping("/{id}/file")
-    public ResponseEntity<Resource> viewFile(
-            @PathVariable Long id,
-            @RequestParam Long userId) {
-
-        SubmissionFileResult result = submissionService.getSubmissionFileForOwner(id, userId);
-
-        // Prefer the original file name for the inline header; fall back to stored name
-        String displayName = (result.getOriginalFileName() != null
-                && !result.getOriginalFileName().isBlank())
-                ? result.getOriginalFileName()
-                : result.getStoredFileName();
-
-        String mimeType = result.getMimeType() != null ? result.getMimeType()
-                : "application/octet-stream";
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentDisposition(
-                ContentDisposition.inline()
-                        .filename(displayName, StandardCharsets.UTF_8)
-                        .build());
-
-        return ResponseEntity.ok()
-                .headers(headers)
-                .contentType(MediaType.parseMediaType(mimeType))
-                .body(result.getResource());
+    /**
+     * Redirects to the Cloudinary secure URL for inline preview.
+     * Authorization is enforced: only the link owner may preview.
+     */
+    @GetMapping("/{id}/preview")
+    public ResponseEntity<Void> preview(@PathVariable Long id) {
+        User owner = currentUserService.getCurrentUser();
+        String cloudUrl = submissionService.getCloudUrlForOwner(id, owner.getId());
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .header(HttpHeaders.LOCATION, cloudUrl)
+                .build();
     }
 
-    // ─── GET /api/shared-document-submissions/{id}/download?userId=1 ─────────────
-    // Forces a browser download with the original file name. Only the owner may call this.
+    /**
+     * Redirects to the Cloudinary secure URL for download.
+     * Authorization is enforced: only the link owner may download.
+     */
     @GetMapping("/{id}/download")
-    public ResponseEntity<Resource> downloadFile(
-            @PathVariable Long id,
-            @RequestParam Long userId) {
-
-        SubmissionFileResult result = submissionService.getSubmissionFileForOwner(id, userId);
-
-        String downloadName = (result.getOriginalFileName() != null
-                && !result.getOriginalFileName().isBlank())
-                ? result.getOriginalFileName()
-                : result.getStoredFileName();
-
-        String mimeType = result.getMimeType() != null ? result.getMimeType()
-                : "application/octet-stream";
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentDisposition(
-                ContentDisposition.attachment()
-                        .filename(downloadName, StandardCharsets.UTF_8)
-                        .build());
-
-        return ResponseEntity.ok()
-                .headers(headers)
-                .contentType(MediaType.parseMediaType(mimeType))
-                .body(result.getResource());
+    public ResponseEntity<Void> download(@PathVariable Long id) {
+        User owner = currentUserService.getCurrentUser();
+        String cloudUrl = submissionService.getCloudUrlForOwner(id, owner.getId());
+        // Append fl_attachment to force download instead of inline display
+        String downloadUrl = cloudUrl.contains("?")
+                ? cloudUrl + "&fl_attachment"
+                : cloudUrl + "?fl_attachment";
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .header(HttpHeaders.LOCATION, downloadUrl)
+                .build();
     }
 
-    // POST /api/shared-document-submissions/{id}/approve
     @PostMapping("/{id}/approve")
     public ResponseEntity<DocumentResponse> approve(
             @PathVariable Long id,
             @RequestBody SharedDocumentApproveRequest request) {
-        try {
-            DocumentResponse response = submissionService.approveSubmission(id, request);
-            return ResponseEntity.ok(response);
-        } catch (IOException e) {
-            return ResponseEntity.internalServerError().build();
-        }
+        User reviewer = currentUserService.getCurrentUser();
+        return ResponseEntity.ok(submissionService.approveSubmission(id, request, reviewer));
     }
 
-    // POST /api/shared-document-submissions/{id}/reject
     @PostMapping("/{id}/reject")
     public ResponseEntity<SharedDocumentSubmissionResponse> reject(
             @PathVariable Long id,
             @RequestBody SharedDocumentRejectRequest request) {
-        return ResponseEntity.ok(submissionService.rejectSubmission(id, request));
+        User reviewer = currentUserService.getCurrentUser();
+        return ResponseEntity.ok(submissionService.rejectSubmission(id, request, reviewer));
     }
 }

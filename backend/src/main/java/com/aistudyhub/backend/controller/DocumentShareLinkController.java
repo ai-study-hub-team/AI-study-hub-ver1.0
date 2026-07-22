@@ -1,8 +1,10 @@
 package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.request.DocumentShareLinkCreateRequest;
+import com.aistudyhub.backend.dto.request.ShareLinkAllowlistUpdateRequest;
 import com.aistudyhub.backend.dto.response.DocumentShareLinkResponse;
 import com.aistudyhub.backend.service.DocumentShareLinkService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,13 +13,16 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * Authenticated endpoints for User A to manage share links.
+ * Authenticated endpoints for the share-link owner (User A).
  *
  * <pre>
- * POST   /api/document-share-links              Create a new share link
- * GET    /api/document-share-links?userId=1     List all links for a user
- * PATCH  /api/document-share-links/{id}/disable Disable a share link
+ * POST   /api/document-share-links                         Create a new share link
+ * GET    /api/document-share-links                         List own links
+ * PATCH  /api/document-share-links/{id}/disable            Disable a link
+ * PATCH  /api/document-share-links/{id}/allowlist          Update allowlist
  * </pre>
+ *
+ * All operations require a valid JWT. Owner identity is derived from the JWT principal.
  */
 @RestController
 @RequestMapping("/api/document-share-links")
@@ -26,26 +31,27 @@ public class DocumentShareLinkController {
 
     private final DocumentShareLinkService shareLinkService;
 
-    // POST /api/document-share-links
     @PostMapping
     public ResponseEntity<DocumentShareLinkResponse> create(
-            @RequestBody DocumentShareLinkCreateRequest request) {
-        DocumentShareLinkResponse response = shareLinkService.createShareLink(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+            @Valid @RequestBody DocumentShareLinkCreateRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(shareLinkService.createShareLink(request));
     }
 
-    // GET /api/document-share-links?userId=1
     @GetMapping
-    public ResponseEntity<List<DocumentShareLinkResponse>> getAllForUser(
-            @RequestParam Long userId) {
-        return ResponseEntity.ok(shareLinkService.getLinksForUser(userId));
+    public ResponseEntity<List<DocumentShareLinkResponse>> getAllForCurrentUser() {
+        return ResponseEntity.ok(shareLinkService.getLinksForCurrentUser());
     }
 
-    // PATCH /api/document-share-links/{id}/disable?userId=1
     @PatchMapping("/{id}/disable")
-    public ResponseEntity<DocumentShareLinkResponse> disable(
+    public ResponseEntity<DocumentShareLinkResponse> disable(@PathVariable Long id) {
+        return ResponseEntity.ok(shareLinkService.disableLink(id));
+    }
+
+    @PatchMapping("/{id}/allowlist")
+    public ResponseEntity<DocumentShareLinkResponse> updateAllowlist(
             @PathVariable Long id,
-            @RequestParam Long userId) {
-        return ResponseEntity.ok(shareLinkService.disableLink(id, userId));
+            @Valid @RequestBody ShareLinkAllowlistUpdateRequest request) {
+        return ResponseEntity.ok(shareLinkService.updateAllowlist(id, request));
     }
 }
