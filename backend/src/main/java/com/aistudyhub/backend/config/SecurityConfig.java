@@ -18,13 +18,10 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
-
 
 import java.util.List;
 
 @Configuration
-@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -64,20 +61,62 @@ public class SecurityConfig {
                                 "/api/auth/reset-password",
                                 "/api/auth/verify-email",
                                 "/api/auth/resend-verification",
-                                "/api/payments/vnpay-return",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/v3/api-docs/**",
-                                "/api/public/**"
+                                "/api/payments/vnpay-return"
                         ).permitAll()
+
+                        // Swagger / OpenAPI documentation
+                        .requestMatchers(
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**",
+                                "/v3/api-docs.yaml"
+                        ).permitAll()
+
+                        // Public plan listing
                         .requestMatchers(HttpMethod.GET, "/api/plans").permitAll()
+
+                        // Public share-link information only
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/public/document-share-links/*"
+                        ).permitAll()
+
+                        // Block the old anonymous shared-upload endpoint
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/public/document-share-links/**"
+                        ).denyAll()
+
+                        // Block every other public API unless explicitly allowed above
+                        .requestMatchers("/api/public/**").denyAll()
+
+                        // Admin-only manager and plan management
                         .requestMatchers("/api/admin/managers/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/plans/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/admin/dashboard/revenue").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PATCH, "/api/users/*/subscription").hasRole("ADMIN")
-                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "MANAGER")
-                        .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "MANAGER")
+
+                        // Admin-only revenue dashboard
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/admin/dashboard/revenue"
+                        ).hasRole("ADMIN")
+
+                        // Admin-only subscription modification
+                        .requestMatchers(
+                                HttpMethod.PATCH,
+                                "/api/users/*/subscription"
+                        ).hasRole("ADMIN")
+
+                        // Remaining admin and user-management endpoints
+                        .requestMatchers("/api/admin/**")
+                        .hasAnyRole("ADMIN", "MANAGER")
+
+                        .requestMatchers("/api/users/**")
+                        .hasAnyRole("ADMIN", "MANAGER")
+
+                        // Internal APIs must never be exposed
                         .requestMatchers("/api/internal/**").denyAll()
+
+                        // All remaining endpoints require JWT authentication
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(

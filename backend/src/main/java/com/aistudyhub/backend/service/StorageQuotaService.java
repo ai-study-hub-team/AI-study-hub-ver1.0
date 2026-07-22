@@ -3,8 +3,10 @@ package com.aistudyhub.backend.service;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.UserSubscription;
+import com.aistudyhub.backend.exception.FileTooLargeException;
 import com.aistudyhub.backend.exception.PlanRestrictionException;
 import com.aistudyhub.backend.exception.QuotaExceededException;
+import com.aistudyhub.backend.exception.StorageCapacityException;
 import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,124 +29,228 @@ public class StorageQuotaService {
     }
 
     @Transactional(readOnly = true)
-    // check dung lượng theo gói
-    public void validateStorageLimit(Long userId, Long newFileBytes) {
-        User user = findUser(userId);
+    public long getPlanFileSizeLimitBytes(Long userId) {
+        SubscriptionPlan plan = getActivePlan(userId);
+        return plan.getMaxUploadSizePerFileMb() * 1024L * 1024L;
+    }
+    @Transactional(readOnly = true)
+    public long getPlanStorageLimitBytes(Long userId) {
+        SubscriptionPlan plan = getActivePlan(userId);
+        return plan.getStorageLimitMb() * 1024L * 1024L;
+    }
 
-        if (rolePolicyService.isManagementAccount(user)) {
-            log.info("[Quota] Bypass storage limit for management account userId={}, role={}",
-                    user.getId(), user.getRole());
+    // check dung lượng theo gói
+    @Transactional(readOnly = true)
+    public void validateStorageLimit(Long userId, Long newFileBytes) {
+        if (hasManagementQuotaBypass(userId)) {
             return;
         }
 
-        UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
-        SubscriptionPlan plan = subscription.getPlan();
+        long limit = getPlanStorageLimitBytes(userId);
 
-        Long currentStorageBytes = user.getTotalStorageUsedBytes() != null
-                ? user.getTotalStorageUsedBytes()
-                : 0L;
-        Long limitBytes = plan.getStorageLimitMb() * 1024 * 1024;
+        User user = findUser(userId);
 
-        if (currentStorageBytes + newFileBytes > limitBytes) {
+        long current =
+                user.getTotalStorageUsedBytes() != null
+                        ? user.getTotalStorageUsedBytes()
+                        : 0L;
+
+        if (current + newFileBytes > limit) {
             throw new QuotaExceededException(
-                    String.format("Storage quota exceeded. Limit: %d MB. Current usage plus new file exceeds limit.", plan.getStorageLimitMb())
+                    "Storage quota exceeded. Current usage plus new file "
+                            + "exceeds the plan limit."
             );
         }
     }
 
+    /**
+     * Atomic add used by the direct upload path.
+     *
+     * @deprecated for shared submissions use
+     * {@link #reserveStorageForSharedUpload} instead.
+     */
     @Transactional
     public void addStorageUsage(Long userId, Long uploadedBytes) {
-        if (uploadedBytes == null || uploadedBytes <= 0) {
-            return;
-        }
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
-        Long currentStorageBytes = user.getTotalStorageUsedBytes() != null
-                ? user.getTotalStorageUsedBytes()
-                : 0L;
-
-        user.setTotalStorageUsedBytes(currentStorageBytes + uploadedBytes);
-        userRepository.save(user);
+        if (uploadedBytes == null || uploadedBytes <= 0) return;
+        userRepository.atomicAddStorage(userId, uploadedBytes);
+        log.info("[Quota] Added {}B for userId={} (atomically)", uploadedBytes, userId);
     }
 
+    /**
+     * Atomic subtract used by the direct deletion path.
+     *
+     * @deprecated for shared submissions use
+     * {@link #releaseStorageForSubmission} instead.
+     */
     @Transactional
     public void subtractStorageUsage(Long userId, Long removedBytes) {
-        if (removedBytes == null || removedBytes <= 0) {
-            return;
+        if (removedBytes == null || removedBytes <= 0) return;
+        int rows = userRepository.atomicSubtractStorage(userId, removedBytes);
+        if (rows > 0) {
+            log.info("[Quota] Subtracted {}B from userId={}", removedBytes, userId);
+        } else {
+            log.warn("[Quota] User {} not found for subtraction", userId);
         }
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
-        Long currentStorageBytes = user.getTotalStorageUsedBytes() != null
-                ? user.getTotalStorageUsedBytes()
-                : 0L;
-
-        user.setTotalStorageUsedBytes(Math.max(0L, currentStorageBytes - removedBytes));
-        userRepository.save(user);
     }
 
-    @Transactional(readOnly = true)
     // check size file theo gói
-    public void validateFileSize(Long userId, Long newFileBytes) {
-        User user = findUser(userId);
-
-        if (rolePolicyService.isManagementAccount(user)) {
-            log.info("[Quota] Bypass file size limit for management account userId={}, role={}",
-                    user.getId(), user.getRole());
+    @Transactional(readOnly = true)
+    public void validateFileSize(Long userId, Long fileSizeBytes) {
+        if (hasManagementQuotaBypass(userId)) {
             return;
         }
 
-        UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
-        SubscriptionPlan plan = subscription.getPlan();
+        SubscriptionPlan plan = getActivePlan(userId);
 
-        Long limitBytes = plan.getMaxUploadSizePerFileMb() * 1024 * 1024;
+        long limitBytes =
+                plan.getMaxUploadSizePerFileMb() * 1024L * 1024L;
 
-        if (newFileBytes > limitBytes) {
+        if (fileSizeBytes > limitBytes) {
             throw new QuotaExceededException(
-                    String.format("File size exceeds the maximum allowed size of %d MB for your plan.", plan.getMaxUploadSizePerFileMb())
+                    "File size exceeds the maximum allowed size of "
+                            + plan.getMaxUploadSizePerFileMb()
+                            + " MB for your plan."
             );
         }
     }
 
     @Transactional(readOnly = true)
-    // check video audio theo gói
     public void validateFileRestrictions(Long userId, String mimeType) {
-        User user = findUser(userId);
-
-        if (rolePolicyService.isManagementAccount(user)) {
-            log.info("[Quota] Bypass file restriction for management account userId={}, role={}",
-                    user.getId(), user.getRole());
+        if (hasManagementQuotaBypass(userId)) {
             return;
         }
-
-        UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
-        SubscriptionPlan plan = subscription.getPlan();
 
         if (mimeType == null) {
             return;
         }
 
-        mimeType = mimeType.toLowerCase();
+        SubscriptionPlan plan = getActivePlan(userId);
+        String lc = mimeType.toLowerCase();
 
-        if (mimeType.startsWith("video/") && !plan.getAllowVideoUpload()) {
-            throw new PlanRestrictionException("Video uploads are not allowed on your current plan.");
-        }
-        if (mimeType.startsWith("audio/") && !plan.getAllowAudioUpload()) {
-            throw new PlanRestrictionException("Audio uploads are not allowed on your current plan.");
-        }
-        if (mimeType.startsWith("image/") && !plan.getAllowImageUpload()) {
-            throw new PlanRestrictionException("Image uploads are not allowed on your current plan.");
+        if (lc.startsWith("video/") && !plan.getAllowVideoUpload()) {
+            throw new PlanRestrictionException(
+                    "Video uploads are not allowed on your current plan."
+            );
         }
 
-        boolean isDocument = mimeType.equals("application/pdf") ||
-                mimeType.equals("application/msword") ||
-                mimeType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document") ||
-                mimeType.equals("text/plain") ||
-                mimeType.startsWith("application/vnd.ms-");
+        if (lc.startsWith("audio/") && !plan.getAllowAudioUpload()) {
+            throw new PlanRestrictionException(
+                    "Audio uploads are not allowed on your current plan."
+            );
+        }
+
+        if (lc.startsWith("image/") && !plan.getAllowImageUpload()) {
+            throw new PlanRestrictionException(
+                    "Image uploads are not allowed on your current plan."
+            );
+        }
+
+        boolean isDocument =
+                lc.equals("application/pdf")
+                        || lc.equals("application/msword")
+                        || lc.equals(
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+                        || lc.equals("text/plain")
+                        || lc.startsWith("application/vnd.ms-");
 
         if (isDocument && !plan.getAllowDocumentUpload()) {
-            throw new PlanRestrictionException("Document uploads are not allowed on your current plan.");
+            throw new PlanRestrictionException(
+                    "Document uploads are not allowed on your current plan."
+            );
         }
+    }
+
+    @Transactional
+    public void reserveStorageForSharedUpload(Long ownerId, long bytes) {
+        if (bytes <= 0) {
+            return;
+        }
+
+        if (hasManagementQuotaBypass(ownerId)) {
+            userRepository.atomicAddStorage(ownerId, bytes);
+
+            log.info(
+                    "[Quota] Reserved {}B for management ownerId={} "
+                            + "without plan limit enforcement",
+                    bytes,
+                    ownerId
+            );
+
+            return;
+        }
+
+        long quotaLimitBytes = getPlanStorageLimitBytes(ownerId);
+
+        int updated = userRepository.atomicAddStorageIfWithinQuota(
+                ownerId,
+                bytes,
+                quotaLimitBytes
+        );
+
+        if (updated == 0) {
+            log.warn(
+                    "[Quota] Reservation denied for ownerId={}: "
+                            + "{} bytes would exceed quota limit {}B",
+                    ownerId,
+                    bytes,
+                    quotaLimitBytes
+            );
+
+            throw new StorageCapacityException(
+                    "The link owner does not currently have enough "
+                            + "storage capacity to accept this file."
+            );
+        }
+
+        log.info(
+                "[Quota] Reserved {}B for ownerId={} atomically",
+                bytes,
+                ownerId
+        );
+    }
+    /**
+     * Releases storage that was previously reserved for a staged submission.
+     *
+     * <p>This must ONLY be called after the staged file has been confirmed deleted.
+     * The caller is responsible for checking {@code quotaReleasedAt} to prevent double release.
+     *
+     * <p>Uses the safe atomic subtract: the counter will never go below zero.
+     *
+     * @param ownerId the user whose quota was charged
+     * @param bytes   the bytes to release (must equal the original {@code quotaChargedBytes})
+     */
+    @Transactional
+    public void releaseStorageForSubmission(Long ownerId, long bytes) {
+        if (bytes <= 0) return;
+        int rows = userRepository.atomicSubtractStorage(ownerId, bytes);
+        if (rows > 0) {
+            log.info("[Quota] Released {}B for ownerId={} (atomically)", bytes, ownerId);
+        } else {
+            log.warn("[Quota] Owner {} not found for quota release", ownerId);
+        }
+    }
+
+    // ─── Helper ────────────────────────────────────────────────────────────────
+
+    private SubscriptionPlan getActivePlan(Long userId) {
+        UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
+        return subscription.getPlan();
+    }
+
+    private boolean hasManagementQuotaBypass(Long userId) {
+        User user = findUser(userId);
+
+        if (!rolePolicyService.isManagementAccount(user)) {
+            return false;
+        }
+
+        log.info(
+                "[Quota] Management-account bypass for userId={}, role={}",
+                user.getId(),
+                user.getRole()
+        );
+
+        return true;
     }
 }

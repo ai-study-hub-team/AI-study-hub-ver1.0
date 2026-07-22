@@ -12,16 +12,17 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Nightly scheduler that permanently removes PENDING_REVIEW shared document submissions
- * whose 30-day retention window has expired ({@code deleteAfter <= now()}).
+ * Nightly scheduler with two responsibilities:
  *
- * <p>Only PENDING_REVIEW submissions with a non-null deleteAfter are targeted.
- * Approved submissions have {@code deleteAfter = null} and are never touched by this job.
- * Rejected submissions are also left untouched (handled separately if needed).</p>
+ * <ol>
+ *   <li>Expire PENDING_REVIEW submissions whose 30-day window has passed.
+ *   <li>Retry Cloudinary deletion for submissions whose prior deletion failed.
+ * </ol>
  *
- * <p>Runs at 02:30 AM daily — 30 minutes after the Document Trash cleanup
- * ({@link TrashCleanupScheduler}) to avoid resource contention.
- * {@code @EnableScheduling} is already present in {@code BackendApplication}.</p>
+ * <p>Each submission is processed independently — one failure does not stop the rest.
+ * Failed submissions remain discoverable on the next run.
+ *
+ * <p>Runs at 02:30 AM daily — after the Document Trash cleanup scheduler.
  */
 @Component
 @RequiredArgsConstructor
@@ -31,58 +32,60 @@ public class SharedSubmissionCleanupScheduler {
     private final SharedDocumentSubmissionRepository submissionRepository;
     private final SharedDocumentSubmissionService submissionService;
 
-    /**
-     * Finds all expired PENDING_REVIEW submissions and permanently deletes them.
-     *
-     * <p>Cron: {@code "0 30 2 * * *"} = second=0, minute=30, hour=2, every day.</p>
-     *
-     * <p>One submission failure does not stop the rest — each is processed independently.</p>
-     */
     @Scheduled(cron = "0 30 2 * * *")
-    public void cleanExpiredPendingSubmissions() {
+    public void runCleanup() {
         LocalDateTime now = LocalDateTime.now();
-        log.info("[SharedSubmissionCleanup] Running nightly cleanup at {}", now);
+        log.info("[SharedSubmissionCleanup] Running at {}", now);
 
+        // Phase 1: expired PENDING_REVIEW submissions
         List<SharedDocumentSubmission> expired;
         try {
             expired = submissionRepository.findExpiredPendingSubmissions(now);
         } catch (Exception e) {
-            log.error("[SharedSubmissionCleanup] Failed to query expired pending submissions: {}",
-                    e.getMessage(), e);
+            log.error("[SharedSubmissionCleanup] Failed to query expired submissions: {}", e.getMessage(), e);
             return;
         }
 
-        if (expired.isEmpty()) {
-            log.info("[SharedSubmissionCleanup] No expired pending submissions found.");
-            return;
-        }
-
-        log.info("[SharedSubmissionCleanup] Found {} expired pending submission(s) to purge.",
-                expired.size());
-
-        int successCount = 0;
-        int failCount = 0;
-
-        for (SharedDocumentSubmission submission : expired) {
+        int successCount = 0, failCount = 0;
+        for (SharedDocumentSubmission s : expired) {
             try {
-                log.info("[SharedSubmissionCleanup] Processing submission id={}, title='{}', " +
-                                "ownerUserId={}, deleteAfter={}",
-                        submission.getId(), submission.getTitle(),
-                        submission.getOwnerUserId(), submission.getDeleteAfter());
-
-                submissionService.cleanupExpiredSubmission(submission);
+                log.info("[SharedSubmissionCleanup] Cleaning expired submission id={} deleteAfter={}",
+                        s.getId(), s.getDeleteAfter());
+                submissionService.cleanupExpiredSubmission(s);
                 successCount++;
-
             } catch (Exception e) {
-                // Log failure and continue — one bad submission must not block the rest.
-                // The failed submission remains in DB and will be retried on the next run.
-                log.error("[SharedSubmissionCleanup] Failed to purge submission id={}: {}",
-                        submission.getId(), e.getMessage(), e);
+                log.error("[SharedSubmissionCleanup] Failed to clean expired submission id={}: {}",
+                        s.getId(), e.getMessage(), e);
                 failCount++;
             }
         }
+        log.info("[SharedSubmissionCleanup] Phase-1 expired: success={} failed={}", successCount, failCount);
 
-        log.info("[SharedSubmissionCleanup] Cleanup complete. success={}, failed={}",
-                successCount, failCount);
+        // Phase 2: retry failed Cloudinary deletions. Quota remains charged until
+        // the object is successfully deleted.
+        List<SharedDocumentSubmission> failedDeletions;
+        try {
+            failedDeletions = submissionRepository.findSubmissionsWithFailedCloudDeletion();
+        } catch (Exception e) {
+            log.error("[SharedSubmissionCleanup] Failed to query cloud deletion retries: {}", e.getMessage(), e);
+            return;
+        }
+
+        int retrySuccess = 0, retryFail = 0;
+        for (SharedDocumentSubmission s : failedDeletions) {
+            // Skip ones already processed in phase 1
+            if (expired.stream().anyMatch(e -> e.getId().equals(s.getId()))) continue;
+            try {
+                log.info("[SharedSubmissionCleanup] Retrying cleanup for submission id={} status={} attempts={}",
+                        s.getId(), s.getStatus(), s.getCloudDeleteAttempts());
+                submissionService.retryFailedCloudDeletion(s);
+                retrySuccess++;
+            } catch (Exception e) {
+                log.error("[SharedSubmissionCleanup] Retry failed for submission id={}: {}",
+                        s.getId(), e.getMessage(), e);
+                retryFail++;
+            }
+        }
+        log.info("[SharedSubmissionCleanup] Phase-2 retry: success={} failed={}", retrySuccess, retryFail);
     }
 }
