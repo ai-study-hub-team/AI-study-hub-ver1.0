@@ -41,21 +41,35 @@ public class SubscriptionService {
             return;
         }
 
-        SubscriptionPlan freePlan = subscriptionPlanRepository.findByCode("FREE")
-                .orElseThrow(() -> new RuntimeException("Critical: FREE plan not found in database"));
+        assignPlan(user, "FREE");
+        log.info("Assigned FREE plan to user ID: {}", user.getId());
+    }
+
+    @Transactional
+    public void assignProPlan(User user) {
+        assignPlan(user, "PRO");
+        log.info("Assigned PRO plan to user ID: {}", user.getId());
+    }
+
+    private void assignPlan(User user, String planCode) {
+        SubscriptionPlan plan = subscriptionPlanRepository.findByCode(planCode)
+                .orElseThrow(() -> new RuntimeException("Critical: " + planCode + " plan not found in database"));
+
+        if (!Boolean.TRUE.equals(plan.getIsActive())) {
+            throw new RuntimeException("Cannot assign inactive plan: " + planCode);
+        }
 
         UserSubscription subscription = userSubscriptionRepository.findByUserId(user.getId())
                 .orElse(UserSubscription.builder()
                         .user(user)
                         .build());
 
-        subscription.setPlan(freePlan);
+        subscription.setPlan(plan);
         subscription.setStatus(SubscriptionStatus.ACTIVE);
         subscription.setStartDate(LocalDateTime.now());
         subscription.setEndDate(null);
 
         userSubscriptionRepository.save(subscription);
-        log.info("Assigned FREE plan to user ID: {}", user.getId());
     }
 
     @Transactional(readOnly = true)
