@@ -20,17 +20,23 @@ public class SharedDocumentSubmissionResponse {
     private String shareLinkTitle;
     private Long ownerUserId;
 
-    // Uploader (User B) info
+    // Uploader (User B) info — sourced from authenticated principal, not client input
     private Long uploaderUserId;
+    /** Display name snapshot of the uploader at submission time. */
     private String uploaderName;
+    /** Email snapshot of the uploader at submission time. */
     private String uploaderEmail;
 
     // File info
     private String originalFileName;
     private String fileType;
+    /** Actual byte count verified server-side. */
     private Long fileSize;
+    private String cloudPublicId;
+    private String cloudSecureUrl;
+    private String cloudResourceType;
 
-    // Content provided by User B
+    // Content provided by the uploader
     private String title;
     private String description;
 
@@ -45,7 +51,12 @@ public class SharedDocumentSubmissionResponse {
     /**
      * Deadline for automatic removal if still PENDING_REVIEW.
      * Null once the submission is approved (scheduler will not touch it).
-     * Null for REJECTED submissions.
      */
     private LocalDateTime deleteAfter;
+
+    /**
+     * When quota was released for this submission.
+     * Non-null means quota has already been released.
+     */
+    private LocalDateTime quotaReleasedAt;
 }

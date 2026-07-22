@@ -1,5 +1,8 @@
 package com.aistudyhub.backend.exception;
 
+import com.aistudyhub.backend.exception.FileTooLargeException;
+import com.aistudyhub.backend.exception.PolicyNotSupportedException;
+import com.aistudyhub.backend.exception.StorageCapacityException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -78,6 +81,24 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handlePlanRestrictionException(PlanRestrictionException ex) {
         log.error("Plan restriction error: {}", ex.getMessage());
         return createErrorResponse(HttpStatus.FORBIDDEN, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(StorageCapacityException.class)
+    public ResponseEntity<Map<String, Object>> handleStorageCapacityException(StorageCapacityException ex) {
+        log.warn("Storage capacity exceeded: {}", ex.getMessage());
+        return createErrorResponse(HttpStatus.valueOf(507), ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(FileTooLargeException.class)
+    public ResponseEntity<Map<String, Object>> handleFileTooLargeException(FileTooLargeException ex) {
+        log.warn("File too large: {}", ex.getMessage());
+        return createErrorResponse(HttpStatus.valueOf(413), ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(PolicyNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handlePolicyNotSupportedException(PolicyNotSupportedException ex) {
+        log.warn("Unsupported access policy selected: {}", ex.getMessage());
+        return createErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), null);
     }
 
     // Handle 403 Forbidden scenarios

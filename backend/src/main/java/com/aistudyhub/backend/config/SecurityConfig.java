@@ -52,6 +52,7 @@ public class SecurityConfig {
                         .accessDeniedHandler(accessDeniedHandler)
                 )
                 .authorizeHttpRequests(auth -> auth
+                        // Public auth & payment callbacks
                         .requestMatchers(
                                 "/api/auth/register",
                                 "/api/auth/login",
@@ -59,16 +60,29 @@ public class SecurityConfig {
                                 "/api/auth/refresh",
                                 "/api/auth/verify-email",
                                 "/api/auth/resend-verification",
-                                "/api/payments/vnpay-return",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/v3/api-docs/**",
-                                "/api/public/**"
+                                "/api/payments/vnpay-return"
                         ).permitAll()
+                        // API documentation
+                        .requestMatchers(
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**",
+                                "/v3/api-docs.yaml"
+                        ).permitAll()
+                        // Plan listing
                         .requestMatchers(HttpMethod.GET, "/api/plans").permitAll()
+                        // Public share-link inspection (GET only — no upload)
+                        .requestMatchers(HttpMethod.GET, "/api/public/document-share-links/{token}").permitAll()
+                        // Explicitly block the old anonymous upload path (regression guard)
+                        .requestMatchers(HttpMethod.POST, "/api/public/document-share-links/**").denyAll()
+                        // Block all other /api/public/** to prevent accidental exposure
+                        .requestMatchers("/api/public/**").denyAll()
+                        // Admin-only
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
+                        // Internal — never exposed
                         .requestMatchers("/api/internal/**").denyAll()
+                        // All remaining requests require authentication (including /api/share-uploads/**)
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(

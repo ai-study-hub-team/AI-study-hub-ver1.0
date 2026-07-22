@@ -61,7 +61,6 @@ public class AiIntegrationService {
                     ? filePath
                     : Paths.get(filePath).toAbsolutePath().toString();
             log.info("Stored file location: {} | Location sent to AI: {}", filePath, fileLocation);
-
             String url = aiServiceBaseUrl + "/process-document";
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
