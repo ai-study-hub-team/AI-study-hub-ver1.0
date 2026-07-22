@@ -4,19 +4,16 @@ import com.aistudyhub.backend.dto.request.DocumentRequest;
 import com.aistudyhub.backend.dto.request.MoveDocumentRequest;
 import com.aistudyhub.backend.dto.response.DocumentResponse;
 import com.aistudyhub.backend.dto.response.SemanticSearchResponse;
+import com.aistudyhub.backend.service.DocumentFileService;
 import com.aistudyhub.backend.service.DocumentService;
-import com.aistudyhub.backend.service.FileStorageService;
 import com.aistudyhub.backend.service.SemanticSearchService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -29,8 +26,6 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 import java.io.IOException;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -39,7 +34,7 @@ import java.nio.charset.StandardCharsets;
 public class DocumentController {
 
     private final DocumentService documentService;
-    private final FileStorageService fileStorageService;
+    private final DocumentFileService documentFileService;
     private final SemanticSearchService semanticSearchService;
 
     // POST /api/documents
@@ -204,36 +199,7 @@ public class DocumentController {
     // Streams the file inline so the browser can display/preview it directly.
     @GetMapping("/{id}/file")
     public ResponseEntity<?> viewFile(@PathVariable Long id) {
-        // 1. Load document metadata to get fileName and fileType
-        var docResponse = documentService.getById(id);
-        if (isRemoteUrl(docResponse.getFileUrl())) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(URI.create(docResponse.getFileUrl()))
-                    .build();
-        }
-        String fileName = docResponse.getFileName();
-        if (fileName == null || fileName.isBlank()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        // 2. Load the actual file bytes from disk
-        Resource resource = fileStorageService.loadFileAsResource(fileName);
-
-        // 3. Determine Content-Type (use stored value, fall back to extension detection)
-        String mimeType = docResponse.getFileType() != null
-                ? docResponse.getFileType()
-                : fileStorageService.getMimeTypeFromFileName(fileName);
-
-        // 4. inline → browser will try to display (PDF renders in-tab, TXT shows as text)
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentDisposition(
-            ContentDisposition.inline().filename(fileName, StandardCharsets.UTF_8).build()
-        );
-
-        return ResponseEntity.ok()
-                .headers(headers)
-                .contentType(MediaType.parseMediaType(mimeType))
-                .body(resource);
+        return documentFileService.viewFile(id);
     }
 
     // ─── GET /api/documents/{id}/download ────────────────────────────────────────
@@ -241,38 +207,7 @@ public class DocumentController {
 
     @GetMapping("/{id}/download")
     public ResponseEntity<?> downloadFile(@PathVariable Long id) {
-        // 1. Load document metadata
-        var docResponse = documentService.getDownloadableById(id);
-        if (isRemoteUrl(docResponse.getFileUrl())) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(URI.create(docResponse.getFileUrl()))
-                    .build();
-        }
-        String fileName     = docResponse.getFileName();       // stored on disk
-        String originalName = docResponse.getOriginalName();   // shown to user
-        if (fileName == null || fileName.isBlank()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        // 2. Load file from disk
-        Resource resource = fileStorageService.loadFileAsResource(fileName);
-
-        // 3. Content-Type for download (generic binary is fine, but we keep the real type)
-        String mimeType = docResponse.getFileType() != null
-                ? docResponse.getFileType()
-                : fileStorageService.getMimeTypeFromFileName(fileName);
-
-        // 4. attachment → browser will save the file using originalName
-        String downloadName = (originalName != null && !originalName.isBlank()) ? originalName : fileName;
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentDisposition(
-            ContentDisposition.attachment().filename(downloadName, StandardCharsets.UTF_8).build()
-        );
-
-        return ResponseEntity.ok()
-                .headers(headers)
-                .contentType(MediaType.parseMediaType(mimeType))
-                .body(resource);
+        return documentFileService.downloadFile(id);
     }
 
 
@@ -312,10 +247,6 @@ public class DocumentController {
             @RequestBody MoveDocumentRequest request) {
         DocumentResponse response = documentService.moveDocumentToFolder(id, request.getFolderId());
         return ResponseEntity.ok(response);
-    }
-
-    private boolean isRemoteUrl(String value) {
-        return value != null && (value.startsWith("http://") || value.startsWith("https://"));
     }
 
 }

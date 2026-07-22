@@ -66,7 +66,6 @@ import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { UserManagement } from "./pages/admin/UserManagement";
 import { DocumentAdmin } from "./pages/admin/DocumentAdmin";
 import { ReportManagement } from "./pages/admin/ReportManagement";
-import { SubscriptionAdmin } from "./pages/admin/SubscriptionAdmin";
 import { AnalyticsDashboard } from "./pages/admin/AnalyticsDashboard";
 
 export const router = createBrowserRouter([
@@ -104,10 +103,6 @@ export const router = createBrowserRouter([
       {
         path: "forgot-password",
         element: <ForgotPasswordPage />,
-      },
-      {
-        path: "verify-reset-code",
-        element: <VerifyResetCodePage />,
       },
       {
         path: "reset-password",
@@ -301,10 +296,6 @@ export const router = createBrowserRouter([
           {
             path: "reports",
             element: <ReportManagement />,
-          },
-          {
-            path: "subscriptions",
-            element: <SubscriptionAdmin />,
           },
           {
             path: "analytics",

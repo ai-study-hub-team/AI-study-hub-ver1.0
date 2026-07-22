@@ -34,7 +34,11 @@ export type EmailVerificationResponse = {
   nextAction: string;
 };
 
-// Đăng ký
+export type MessageResponse = {
+  message: string;
+};
+
+// Register
 export const registerApi = (data: {
   fullName: string;
   email: string;
@@ -46,7 +50,7 @@ export const registerApi = (data: {
   );
 };
 
-// Đăng nhập bằng email/password
+// Login with email and password
 export const loginApi = (
   email: string,
   password: string,
@@ -60,7 +64,7 @@ export const loginApi = (
   );
 };
 
-// Đăng nhập bằng Google ID Token
+// Login with Google ID token
 export const googleLoginApi = (
   idToken: string,
 ) => {
@@ -72,7 +76,7 @@ export const googleLoginApi = (
   );
 };
 
-// Xác thực email
+// Verify email
 export const verifyEmailApi = (
   token: string,
 ) => {
@@ -86,7 +90,7 @@ export const verifyEmailApi = (
   );
 };
 
-// Gửi lại email xác thực
+// Resend verification email
 export const resendVerificationApi = (
   email: string,
 ) => {
@@ -98,12 +102,36 @@ export const resendVerificationApi = (
   );
 };
 
-// Lấy user đang đăng nhập
+// Request a password reset email
+export const forgotPasswordApi = (
+  email: string,
+) => {
+  return apiClient.post<MessageResponse>(
+    "/api/auth/forgot-password",
+    {
+      email,
+    },
+  );
+};
+
+// Reset password using the token from the email
+export const resetPasswordApi = (data: {
+  token: string;
+  newPassword: string;
+  confirmPassword: string;
+}) => {
+  return apiClient.post<MessageResponse>(
+    "/api/auth/reset-password",
+    data,
+  );
+};
+
+// Get authenticated user
 export const getAuthMeApi = () => {
   return apiClient.get("/api/auth/me");
 };
 
-// Refresh token
+// Refresh access token
 export const refreshTokenApi = (
   refreshToken: string,
 ) => {
@@ -115,7 +143,7 @@ export const refreshTokenApi = (
   );
 };
 
-// Đăng xuất
+// Logout
 export const logoutApi = () => {
   return apiClient.post("/api/auth/logout", {
     refreshToken:
@@ -123,12 +151,12 @@ export const logoutApi = () => {
   });
 };
 
-// Lấy profile
+// Get profile
 export const getMyAccountApi = () => {
   return apiClient.get("/api/account/me");
 };
 
-// Cập nhật profile
+// Update profile
 export const updateMyAccountApi = (data: {
   fullName?: string;
   avatarUrl?: string;
@@ -141,7 +169,7 @@ export const updateMyAccountApi = (data: {
   );
 };
 
-// Đổi mật khẩu
+// Change password
 export const changePasswordApi = (data: {
   currentPassword: string;
   newPassword: string;

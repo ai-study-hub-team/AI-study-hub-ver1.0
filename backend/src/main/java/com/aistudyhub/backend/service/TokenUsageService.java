@@ -8,6 +8,7 @@ import com.aistudyhub.backend.entity.UserSubscription;
 import com.aistudyhub.backend.exception.QuotaExceededException;
 import com.aistudyhub.backend.repository.TokenUsageLogRepository;
 import com.aistudyhub.backend.repository.UserDailyUsageRepository;
+import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,8 @@ public class TokenUsageService {
     private final SubscriptionService subscriptionService;
     private final UserDailyUsageRepository userDailyUsageRepository;
     private final TokenUsageLogRepository tokenUsageLogRepository;
+    private final UserRepository userRepository;
+    private final RolePolicyService rolePolicyService;
 
     @Transactional(readOnly = true)
     public CurrentUserTodayTokenUsageResponse getTodayUsage(Long userId) {
@@ -50,8 +53,18 @@ public class TokenUsageService {
     @Transactional(readOnly = true)
     // so sánh token hằng ngày
     public void validateTokenQuota(Long userId, String featureType) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+
+        if (rolePolicyService.isManagementAccount(user)) {
+            log.info("[TokenQuota][{}] bypass for management account userId={}, role={}",
+                    featureType, user.getId(), user.getRole());
+            return;
+        }
+
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
         Long dailyLimit = subscription.getPlan().getDailyTokenLimit();
+
         LocalDate today = LocalDate.now();
 
         UserDailyUsage usage = userDailyUsageRepository.findByUserIdAndUsageDate(userId, today)
@@ -63,19 +76,33 @@ public class TokenUsageService {
                 featureType, userId, today, used, dailyLimit);
 
         if (used >= dailyLimit) {
-            log.warn("[TokenQuota][{}] QUOTA EXCEEDED userId={}, used={}, limit={}",
-                    featureType, userId, used, dailyLimit);
             throw new QuotaExceededException("Daily token quota exceeded. Please upgrade your plan or try again tomorrow.");
         }
-        
-        log.info("[TokenQuota][{}] allowed userId={}, used={}, limit={}",
-                featureType, userId, used, dailyLimit);
     }
 
     @Transactional
     // ghi lại lịch sử token và tỏngo token
     public void recordUsage(User user, String featureType, String modelName, Long tokens, Long documentId, String requestId) {
-        if (tokens == null || tokens <= 0) {
+        recordUsage(user, featureType, modelName, 0L, 0L, tokens, documentId, requestId);
+    }
+
+    @Transactional
+    public void recordUsage(
+            User user,
+            String featureType,
+            String modelName,
+            Long inputToken,
+            Long outputToken,
+            Long tokens,
+            Long documentId,
+            String requestId
+    ) {
+        long safeInputToken = safe(inputToken);
+        long safeOutputToken = safe(outputToken);
+        long safeTokens = safe(tokens);
+        long resolvedTokens = safeTokens > 0 ? safeTokens : safeInputToken + safeOutputToken;
+
+        if (resolvedTokens <= 0 && safeInputToken <= 0 && safeOutputToken <= 0) {
             return;
         }
         if (requestId != null && !requestId.isBlank() && tokenUsageLogRepository.existsByRequestId(requestId)) {
@@ -89,7 +116,7 @@ public class TokenUsageService {
                 .user(user)
                 .featureType(featureType)
                 .modelName(modelName)
-                .tokens(tokens)
+                .tokens(resolvedTokens)
                 .documentId(documentId)
                 .requestId(requestId)
                 .build();
@@ -105,33 +132,38 @@ public class TokenUsageService {
                         .quizTokens(0L)
                         .extractTokens(0L)
                         .totalTokens(0L)
+                        .inputToken(0L)
+                        .outputToken(0L)
                         .overallTokens(0L)
                         .build());
 
         switch (featureType.toUpperCase()) {
             case "CHAT":
-                usage.setChatTokens(safe(usage.getChatTokens()) + tokens);
-                usage.setTotalTokens(safe(usage.getTotalTokens()) + tokens);
+                usage.setChatTokens(safe(usage.getChatTokens()) + resolvedTokens);
+                usage.setTotalTokens(safe(usage.getTotalTokens()) + resolvedTokens);
                 break;
             case "SUMMARY":
-                usage.setSummaryTokens(safe(usage.getSummaryTokens()) + tokens);
-                usage.setTotalTokens(safe(usage.getTotalTokens()) + tokens);
+                usage.setSummaryTokens(safe(usage.getSummaryTokens()) + resolvedTokens);
+                usage.setTotalTokens(safe(usage.getTotalTokens()) + resolvedTokens);
                 break;
             case "QUIZ":
-                usage.setQuizTokens(safe(usage.getQuizTokens()) + tokens);
-                usage.setTotalTokens(safe(usage.getTotalTokens()) + tokens);
+                usage.setQuizTokens(safe(usage.getQuizTokens()) + resolvedTokens);
+                usage.setTotalTokens(safe(usage.getTotalTokens()) + resolvedTokens);
                 break;
             case "EXTRACT":
-                usage.setExtractTokens(safe(usage.getExtractTokens()) + tokens);
+                usage.setExtractTokens(safe(usage.getExtractTokens()) + resolvedTokens);
                 break;
             default:
                 log.warn("Unknown feature type for token usage: {}", featureType);
         }
 
+        usage.setInputToken(safe(usage.getInputToken()) + safeInputToken);
+        usage.setOutputToken(safe(usage.getOutputToken()) + safeOutputToken);
         usage.setOverallTokens(safe(usage.getTotalTokens()) + safe(usage.getExtractTokens()));
 
         userDailyUsageRepository.save(usage);
-        log.info("[TokenUsage][{}] recorded tokens={}, userId={}", featureType, tokens, user.getId());
+        log.info("[TokenUsage][{}] recorded tokens={}, inputToken={}, outputToken={}, userId={}",
+                featureType, resolvedTokens, safeInputToken, safeOutputToken, user.getId());
     }
 
     private long safe(Long value) {

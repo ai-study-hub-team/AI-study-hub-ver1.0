@@ -90,6 +90,7 @@ public class DocumentShareLinkService {
         DocumentShareLink link = DocumentShareLink.builder()
                 .owner(owner)
                 .tokenHash(tokenHash)
+                .plainToken(plainToken)
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .status(DocumentShareStatus.ACTIVE)
@@ -300,6 +301,10 @@ public class DocumentShareLinkService {
                 .allowedUserIds(allowedUserIds)
                 .defaultFolderId(folderId)
                 .defaultFolderName(folderName)
+                .token(link.getPlainToken())
+                .shareUrl(link.getPlainToken() == null
+                        ? null
+                        : frontendBaseUrl + "/shared-upload/" + link.getPlainToken())
                 .createdAt(link.getCreatedAt())
                 .updatedAt(link.getUpdatedAt())
                 .build();

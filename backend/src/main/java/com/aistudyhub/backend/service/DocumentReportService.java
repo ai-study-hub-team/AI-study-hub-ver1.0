@@ -12,7 +12,6 @@ import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.DocumentReportHistoryRepository;
 import com.aistudyhub.backend.repository.DocumentReportRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
-import com.aistudyhub.backend.enums.UserRole;
 import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -34,6 +33,7 @@ public class DocumentReportService {
     private final DocumentAccessService documentAccessService;
     private final NotificationService notificationService;
     private final UserRepository userRepository;
+    private final RolePolicyService rolePolicyService;
 
     @Transactional
     public DocumentReportResponse reportDocument(Long documentId, ReportDocumentRequest request) {
@@ -84,16 +84,18 @@ public class DocumentReportService {
 
         DocumentReport savedReport = reportRepository.save(report);
 
-        userRepository.findByRoleAndStatus(UserRole.ADMIN, UserStatus.ACTIVE)
-                .forEach(admin -> notificationService.create(
-                        admin,
-                        NotificationType.DOCUMENT_REPORTED,
-                        "New document report",
-                        reporter.getEmail() + " reported document: " + document.getTitle(),
-                        "DOCUMENT_REPORT",
-                        savedReport.getId(),
-                        "/admin/document-reports/" + savedReport.getId()
-                ));
+        userRepository.findByRoleInAndStatus(
+                List.of(UserRole.ADMIN, UserRole.MANAGER),
+                UserStatus.ACTIVE
+        ).forEach(handler -> notificationService.create(
+                handler,
+                NotificationType.DOCUMENT_REPORTED,
+                "New document report",
+                reporter.getEmail() + " reported document: " + document.getTitle(),
+                "DOCUMENT_REPORT",
+                savedReport.getId(),
+                "/admin/document-reports/" + savedReport.getId()
+        ));
 
         return toResponse(savedReport);
     }
@@ -118,9 +120,9 @@ public class DocumentReportService {
             Long reportId,
             AdminUpdateDocumentReportStatusRequest request
     ) {
-        User admin = currentUserService.getCurrentUser();
-        if (admin.getRole() != UserRole.ADMIN) {
-            throw new ForbiddenException("Only admin can handle reports");
+        User handler = currentUserService.getCurrentUser();
+        if (!rolePolicyService.isManagementAccount(handler)) {
+            throw new ForbiddenException("Only admin or manager can handle reports");
         }
 
         DocumentReport report = findReport(reportId);
@@ -128,7 +130,7 @@ public class DocumentReportService {
 
         report.setStatus(request.getStatus());
         report.setAdminNote(trimToNull(request.getAdminNote()));
-        report.setHandledBy(admin);
+        report.setHandledBy(handler);
         report.setHandledAt(LocalDateTime.now());
 
         if (Boolean.TRUE.equals(request.getHideDocument())) {
@@ -166,7 +168,7 @@ public class DocumentReportService {
                 .oldStatus(oldStatus)
                 .newStatus(saved.getStatus())
                 .adminNote(saved.getAdminNote())
-                .handledBy(admin)
+                .handledBy(handler)
                 .build());
 
         return toResponse(saved);

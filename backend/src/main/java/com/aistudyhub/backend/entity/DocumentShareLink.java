@@ -48,6 +48,10 @@ public class DocumentShareLink {
     @Column(name = "token_hash", nullable = false, unique = true, length = 64)
     private String tokenHash;
 
+    /** Raw token returned only through authenticated owner-scoped APIs. */
+    @Column(name = "plain_token", length = 255)
+    private String plainToken;
+
     /** Display title shown to uploaders on the upload page. */
     @Column(length = 255)
     private String title;

@@ -29,6 +29,10 @@ export interface UpdateUserStatusPayload {
   status: string;
 }
 
+export interface UpdateUserSubscriptionPayload {
+  planCode: string;
+}
+
 export interface UpdateProfilePayload {
   fullName: string;
   avatarUrl?: string | null;
@@ -78,6 +82,16 @@ export const userApi = {
     );
   },
 
+  updateUserSubscription: (
+    id: number,
+    payload: UpdateUserSubscriptionPayload,
+  ) => {
+    return apiClient.patch(
+      `/api/users/${id}/subscription`,
+      payload,
+    );
+  },
+
   deleteUser: (id: number) => {
     return apiClient.delete<void>(
       `/api/users/${id}`,
@@ -100,6 +114,16 @@ export const userApi = {
     return apiClient.put<UserResponse>(
       "/api/account/me",
       payload,
+    );
+  },
+
+  updateAvatar: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    return apiClient.patch<UserResponse>(
+      "/api/account/me/avatar",
+      formData,
     );
   },
 

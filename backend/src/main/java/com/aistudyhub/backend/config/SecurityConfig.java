@@ -52,37 +52,71 @@ public class SecurityConfig {
                         .accessDeniedHandler(accessDeniedHandler)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        // Public auth & payment callbacks
                         .requestMatchers(
                                 "/api/auth/register",
                                 "/api/auth/login",
                                 "/api/auth/google",
                                 "/api/auth/refresh",
+                                "/api/auth/forgot-password",
+                                "/api/auth/reset-password",
                                 "/api/auth/verify-email",
                                 "/api/auth/resend-verification",
                                 "/api/payments/vnpay-return"
                         ).permitAll()
-                        // API documentation
+
+                        // Swagger / OpenAPI documentation
                         .requestMatchers(
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",
                                 "/v3/api-docs.yaml"
                         ).permitAll()
-                        // Plan listing
+
+                        // Public plan listing
                         .requestMatchers(HttpMethod.GET, "/api/plans").permitAll()
-                        // Public share-link inspection (GET only — no upload)
-                        .requestMatchers(HttpMethod.GET, "/api/public/document-share-links/{token}").permitAll()
-                        // Explicitly block the old anonymous upload path (regression guard)
-                        .requestMatchers(HttpMethod.POST, "/api/public/document-share-links/**").denyAll()
-                        // Block all other /api/public/** to prevent accidental exposure
+
+                        // Public share-link information only
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/public/document-share-links/*"
+                        ).permitAll()
+
+                        // Block the old anonymous shared-upload endpoint
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/public/document-share-links/**"
+                        ).denyAll()
+
+                        // Block every other public API unless explicitly allowed above
                         .requestMatchers("/api/public/**").denyAll()
-                        // Admin-only
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/users/**").hasRole("ADMIN")
-                        // Internal — never exposed
+
+                        // Admin-only manager and plan management
+                        .requestMatchers("/api/admin/managers/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/plans/**").hasRole("ADMIN")
+
+                        // Admin-only revenue dashboard
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/admin/dashboard/revenue"
+                        ).hasRole("ADMIN")
+
+                        // Admin-only subscription modification
+                        .requestMatchers(
+                                HttpMethod.PATCH,
+                                "/api/users/*/subscription"
+                        ).hasRole("ADMIN")
+
+                        // Remaining admin and user-management endpoints
+                        .requestMatchers("/api/admin/**")
+                        .hasAnyRole("ADMIN", "MANAGER")
+
+                        .requestMatchers("/api/users/**")
+                        .hasAnyRole("ADMIN", "MANAGER")
+
+                        // Internal APIs must never be exposed
                         .requestMatchers("/api/internal/**").denyAll()
-                        // All remaining requests require authentication (including /api/share-uploads/**)
+
+                        // All remaining endpoints require JWT authentication
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(
