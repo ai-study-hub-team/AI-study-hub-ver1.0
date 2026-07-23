@@ -84,6 +84,19 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
     : <Navigate to="/admin" replace />;
 }
 
+function ManagementOnly({ children }: { children: React.ReactNode }) {
+  let role = localStorage.getItem("role") || "";
+  try {
+    role = JSON.parse(localStorage.getItem("user") || "null")?.role || role;
+  } catch {
+    // Invalid cached user data is treated as a regular user session.
+  }
+  const normalizedRole = role.toUpperCase().replace("ROLE_", "");
+  return normalizedRole === "ADMIN" || normalizedRole === "MANAGER"
+    ? children
+    : <Navigate to="/app/dashboard" replace />;
+}
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -295,7 +308,7 @@ export const router = createBrowserRouter([
       // Admin routes
       {
         path: "admin",
-        element: <DashboardLayout isAdmin />,
+        element: <ManagementOnly><DashboardLayout isAdmin /></ManagementOnly>,
         children: [
           {
             index: true,

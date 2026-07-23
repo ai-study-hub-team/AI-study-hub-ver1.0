@@ -11,6 +11,12 @@ export interface DocumentShareLinkResponse {
   expiresAt?: string | null;
   maxUploads?: number | null;
   currentUploads?: number | null;
+  maxUploadsPerUser?: number | null;
+  maxFileSizeBytes?: number | null;
+  maxTotalBytes?: number | null;
+  allowedFileTypes?: string | null;
+  accessPolicy?: "PRIVATE_ALLOWLIST" | "ANY_AUTHENTICATED_USER" | string;
+  allowedUserIds?: number[];
   defaultFolderId?: number | null;
   defaultFolderName?: string | null;
   token?: string | null;
@@ -20,21 +26,22 @@ export interface DocumentShareLinkResponse {
 }
 
 export interface CreateDocumentShareLinkRequest {
-  userId: number;
   title: string;
   description?: string;
   expiresAt?: string;
-  maxUploads?: number;
-  defaultFolderId?: number;
+  maxUploads: number;
+  maxUploadsPerUser: number;
+  maxFileSizeBytes: number;
+  maxTotalBytes: number;
+  allowedFileTypes: string;
+  accessPolicy: "PRIVATE_ALLOWLIST" | "ANY_AUTHENTICATED_USER";
+  allowedUserEmails: string[];
+  defaultFolderId?: number | null;
 }
 
 export const documentShareLinkApi = {
-  getDocumentShareLinks: (userId: number) =>
-    apiClient.get<DocumentShareLinkResponse[]>("/api/document-share-links", {
-      params: {
-        userId,
-      },
-    }),
+  getDocumentShareLinks: () =>
+    apiClient.get<DocumentShareLinkResponse[]>("/api/document-share-links"),
 
   createDocumentShareLink: (data: CreateDocumentShareLinkRequest) =>
     apiClient.post<DocumentShareLinkResponse>(
@@ -42,14 +49,9 @@ export const documentShareLinkApi = {
       data,
     ),
 
-  disableDocumentShareLink: (id: number, userId: number) =>
+  disableDocumentShareLink: (id: number) =>
     apiClient.patch<DocumentShareLinkResponse>(
       `/api/document-share-links/${id}/disable`,
       null,
-      {
-        params: {
-          userId,
-        },
-      },
     ),
 };

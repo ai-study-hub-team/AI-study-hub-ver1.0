@@ -37,6 +37,30 @@ export function PricingAnalyticsPage() {
   const pageSize = 10;
   const paginatedPayments = payments.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
+  const updatePricingValue = (
+    field: "inputPricePerMillion" | "outputPricePerMillion",
+    rawValue: string,
+  ) => {
+    if (!pricingDraft) return;
+    const normalizedValue = rawValue.replace(/^0+(?=\d)/, "");
+    if (normalizedValue === "") {
+      setPricingDraft({
+        ...pricingDraft,
+        [field]: "" as unknown as number,
+      });
+      return;
+    }
+    const numericValue = Number(normalizedValue);
+    if (!Number.isFinite(numericValue) || numericValue <= 0) {
+      setPricingDraft({ ...pricingDraft });
+      return;
+    }
+    setPricingDraft({
+      ...pricingDraft,
+      [field]: numericValue,
+    });
+  };
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -70,6 +94,13 @@ export function PricingAnalyticsPage() {
 
   const savePricing = async () => {
     if (!pricingDraft) return;
+    if (
+      Number(pricingDraft.inputPricePerMillion) <= 0 ||
+      Number(pricingDraft.outputPricePerMillion) <= 0
+    ) {
+      toast.error("Input and output prices must be greater than 0.");
+      return;
+    }
     try {
       const response = await adminAnalyticsApi.updateTokenPricing({
         modelName: pricingDraft.modelName,
@@ -131,10 +162,10 @@ export function PricingAnalyticsPage() {
               <input disabled={!editingPricing} value={pricingDraft.modelName} onChange={(e) => setPricingDraft({ ...pricingDraft, modelName: e.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:disabled:bg-slate-800/60" />
             </label>
             <label className="flex-1 text-sm font-bold text-slate-700 dark:text-slate-200">Input price / 100K
-              <input disabled={!editingPricing} type="number" min="0" step="any" value={editingPricing ? pricingDraft.inputPricePerMillion : Number(pricing.inputPricePerMillion) / 10} onChange={(e) => setPricingDraft({ ...pricingDraft, inputPricePerMillion: Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:disabled:bg-slate-800/60" />
+              <input disabled={!editingPricing} type="number" min="0" step="any" value={editingPricing ? pricingDraft.inputPricePerMillion : Number(pricing.inputPricePerMillion) / 10} onFocus={(e) => e.currentTarget.select()} onChange={(e) => updatePricingValue("inputPricePerMillion", e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:disabled:bg-slate-800/60" />
             </label>
             <label className="flex-1 text-sm font-bold text-slate-700 dark:text-slate-200">Output price / 100K
-              <input disabled={!editingPricing} type="number" min="0" step="any" value={editingPricing ? pricingDraft.outputPricePerMillion : Number(pricing.outputPricePerMillion) / 10} onChange={(e) => setPricingDraft({ ...pricingDraft, outputPricePerMillion: Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:disabled:bg-slate-800/60" />
+              <input disabled={!editingPricing} type="number" min="0" step="any" value={editingPricing ? pricingDraft.outputPricePerMillion : Number(pricing.outputPricePerMillion) / 10} onFocus={(e) => e.currentTarget.select()} onChange={(e) => updatePricingValue("outputPricePerMillion", e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:disabled:bg-slate-800/60" />
             </label>
             {editingPricing ? (
               <div className="flex gap-2">

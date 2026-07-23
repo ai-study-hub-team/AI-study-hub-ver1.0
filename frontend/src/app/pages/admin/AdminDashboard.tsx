@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
-  BarChart3,
   Database,
   FileText,
   RefreshCcw,
@@ -155,13 +154,6 @@ export function AdminDashboard() {
     },
   ].filter((stat) => isAdmin || stat.label !== "Weekly Revenue");
 
-  const quickActions = [
-    { label: "Manage Users", path: "/admin/users", icon: Users },
-    { label: "Review Reports", path: "/admin/reports", icon: ShieldAlert },
-    { label: "Manage Documents", path: "/admin/documents", icon: FileText },
-    { label: "View Analytics", path: isAdmin ? "/admin/pricing" : "/admin/tokens", icon: BarChart3 },
-  ];
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -210,8 +202,7 @@ export function AdminDashboard() {
         ))}
       </section>
 
-      <div className="grid grid-cols-1 gap-8 xl:grid-cols-3">
-        {isAdmin && <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-700 dark:bg-slate-900 xl:col-span-2">
+      {isAdmin && <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="mb-6 flex items-center justify-between">
             <div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">
@@ -256,29 +247,6 @@ export function AdminDashboard() {
             )}
           </div>
         </section>}
-
-        <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-            Quick Actions
-          </h3>
-          <p className="mb-5 text-sm text-slate-500">Common administration tasks</p>
-          <div className="space-y-3">
-            {quickActions.map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                onClick={() => navigate(action.path)}
-                className="flex w-full items-center gap-3 rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50/50 dark:border-slate-700 dark:hover:bg-slate-800"
-              >
-                <action.icon className="h-5 w-5 text-blue-600" />
-                <span className="font-semibold text-slate-800 dark:text-slate-100">
-                  {action.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      </div>
 
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
         <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-700 dark:bg-slate-900">

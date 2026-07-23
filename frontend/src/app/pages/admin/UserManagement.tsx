@@ -370,6 +370,12 @@ export function UserManagement() {
     }
   };
 
+  const openCreateAccount = (type: "user" | "manager") => {
+    setManagerForm({ fullName: "", email: "", password: "" });
+    setCreateAccountType(type);
+    setShowCreateManager(true);
+  };
+
   const handleUpdateUser = async () => {
     if (!editUser || !editForm.fullName.trim()) {
       toast.error("Full name is required.");
@@ -421,13 +427,13 @@ export function UserManagement() {
         {isAdmin && (
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => { setCreateAccountType("user"); setShowCreateManager(true); }}
+              onClick={() => openCreateAccount("user")}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
             >
               <Plus className="h-4 w-4" /> Create user
             </button>
             <button
-              onClick={() => { setCreateAccountType("manager"); setShowCreateManager(true); }}
+              onClick={() => openCreateAccount("manager")}
               className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-500/30 dark:bg-slate-900 dark:text-blue-300"
             >
               <Plus className="h-4 w-4" /> Create manager
@@ -641,6 +647,8 @@ export function UserManagement() {
               <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">
                 Full name
                 <input
+                  name="new-account-full-name"
+                  autoComplete="off"
                   value={managerForm.fullName}
                   onChange={(event) =>
                     setManagerForm((current) => ({
@@ -657,6 +665,8 @@ export function UserManagement() {
                 Email
                 <input
                   type="email"
+                  name="new-account-email"
+                  autoComplete="off"
                   value={managerForm.email}
                   onChange={(event) =>
                     setManagerForm((current) => ({
@@ -672,6 +682,8 @@ export function UserManagement() {
                 Password
                 <input
                   type="password"
+                  name="new-account-password"
+                  autoComplete="new-password"
                   value={managerForm.password}
                   onChange={(event) =>
                     setManagerForm((current) => ({
@@ -683,9 +695,6 @@ export function UserManagement() {
                   maxLength={72}
                   className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
-                <span className="mt-1 block text-xs font-normal text-slate-500">
-                  Use between 6 and 72 characters.
-                </span>
               </label>
             </div>
             <div className="mt-6 flex justify-end gap-3">
