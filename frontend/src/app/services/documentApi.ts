@@ -26,6 +26,18 @@ export interface GetDocumentsParams {
   toDate?: string;
 }
 
+
+export interface GetAiReadyDocumentsParams {
+  page?: number;
+  size?: number;
+  keyword?: string;
+  categoryId?: number;
+  fileType?: string;
+  tag?: string;
+  fromDate?: string;
+  toDate?: string;
+}
+
 export interface UploadDocumentPayload {
   file: File;
   title: string;
@@ -233,6 +245,36 @@ export const documentApi = {
     return this.getDocuments(params);
   },
 
+  // GET /api/documents/ai-ready
+  getAiReadyDocuments(params?: GetAiReadyDocumentsParams) {
+    return api
+      .get<PageDocumentResponse>("/api/documents/ai-ready", {
+        params: {
+          page: params?.page ?? 0,
+          size: params?.size ?? 100,
+          keyword: params?.keyword || undefined,
+          categoryId: params?.categoryId,
+          fileType: params?.fileType || undefined,
+          tag: params?.tag || undefined,
+          fromDate: params?.fromDate || undefined,
+          toDate: params?.toDate || undefined,
+        },
+      })
+      .then((response) => ({
+        ...response,
+        data: mapPageDocumentResponse(response.data),
+      }));
+  },
+
+  // Used by AI document selectors.
+  getAiReadyDocumentsForSelect(userId?: number) {
+    const currentUserId = userId ?? getCurrentUserId();
+
+    return this.getAiReadyDocuments({ page: 0, size: 100 }).then((response) =>
+      filterMyDocuments(response.data.content ?? [], currentUserId),
+    );
+  },
+
   // GET /api/documents/{id}
   getDocumentById(id: number) {
     return api
@@ -400,6 +442,10 @@ export const documentApi = {
       responseType: "blob",
     });
   },
+
+  // Admin-only file access endpoint.
+  getAdminDocumentFile: (id: number) =>
+    api.get(`/api/admin/documents/${id}/file`, { responseType: "blob" }),
 
   // GET /api/documents/search
   searchDocuments(params: SearchDocumentsParams) {

@@ -8,6 +8,7 @@ export interface PlanResponse {
   maxUploadSizePerFileMb: number;
   dailyTokenLimit: number;
   price: number;
+  durationDays?: number | null;
   description?: string | null;
   allowImageUpload: boolean;
   allowDocumentUpload: boolean;

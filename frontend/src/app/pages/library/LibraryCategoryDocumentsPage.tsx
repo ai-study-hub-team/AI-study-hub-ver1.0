@@ -19,6 +19,7 @@ import { useTheme } from "../../../layouts/ThemeProvider";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 interface LibraryCategoryDocument {
   id: number;
@@ -48,12 +49,16 @@ function DocumentRow({
   document,
   onDelete,
   onShare,
+  onReprocess,
   sharingDocumentId,
+  reprocessingDocumentId,
 }: {
   document: LibraryCategoryDocument;
   onDelete: (documentId: number) => void;
   onShare: (documentId: number) => void | Promise<void>;
+  onReprocess: (documentId: number) => void | Promise<void>;
   sharingDocumentId: number | null;
+  reprocessingDocumentId: number | null;
 }) {
   return (
     <div className="grid gap-3 border-t border-slate-100 bg-white p-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70 md:grid-cols-[minmax(260px,2fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(90px,0.6fr)_minmax(150px,1fr)_minmax(150px,1fr)_72px] md:items-center">
@@ -103,7 +108,12 @@ function DocumentRow({
           <ActionMenuItem icon={Star} label="Favorite" onClick={() => undefined} />
           <ActionMenuItem icon={Download} label="Download" onClick={() => undefined} />
           <ActionMenuItem icon={Share2} label="Share document" onClick={() => onShare(document.id)} disabled={sharingDocumentId === document.id} />
-          <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => undefined} />
+          <ActionMenuItem
+            icon={RotateCcw}
+            label={reprocessingDocumentId === document.id ? "Reprocessing..." : "Reprocess"}
+            onClick={() => onReprocess(document.id)}
+            disabled={reprocessingDocumentId === document.id}
+          />
           <ActionMenuItem icon={Trash2} label="Delete" onClick={() => onDelete(document.id)} danger />
         </RowActionMenu>
       </div>
@@ -117,7 +127,11 @@ export function LibraryCategoryDocumentsPage() {
   const { categoryId } = useParams();
   const [documents, setDocuments] = useState<LibraryCategoryDocument[]>([]);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [reprocessingDocumentId, setReprocessingDocumentId] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("list");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const paginatedDocuments = documents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const { createAndCopyPublicLink, loadingDocumentId } =
     useCreatePublicLink();
 
@@ -153,6 +167,31 @@ export function LibraryCategoryDocumentsPage() {
 
     loadDocuments();
   }, [categoryId]);
+
+
+  const handleReprocess = async (documentId: number) => {
+    if (reprocessingDocumentId !== null) return;
+
+    try {
+      setReprocessingDocumentId(documentId);
+      const response = await documentApi.reprocessDocument(documentId);
+
+      setDocuments((current) =>
+        current.map((document) =>
+          document.id === documentId
+            ? { ...document, ...response.data }
+            : document,
+        ),
+      );
+
+      toast.success("Document reprocess started.");
+    } catch (error) {
+      console.error("Cannot reprocess document:", error);
+      toast.error("Cannot reprocess document.");
+    } finally {
+      setReprocessingDocumentId(null);
+    }
+  };
 
   const handleDelete = async (documentId: number): Promise<boolean> => {
     try {
@@ -215,7 +254,7 @@ export function LibraryCategoryDocumentsPage() {
       </div>
       {viewMode === "grid" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {documents.map((document) => (
+          {paginatedDocuments.map((document) => (
             <div
               key={document.id}
               className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
@@ -292,7 +331,12 @@ export function LibraryCategoryDocumentsPage() {
                 <RowActionMenu>
                   <ActionMenuItem icon={Download} label="Download" onClick={() => undefined} />
                   <ActionMenuItem icon={Share2} label="Share document" onClick={() => createAndCopyPublicLink(document.id)} disabled={loadingDocumentId === document.id} />
-                  <ActionMenuItem icon={RotateCcw} label="Reprocess" onClick={() => undefined} />
+                  <ActionMenuItem
+                    icon={RotateCcw}
+                    label={reprocessingDocumentId === document.id ? "Reprocessing..." : "Reprocess"}
+                    onClick={() => handleReprocess(document.id)}
+                    disabled={reprocessingDocumentId === document.id}
+                  />
                   <ActionMenuItem icon={Trash2} label="Delete" onClick={() => setDeleteId(document.id)} danger />
                 </RowActionMenu>
               </div>
@@ -311,17 +355,20 @@ export function LibraryCategoryDocumentsPage() {
             <span className="text-center">Actions</span>
           </div>
 
-          {documents.map((document) => (
+          {paginatedDocuments.map((document) => (
             <DocumentRow
               key={document.id}
               document={document}
               onDelete={setDeleteId}
               onShare={createAndCopyPublicLink}
+              onReprocess={handleReprocess}
               sharingDocumentId={loadingDocumentId}
+              reprocessingDocumentId={reprocessingDocumentId}
             />
           ))}
         </div>
       )}
+      <PaginationControls currentPage={currentPage} totalItems={documents.length} pageSize={pageSize} onPageChange={setCurrentPage} />
 
       {deleteId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

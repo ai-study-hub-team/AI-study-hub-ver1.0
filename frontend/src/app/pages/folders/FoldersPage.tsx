@@ -16,6 +16,7 @@ import { folderApi, type FolderResponse } from "../../services/folderApi";
 import { documentApi } from "../../services/documentApi";
 import { getCurrentUserId } from "../../services/apiClient";
 import { FolderShareModal } from "../library/components/FolderShareModal";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 type ListResponse<T> = T[] | { content?: T[] };
 
@@ -81,6 +82,8 @@ export function FoldersPage() {
 
   const [folders, setFolders] = useState<FolderResponse[]>([]);
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -143,6 +146,9 @@ export function FoldersPage() {
         );
       });
   }, [folders, search]);
+
+  const paginatedRootFolders = rootFolders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  useEffect(() => setCurrentPage(1), [search]);
 
   const moveDestinationFolders = useMemo(() => {
     if (!moveFolder) return folders;
@@ -534,7 +540,7 @@ export function FoldersPage() {
 
         {rootFolders.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {rootFolders.map((folder, index) => {
+            {paginatedRootFolders.map((folder, index) => {
               const iconColor =
                 index % 2 === 0
                   ? "bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300"
@@ -699,6 +705,7 @@ export function FoldersPage() {
             </p>
           </div>
         )}
+        <PaginationControls currentPage={currentPage} totalItems={rootFolders.length} pageSize={pageSize} onPageChange={setCurrentPage} />
       </section>
 
       {sharingFolder && (

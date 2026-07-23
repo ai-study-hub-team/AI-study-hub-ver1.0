@@ -6,6 +6,7 @@ import {
   MailCheck,
   MoreVertical,
   Pencil,
+  Plus,
   Search,
   Users,
   X,
@@ -19,10 +20,11 @@ import {
   type UserActivityLogResponse,
 } from "../../services/adminUserActivityApi";
 import { subscriptionApi, type PlanResponse } from "../../services/subscriptionApi";
+import { adminManagerApi } from "../../services/adminManagerApi";
 import { userApi, type UserResponse } from "../../services/userApi";
 
 type StatusFilter = "all" | "active" | "inactive";
-type RoleFilter = "all" | "USER" | "ADMIN";
+type RoleFilter = "all" | "USER" | "MANAGER" | "ADMIN";
 type CreatedDateSort = "newest" | "oldest";
 
 type UserView = {
@@ -67,14 +69,29 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function PlanBadge({ planCode }: { planCode?: string }) {
+function PlanBadge({
+  planCode,
+  role,
+}: {
+  planCode?: string;
+  role?: string;
+}) {
+  const normalizedRole = role?.trim().toUpperCase().replace(/^ROLE_/, "");
+  if (normalizedRole === "ADMIN" || normalizedRole === "MANAGER") {
+    return (
+      <span className="inline-flex min-w-[46px] justify-center rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+        N/A
+      </span>
+    );
+  }
+
   const code = planCode?.trim().toUpperCase();
   if (!code) {
     return <span className="text-xs font-semibold text-slate-400">Unknown</span>;
   }
 
   return (
-    <span className="inline-flex rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+    <span className="inline-flex min-w-[46px] justify-center rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
       {code}
     </span>
   );
@@ -156,12 +173,31 @@ export function UserManagement() {
     status: "ACTIVE",
     planCode: "",
   });
+  const [showCreateManager, setShowCreateManager] = useState(false);
+  const [createAccountType, setCreateAccountType] = useState<"user" | "manager">("user");
+  const [creatingManager, setCreatingManager] = useState(false);
+  const [managerForm, setManagerForm] = useState({
+    fullName: "",
+    email: "",
+    password: "",
+  });
   const pageSize = 10;
+  const isAdmin = useMemo(() => {
+    const role = (localStorage.getItem("role") || "").toUpperCase();
+    return role === "ADMIN" || role === "ROLE_ADMIN";
+  }, []);
 
   const loadUsers = async () => {
     try {
       setLoading(true);
       const response = await userApi.getUsers();
+      setUserPlans(
+        Object.fromEntries(
+          response.data
+            .filter((user) => Boolean(user.currentPlan))
+            .map((user) => [user.id, user.currentPlan as string]),
+        ),
+      );
       setUsers(
         response.data.map(
           (user) =>
@@ -296,6 +332,50 @@ export function UserManagement() {
     }
   };
 
+  const handleCreateManager = async () => {
+    const fullName = managerForm.fullName.trim();
+    const email = managerForm.email.trim();
+
+    if (!fullName || !email || !managerForm.password) {
+      toast.error("Full name, email, and password are required.");
+      return;
+    }
+
+    if (managerForm.password.length < 6) {
+      toast.error("Password must contain at least 6 characters.");
+      return;
+    }
+
+    try {
+      setCreatingManager(true);
+      const payload = { fullName, email, password: managerForm.password };
+      if (createAccountType === "manager") {
+        await adminManagerApi.createManager(payload);
+      } else {
+        await userApi.createUser(payload);
+      }
+      toast.success(`${createAccountType === "manager" ? "Manager" : "User"} account created successfully.`);
+      setManagerForm({ fullName: "", email: "", password: "" });
+      setShowCreateManager(false);
+      await loadUsers();
+    } catch (error: any) {
+      console.error("Cannot create manager:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot create manager account.",
+      );
+    } finally {
+      setCreatingManager(false);
+    }
+  };
+
+  const openCreateAccount = (type: "user" | "manager") => {
+    setManagerForm({ fullName: "", email: "", password: "" });
+    setCreateAccountType(type);
+    setShowCreateManager(true);
+  };
+
   const handleUpdateUser = async () => {
     if (!editUser || !editForm.fullName.trim()) {
       toast.error("Full name is required.");
@@ -305,9 +385,14 @@ export function UserManagement() {
     try {
       await userApi.updateUser(editUser.id, {
         fullName: editForm.fullName.trim(),
-        role: editUser.role,
-        status: editForm.status,
       });
+
+      const currentStatus = editUser.status?.toUpperCase() || "ACTIVE";
+      if (editForm.status !== currentStatus) {
+        await userApi.updateUserStatus(editUser.id, {
+          status: editForm.status,
+        });
+      }
 
       if (editForm.planCode) {
         await userApi.updateUserSubscription(editUser.id, {
@@ -330,13 +415,31 @@ export function UserManagement() {
 
   return (
     <div className="space-y-7 bg-slate-50 dark:bg-slate-950">
-      <div>
-        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
-          User Management
-        </h1>
-        <p className="mt-1 text-slate-500 dark:text-slate-400">
-          Manage user accounts, statuses, and subscription plans.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
+            User Management
+          </h1>
+          <p className="mt-1 text-slate-500 dark:text-slate-400">
+            Manage user accounts, statuses, and subscription plans.
+          </p>
+        </div>
+        {isAdmin && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => openCreateAccount("user")}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" /> Create user
+            </button>
+            <button
+              onClick={() => openCreateAccount("manager")}
+              className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-500/30 dark:bg-slate-900 dark:text-blue-300"
+            >
+              <Plus className="h-4 w-4" /> Create manager
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -391,6 +494,7 @@ export function UserManagement() {
           >
             <option value="all">All roles</option>
             <option value="USER">User</option>
+            <option value="MANAGER">Manager</option>
             <option value="ADMIN">Admin</option>
           </select>
           <select
@@ -419,6 +523,7 @@ export function UserManagement() {
                   <th className="px-4 py-2">User</th>
                   <th className="px-4 py-2">Role</th>
                   <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2">Plan</th>
                   <th className="px-4 py-2">Documents</th>
                   <th className="px-4 py-2">Created date</th>
                   <th className="px-4 py-2 text-right">Actions</th>
@@ -448,6 +553,12 @@ export function UserManagement() {
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={user.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <PlanBadge
+                        planCode={userPlans[user.id]}
+                        role={user.role}
+                      />
                     </td>
                     <td className="px-4 py-3 font-bold text-slate-700 dark:text-slate-200">
                       {user.documentCount}
@@ -510,6 +621,102 @@ export function UserManagement() {
         />
       </div>
 
+      {showCreateManager && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                  Create {createAccountType}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {createAccountType === "manager"
+                    ? "Create an account with manager permissions."
+                    : "Create a regular user account."}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCreateManager(false)}
+                disabled={creatingManager}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-5 space-y-4">
+              <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">
+                Full name
+                <input
+                  name="new-account-full-name"
+                  autoComplete="off"
+                  value={managerForm.fullName}
+                  onChange={(event) =>
+                    setManagerForm((current) => ({
+                      ...current,
+                      fullName: event.target.value,
+                    }))
+                  }
+                  maxLength={150}
+                  autoFocus
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
+              <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">
+                Email
+                <input
+                  type="email"
+                  name="new-account-email"
+                  autoComplete="off"
+                  value={managerForm.email}
+                  onChange={(event) =>
+                    setManagerForm((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                  maxLength={254}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
+              <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">
+                Password
+                <input
+                  type="password"
+                  name="new-account-password"
+                  autoComplete="new-password"
+                  value={managerForm.password}
+                  onChange={(event) =>
+                    setManagerForm((current) => ({
+                      ...current,
+                      password: event.target.value,
+                    }))
+                  }
+                  minLength={6}
+                  maxLength={72}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setShowCreateManager(false)}
+                disabled={creatingManager}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold disabled:opacity-50 dark:border-slate-700 dark:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleCreateManager()}
+                disabled={creatingManager}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {creatingManager ? "Creating..." : `Create ${createAccountType}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {viewUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
           <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
@@ -542,7 +749,12 @@ export function UserManagement() {
                   <DetailRow label="Role" value={viewUser.role} />
                   <DetailRow
                     label="Plan"
-                    value={<PlanBadge planCode={userPlans[viewUser.id]} />}
+                    value={
+                      <PlanBadge
+                        planCode={userPlans[viewUser.id]}
+                        role={viewUser.role}
+                      />
+                    }
                   />
                   <DetailRow
                     label="Status"
@@ -671,7 +883,7 @@ export function UserManagement() {
                   ))}
                 </select>
               </label>
-              <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">
+              {isAdmin && <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">
                 Subscription plan
                 <select
                   value={editForm.planCode}
@@ -690,10 +902,10 @@ export function UserManagement() {
                     </option>
                   ))}
                 </select>
-              </label>
-              <p className="text-xs leading-5 text-slate-500">
-                The current plan cannot be loaded for each user because the backend only provides an update endpoint. After a plan is changed, it is shown until the page is refreshed.
-              </p>
+              </label>}
+              {isAdmin && <p className="text-xs leading-5 text-slate-500">
+                Only administrators can change a user's subscription plan.
+              </p>}
             </div>
             <div className="mt-6 flex justify-end gap-3">
               <button

@@ -26,9 +26,7 @@ export interface SubmitPublicDocumentParams {
   file: File;
   title?: string;
   description?: string;
-  uploaderName?: string;
-  uploaderEmail?: string;
-  uploaderUserId?: number;
+  onProgress?: (percent: number) => void;
 }
 
 export interface PublicDocumentSubmissionResponse {
@@ -76,27 +74,21 @@ export const publicShareApi = {
     file,
     title,
     description,
-    uploaderName,
-    uploaderEmail,
-    uploaderUserId,
+    onProgress,
   }: SubmitPublicDocumentParams) => {
     const formData = new FormData();
     formData.append("file", file);
 
     if (title) formData.append("title", title);
     if (description) formData.append("description", description);
-    if (uploaderName) formData.append("uploaderName", uploaderName);
-    if (uploaderEmail) formData.append("uploaderEmail", uploaderEmail);
-    if (uploaderUserId !== undefined) {
-      formData.append("uploaderUserId", String(uploaderUserId));
-    }
-
     return apiClient.post<PublicDocumentSubmissionResponse>(
-      `/api/public/document-share-links/${token}/submissions`,
+      `/api/share-uploads/${token}/submissions`,
       formData,
       {
-        headers: {
-          "Content-Type": "multipart/form-data",
+        onUploadProgress: (event) => {
+          if (event.total) {
+            onProgress?.(Math.round((event.loaded * 100) / event.total));
+          }
         },
       },
     );

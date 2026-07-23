@@ -38,7 +38,7 @@ import {
   apiClient,
   getCurrentUserId,
 } from "../../services/apiClient";
-import { filterMyDocuments } from "../../utils/documentOwnership";
+import { documentApi } from "../../services/documentApi";
 
 const MATERIAL_LIMIT = 5;
 
@@ -622,34 +622,12 @@ export function AIChatPage() {
       }
 
       try {
-        const response =
-          await apiClient.get(
-            "/api/documents/search-filter",
-            {
-              params: {
-                page: 0,
-                size: 100,
-              },
-            },
+        const ownedDocuments =
+          await documentApi.getAiReadyDocumentsForSelect(
+            userId,
           );
 
-        const rawData =
-          response.data?.content ??
-          response.data?.data ??
-          response.data ??
-          [];
-
-        const ownedDocuments =
-          Array.isArray(rawData)
-            ? filterMyDocuments(
-                rawData,
-                userId,
-              )
-            : [];
-
-        setDocuments(
-          ownedDocuments,
-        );
+        setDocuments(ownedDocuments);
 
         /*
          * Loại bỏ ID tài liệu đã bị xóa

@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { folderApi } from "../../services/folderApi";
 import { documentApi } from "../../services/documentApi";
 import { ReportDocumentModal } from "./components/ReportDocumentModal";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 interface SharedFolderDocument {
   id: number;
@@ -218,6 +219,9 @@ export function SharedFolderDocumentsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [reportTarget, setReportTarget] = useState<SharedFolderDocument | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const paginatedDocuments = documents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const title = useMemo(() => {
     return state.title || `Shared folder #${numericFolderId}`;
@@ -392,7 +396,7 @@ export function SharedFolderDocumentsPage() {
           </div>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {documents.map((document) => {
+            {paginatedDocuments.map((document) => {
               const typeInfo = getDocumentTypeInfo(document);
               const DocumentIcon = typeInfo.Icon;
 
@@ -482,6 +486,7 @@ export function SharedFolderDocumentsPage() {
             })}
           </div>
         )}
+        <PaginationControls currentPage={currentPage} totalItems={documents.length} pageSize={pageSize} onPageChange={setCurrentPage} />
       </section>
 
       {reportTarget && (

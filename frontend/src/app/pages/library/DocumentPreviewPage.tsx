@@ -84,6 +84,9 @@ const isExcelDocument = (contentType: string, name: string) => {
   );
 };
 
+const isTextDocument = (contentType: string, name: string) =>
+  contentType.startsWith("text/") || name.toLowerCase().endsWith(".txt");
+
 const isPowerPointDocument = (contentType: string, name: string) => {
   const lowerName = name.toLowerCase();
 
@@ -394,6 +397,7 @@ export function DocumentPreviewPage() {
   const [fileName, setFileName] = useState("Document");
   const [excelHtml, setExcelHtml] = useState("");
   const [docxHtml, setDocxHtml] = useState("");
+  const [textContent, setTextContent] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [canManageShare, setCanManageShare] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -613,47 +617,7 @@ export function DocumentPreviewPage() {
         }
 
         const sharedFileUrl = getSharedDocumentFileUrl(documentData);
-        const sharedPreviewEndpoints = [
-          routeState.folderId
-            ? `/api/shared-with-me/folders/${routeState.folderId}/documents/${documentId}/file`
-            : "",
-          `/api/shared-with-me/documents/${documentId}/file`,
-          sharedFileUrl && !isPublicHttpUrl(sharedFileUrl) ? sharedFileUrl : "",
-        ].filter(Boolean);
-
-        let fileResponse: any;
-        let fileError: any;
-
-        if (!isSharedAccess) {
-          fileResponse = await documentApi.getDocumentFile(documentId);
-        } else {
-          for (const endpoint of sharedPreviewEndpoints) {
-            try {
-              fileResponse = await apiClient.get(endpoint, { responseType: "blob" });
-              break;
-            } catch (error) {
-              fileError = error;
-            }
-          }
-
-          if (!fileResponse) {
-            try {
-              fileResponse = await documentApi.getDocumentFile(documentId);
-            } catch (error) {
-              fileError = error;
-            }
-          }
-
-          if (!fileResponse && isPublicHttpUrl(sharedFileUrl)) {
-            try {
-              fileResponse = await apiClient.get(sharedFileUrl, { responseType: "blob" });
-            } catch (error) {
-              fileError = error;
-            }
-          }
-
-          if (!fileResponse) throw fileError;
-        }
+        const fileResponse = await documentApi.getDocumentFile(documentId);
 
         const contentTypeHeader = fileResponse.headers["content-type"];
         const contentType =
@@ -679,6 +643,7 @@ export function DocumentPreviewPage() {
 
         const isExcel = isExcelDocument(contentType, previewFileName);
         const isPptx = isPptxDocument(contentType, previewFileName);
+        const isText = isTextDocument(contentType, previewFileName);
         const publicUrl = isPublicHttpUrl(documentData.fileUrl)
           ? documentData.fileUrl
           : "";
@@ -688,6 +653,7 @@ export function DocumentPreviewPage() {
           const result = await mammoth.convertToHtml({ arrayBuffer });
           setDocxHtml(result.value);
           setExcelHtml("");
+          setTextContent("");
           setPptxBuffer(null);
           setPptxError("");
         } else if (isExcel) {
@@ -698,6 +664,7 @@ export function DocumentPreviewPage() {
           const html = XLSX.utils.sheet_to_html(worksheet);
           setExcelHtml(html);
           setDocxHtml("");
+          setTextContent("");
           setPptxBuffer(null);
           setPptxError("");
         } else if (isPptx) {
@@ -705,10 +672,18 @@ export function DocumentPreviewPage() {
           setPptxBuffer(arrayBuffer);
           setDocxHtml("");
           setExcelHtml("");
+          setTextContent("");
+          setPptxError("");
+        } else if (isText) {
+          setTextContent(await blob.text());
+          setDocxHtml("");
+          setExcelHtml("");
+          setPptxBuffer(null);
           setPptxError("");
         } else {
           setDocxHtml("");
           setExcelHtml("");
+          setTextContent("");
           setPptxBuffer(null);
           setPptxError("");
         }
@@ -1200,6 +1175,16 @@ export function DocumentPreviewPage() {
             className="docx-preview min-h-full w-full max-w-none bg-white px-6 py-8 text-slate-950"
             dangerouslySetInnerHTML={{ __html: highlightedDocxHtml }}
           />
+        </div>
+      );
+    }
+
+    if (isTextDocument(fileType, fileName)) {
+      return (
+        <div className="h-full overflow-auto bg-slate-50 p-4">
+          <pre className="min-h-full whitespace-pre-wrap break-words rounded-2xl border border-slate-200 bg-white p-6 font-mono text-sm leading-6 text-slate-800 shadow-sm">
+            {textContent}
+          </pre>
         </div>
       );
     }

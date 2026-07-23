@@ -48,6 +48,7 @@ import { filterMyDocuments } from "../../utils/documentOwnership";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 import { FolderShareModal } from "./components/FolderShareModal";
 import { DocumentInformationModal as DocumentInfoModal } from "../../components/ui/DocumentInformationModal";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 interface LibraryDocument {
   id: number;
@@ -796,7 +797,9 @@ function DocumentRow({
 
 export function MyLibrary() {
   const navigate = useNavigate();
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [view, setView] = useState<"grid" | "list">("list");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
   const [allCategories, setAllCategories] = useState<CategoryResponse[]>([]);
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
@@ -1667,6 +1670,12 @@ export function MyLibrary() {
   }, [folders, rootFolders, selectedCategoryId, selectedFolderId]);
 
   const visibleItemCount = visibleFolders.length + filteredDocuments.length;
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageEnd = currentPage * pageSize;
+  const paginatedFolders = visibleFolders.slice(pageStart, pageEnd);
+  const documentStart = Math.max(0, pageStart - visibleFolders.length);
+  const documentEnd = Math.max(0, pageEnd - visibleFolders.length);
+  const paginatedDocuments = filteredDocuments.slice(documentStart, documentEnd);
 
   const handleFolderDragStart = (
     event: DragEvent<HTMLDivElement>,
@@ -1926,7 +1935,7 @@ export function MyLibrary() {
         {view === "grid" ? (
           visibleItemCount > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {visibleFolders.map((folder) => (
+              {paginatedFolders.map((folder) => (
                 <FolderCard
                   key={`folder-${folder.id}`}
                   folder={folder}
@@ -1950,7 +1959,7 @@ export function MyLibrary() {
                 />
               ))}
 
-              {filteredDocuments.map((document) => {
+              {paginatedDocuments.map((document) => {
                 const FileIcon = getFileIcon(document);
 
                 return (
@@ -2047,7 +2056,7 @@ export function MyLibrary() {
 
               {visibleItemCount > 0 ? (
                 <>
-                  {visibleFolders.map((folder) => (
+                  {paginatedFolders.map((folder) => (
                     <FolderRow
                       key={`folder-row-${folder.id}`}
                       folder={folder}
@@ -2071,7 +2080,7 @@ export function MyLibrary() {
                     />
                   ))}
 
-                  {filteredDocuments.map((document) => (
+                  {paginatedDocuments.map((document) => (
                     <DocumentRow
                       key={`document-row-${document.id}`}
                       document={document}
@@ -2108,6 +2117,7 @@ export function MyLibrary() {
             </div>
           </div>
         )}
+        <PaginationControls currentPage={currentPage} totalItems={visibleItemCount} pageSize={pageSize} onPageChange={setCurrentPage} />
       </section>
 
       {viewingDocumentInfo && (

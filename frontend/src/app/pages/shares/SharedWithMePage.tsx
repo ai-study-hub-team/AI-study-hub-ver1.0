@@ -104,7 +104,7 @@ export function SharedWithMePage() {
 
       const response = await sharedWithMeApi.getSharedItems({
         page,
-        size: 20,
+        size: 10,
         type: filterType,
       });
 

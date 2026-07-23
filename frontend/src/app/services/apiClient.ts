@@ -66,6 +66,21 @@ const isPublicEndpoint = (url?: string): boolean => {
   );
 };
 
+const isExternalRedirectResponse = (error: any): boolean => {
+  const responseUrl = String(error?.request?.responseURL || "");
+  const apiBaseUrl = String(apiClient.defaults.baseURL || "");
+
+  if (!responseUrl || !apiBaseUrl) return false;
+
+  try {
+    const finalOrigin = new URL(responseUrl, window.location.origin).origin;
+    const apiOrigin = new URL(apiBaseUrl, window.location.origin).origin;
+    return finalOrigin !== apiOrigin;
+  } catch {
+    return false;
+  }
+};
+
 export const getAuthHeader = (): Record<string, string> => {
   const token = getAuthToken();
 
@@ -108,6 +123,7 @@ apiClient.interceptors.request.use(
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _retryAfterRefresh?: boolean;
+  _accessTokenRefreshed?: boolean;
 };
 
 type RefreshResponse = {
@@ -158,11 +174,14 @@ apiClient.interceptors.response.use(
     const status = error?.response?.status;
     const requestUrl = String(error?.config?.url || "");
     const isAuthenticationRequest = isPublicEndpoint(requestUrl);
+    const isExternalResponse = isExternalRedirectResponse(error);
     const originalRequest = error?.config as RetryableRequestConfig | undefined;
+    const isBlobRequest = originalRequest?.responseType === "blob";
 
     if (
       status === 401 &&
       !isAuthenticationRequest &&
+      !isExternalResponse &&
       originalRequest &&
       !originalRequest._retryAfterRefresh
     ) {
@@ -173,6 +192,7 @@ apiClient.interceptors.response.use(
         const headers = AxiosHeaders.from(originalRequest.headers);
         headers.set("Authorization", `Bearer ${accessToken}`);
         originalRequest.headers = headers;
+        originalRequest._accessTokenRefreshed = true;
 
         return apiClient(originalRequest);
       } catch {
@@ -180,7 +200,13 @@ apiClient.interceptors.response.use(
       }
     }
 
-    if (status === 401 && !isAuthenticationRequest) {
+    if (
+      status === 401 &&
+      !isAuthenticationRequest &&
+      !isExternalResponse &&
+      !isBlobRequest &&
+      !originalRequest?._accessTokenRefreshed
+    ) {
       clearAuthStorage();
 
       const currentPath = window.location.pathname;

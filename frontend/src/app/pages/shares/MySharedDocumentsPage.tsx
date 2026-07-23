@@ -13,6 +13,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 import { documentApi } from "../../services/documentApi";
 import {
@@ -93,6 +94,9 @@ export function MySharedDocumentsPage() {
   const [keyword, setKeyword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [revokingKey, setRevokingKey] = useState<string | null>(null);
+  const [folderPage, setFolderPage] = useState(1);
+  const [documentPage, setDocumentPage] = useState(1);
+  const pageSize = 10;
 
   const loadSharedItems = useCallback(async () => {
     try {
@@ -406,7 +410,7 @@ export function MySharedDocumentsPage() {
           </div>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {filteredFolderRows.map((row) => {
+            {filteredFolderRows.slice((folderPage - 1) * pageSize, folderPage * pageSize).map((row) => {
               const folderTitle = getFolderTitle(row.folder);
 
               return (
@@ -506,6 +510,7 @@ export function MySharedDocumentsPage() {
             })}
           </div>
         )}
+        <div className="px-5 pb-5"><PaginationControls currentPage={folderPage} totalItems={filteredFolderRows.length} pageSize={pageSize} onPageChange={setFolderPage} /></div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -533,7 +538,7 @@ export function MySharedDocumentsPage() {
           </div>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {filteredRows.map((row) => {
+            {filteredRows.slice((documentPage - 1) * pageSize, documentPage * pageSize).map((row) => {
               const documentTitle = getDocumentTitle(row.document);
 
               return (
@@ -632,6 +637,7 @@ export function MySharedDocumentsPage() {
             })}
           </div>
         )}
+        <div className="px-5 pb-5"><PaginationControls currentPage={documentPage} totalItems={filteredRows.length} pageSize={pageSize} onPageChange={setDocumentPage} /></div>
       </section>
     </div>
   );

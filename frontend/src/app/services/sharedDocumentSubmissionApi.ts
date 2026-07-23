@@ -4,6 +4,7 @@ export type SharedDocumentSubmissionStatus =
   | "PENDING_REVIEW"
   | "APPROVED"
   | "REJECTED"
+  | "EXPIRED"
   | string;
 
 export interface SharedDocumentSubmissionResponse {
@@ -27,12 +28,10 @@ export interface SharedDocumentSubmissionResponse {
 }
 
 export interface GetSubmissionsParams {
-  userId: number;
   status?: string;
 }
 
 export interface ApproveSubmissionPayload {
-  userId: number;
   title: string;
   description?: string;
   categoryId?: number;
@@ -42,7 +41,6 @@ export interface ApproveSubmissionPayload {
 }
 
 export interface RejectSubmissionPayload {
-  userId: number;
   reason: string;
 }
 
@@ -53,12 +51,9 @@ export const sharedDocumentSubmissionApi = {
     });
   },
 
-  getSubmission: (id: number, userId: number) => {
+  getSubmission: (id: number) => {
     return apiClient.get<SharedDocumentSubmissionResponse>(
       `/api/shared-document-submissions/${id}`,
-      {
-        params: { userId },
-      },
     );
   },
 
@@ -75,17 +70,15 @@ export const sharedDocumentSubmissionApi = {
       payload,
     );
   },
-  viewSubmissionFile: async (id: number, userId: number): Promise<Blob> => {
-    const response = await apiClient.get(`/api/shared-document-submissions/${id}/file`, {
-      params: { userId },
+  viewSubmissionFile: async (id: number): Promise<Blob> => {
+    const response = await apiClient.get(`/api/shared-document-submissions/${id}/preview`, {
       responseType: "blob",
     });
     return response.data;
   },
 
-  downloadSubmissionFile: async (id: number, userId: number): Promise<Blob> => {
+  downloadSubmissionFile: async (id: number): Promise<Blob> => {
     const response = await apiClient.get(`/api/shared-document-submissions/${id}/download`, {
-      params: { userId },
       responseType: "blob",
     });
     return response.data;

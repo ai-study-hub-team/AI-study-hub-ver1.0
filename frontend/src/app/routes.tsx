@@ -66,7 +66,36 @@ import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { UserManagement } from "./pages/admin/UserManagement";
 import { DocumentAdmin } from "./pages/admin/DocumentAdmin";
 import { ReportManagement } from "./pages/admin/ReportManagement";
-import { AnalyticsDashboard } from "./pages/admin/AnalyticsDashboard";
+import { TokenAnalyticsPage } from "./pages/admin/TokenAnalyticsPage";
+import { StorageAnalyticsPage } from "./pages/admin/StorageAnalyticsPage";
+import { PricingAnalyticsPage } from "./pages/admin/PricingAnalyticsPage";
+import { PlanManagement } from "./pages/admin/PlanManagement";
+import { ActivityLogs } from "./pages/admin/ActivityLogs";
+
+function AdminOnly({ children }: { children: React.ReactNode }) {
+  let role = localStorage.getItem("role") || "";
+  try {
+    role ||= JSON.parse(localStorage.getItem("user") || "{}").role || "";
+  } catch {
+    // Invalid cached user data is treated as a non-admin session.
+  }
+  return role.toUpperCase().replace("ROLE_", "") === "ADMIN"
+    ? children
+    : <Navigate to="/admin" replace />;
+}
+
+function ManagementOnly({ children }: { children: React.ReactNode }) {
+  let role = localStorage.getItem("role") || "";
+  try {
+    role = JSON.parse(localStorage.getItem("user") || "null")?.role || role;
+  } catch {
+    // Invalid cached user data is treated as a regular user session.
+  }
+  const normalizedRole = role.toUpperCase().replace("ROLE_", "");
+  return normalizedRole === "ADMIN" || normalizedRole === "MANAGER"
+    ? children
+    : <Navigate to="/app/dashboard" replace />;
+}
 
 export const router = createBrowserRouter([
   {
@@ -279,7 +308,7 @@ export const router = createBrowserRouter([
       // Admin routes
       {
         path: "admin",
-        element: <DashboardLayout isAdmin />,
+        element: <ManagementOnly><DashboardLayout isAdmin /></ManagementOnly>,
         children: [
           {
             index: true,
@@ -290,6 +319,10 @@ export const router = createBrowserRouter([
             element: <UserManagement />,
           },
           {
+            path: "activity-logs",
+            element: <ActivityLogs />,
+          },
+          {
             path: "documents",
             element: <DocumentAdmin />,
           },
@@ -298,9 +331,13 @@ export const router = createBrowserRouter([
             element: <ReportManagement />,
           },
           {
-            path: "analytics",
-            element: <AnalyticsDashboard />,
+            path: "plans",
+            element: <AdminOnly><PlanManagement /></AdminOnly>,
           },
+          { path: "pricing", element: <AdminOnly><PricingAnalyticsPage /></AdminOnly> },
+          { path: "tokens", element: <TokenAnalyticsPage /> },
+          { path: "storage", element: <StorageAnalyticsPage /> },
+          { path: "analytics", element: <Navigate to="/admin/pricing" replace /> },
         ],
       },
 

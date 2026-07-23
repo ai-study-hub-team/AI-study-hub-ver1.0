@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { AlertTriangle, CheckCircle2, Loader2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 
@@ -7,6 +7,7 @@ import {
   publicShareApi,
   type PublicDocumentShareLinkResponse,
 } from "../../services/publicShareApi";
+import { getAuthToken } from "../../services/apiClient";
 
 const getUploadErrorMessage = (error: any) => {
   const rawMessage = String(
@@ -35,19 +36,19 @@ const getUploadErrorMessage = (error: any) => {
 
 export function PublicSharedUploadPage() {
   const { token } = useParams();
+  const navigate = useNavigate();
 
   const [linkData, setLinkData] =
     useState<PublicDocumentShareLinkResponse | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [submitted, setSubmitted] = useState(false);
 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [uploaderName, setUploaderName] = useState("");
-  const [uploaderEmail, setUploaderEmail] = useState("");
 
   useEffect(() => {
     if (!token) {
@@ -101,29 +102,28 @@ export function PublicSharedUploadPage() {
       return;
     }
 
-    if (!title.trim()) {
-      toast.error("Please enter a document title.");
+    if (!getAuthToken()) {
+      sessionStorage.setItem("postLoginRedirect", window.location.pathname);
+      navigate(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
 
     try {
       setIsSubmitting(true);
+      setUploadProgress(0);
 
       await publicShareApi.submitPublicDocumentShareLink({
         token,
         file,
         title: title.trim(),
         description: description.trim(),
-        uploaderName: uploaderName.trim(),
-        uploaderEmail: uploaderEmail.trim(),
+        onProgress: setUploadProgress,
       });
 
       setSubmitted(true);
       setFile(null);
       setTitle("");
       setDescription("");
-      setUploaderName("");
-      setUploaderEmail("");
 
       toast.success("Upload submitted. The owner will review it.");
     } catch (error: any) {
@@ -132,6 +132,7 @@ export function PublicSharedUploadPage() {
       toast.error(getUploadErrorMessage(error));
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(0);
     }
   };
 
@@ -210,14 +211,14 @@ export function PublicSharedUploadPage() {
 
             <label className="block space-y-1.5">
               <span className="text-sm font-bold text-slate-700">
-                Document title *
+                Document title
               </span>
 
               <input
                 value={title}
                 disabled={isSubmitting}
                 onChange={(event) => setTitle(event.target.value)}
-                placeholder="Example: SWP391 - Lecture 1"
+                placeholder="Optional, for example: SWP391 - Lecture 1"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </label>
@@ -237,37 +238,26 @@ export function PublicSharedUploadPage() {
               />
             </label>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block space-y-1.5">
-                <span className="text-sm font-bold text-slate-700">
-                  Your name
-                </span>
-
-                <input
-                  value={uploaderName}
-                  disabled={isSubmitting}
-                  onChange={(event) => setUploaderName(event.target.value)}
-                  placeholder="Nguyen Van B"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
-
-              <label className="block space-y-1.5">
-                <span className="text-sm font-bold text-slate-700">
-                  Your email
-                </span>
-
-                <input
-                  type="email"
-                  value={uploaderEmail}
-                  disabled={isSubmitting}
-                  onChange={(event) => setUploaderEmail(event.target.value)}
-                  placeholder="b@example.com"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
-            </div>
+            <p className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-800">
+              You must sign in to upload. Your identity is taken securely from
+              your account. Storage is charged to the link owner.
+            </p>
           </div>
+
+          {isSubmitting && (
+            <div className="mt-4" aria-live="polite">
+              <div className="mb-1 flex justify-between text-xs font-bold text-slate-600">
+                <span>Uploading</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full bg-blue-600 transition-[width]"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           <button
             type="button"

@@ -28,6 +28,7 @@ import { filterMyDocuments } from "../../utils/documentOwnership";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
 import { DocumentInformationModal } from "../../components/ui/DocumentInformationModal";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 const statusBadgeClass: Record<AiStatus, string> = {
   UPLOADED: "bg-blue-50 text-blue-700 ring-blue-200",
@@ -68,6 +69,8 @@ export function CategoryDocumentsPage() {
   const { categoryId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const backPath = location.state?.from ?? "/app/categories";
 
   const [categoryName, setCategoryName] = useState("");
@@ -338,7 +341,7 @@ export function CategoryDocumentsPage() {
           </div>
 
           {documents.length > 0 ? (
-            documents.map((document) => (
+            documents.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((document) => (
               <div
                 key={document.id}
                 role="button"
@@ -407,6 +410,7 @@ export function CategoryDocumentsPage() {
             </div>
           )}
         </div>
+        <PaginationControls currentPage={currentPage} totalItems={documents.length} pageSize={pageSize} onPageChange={setCurrentPage} />
       </div>
 
       {viewingDocumentInfo && (
