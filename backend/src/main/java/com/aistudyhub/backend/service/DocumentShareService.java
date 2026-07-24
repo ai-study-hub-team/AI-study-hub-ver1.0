@@ -30,10 +30,18 @@ public class DocumentShareService {
     private final UserRepository userRepository;
     private final DocumentShareRepository documentShareRepository;
     private final CurrentUserService currentUserService;
-    private final ResendEmailService resendEmailService;
+    private final SmtpEmailService smtpEmailService;
     private final ShareValidationService shareValidationService;
     private final NotificationService notificationService;
 
+    /**
+     * Method share document cho user khac
+     * Lay user tu currentUser, kiem tra document co ton tai hay active va co phai owner ko neu ko bao loi
+     * Kiem tra mail dc share co ton tai hay ko, ko dc tu share cho chinh ban than neu ko bao loi, kiem tra doc nay tung
+     * dc share cho user nay hay chua neu roi chi can update thay vi tao moi,kiem tra neu share da ton tai va ko co loi
+     * gi thi ko tao lai ko thong bao moi
+     * sau do gui thong bao he thong va gui thong bao qua mail
+     */
     @Transactional
     public ShareResultResponse shareDocumentToUsers(Long documentId, ShareRequest request) {
         User currentUser = currentUserService.getCurrentUser();
@@ -102,7 +110,7 @@ public class DocumentShareService {
 
         for (User receiver : emailReceivers) {
             try {
-                resendEmailService.sendDocumentSharedEmail(receiver, currentUser, document, permission);
+                smtpEmailService.sendDocumentSharedEmail(receiver, currentUser, document, permission);
             } catch (Exception ex) {
                 log.warn("Failed to send share email. documentId={}, receiverEmail={}",
                         document.getId(), receiver.getEmail(), ex);
@@ -117,6 +125,13 @@ public class DocumentShareService {
                 .build();
     }
 
+    /**
+     * Xem nhung ai da duoc share
+     * Lay user tu currentUser, tim doc theo documentid neu ko ton tai hoac ko active thi bao loi, kiem tra owner
+     * Query bang lay cac share có status active, loc them share co con hieu luc khong
+     * Chuyen cho SharedUserResponse cac thong tin nhu: shareId, userId, fullName, email, permission, status,
+     * sharedAt, expiresAt
+     */
 
     @Transactional(readOnly = true)
     public List<SharedUserResponse> getSharedUsers(Long documentId) {
@@ -131,6 +146,14 @@ public class DocumentShareService {
                 .map(this::toSharedUserResponse)
                 .toList();
     }
+
+    /**
+     * Method thu hoi quyen share cho 1 user
+     * Ko cho revoke chinh owner neu truyen targetUserId la current owner thi bao loi
+     * Tim documentId va Id user dc share
+     * Neu share do da bi revoke hoac not active thi coi nhu khong co active share de revoke
+     * Neu chua thi cap nhat tu active thanh revoked trong db
+     */
 
     @Transactional
     public void revokeShare(Long documentId, Long userId) {
@@ -154,6 +177,9 @@ public class DocumentShareService {
         documentShareRepository.save(share);
     }
 
+    /**
+     * Method dung cho flow Shared With Me de user xem cai doc duoc share cho minh
+     */
     @Transactional(readOnly = true)
     public List<SharedItemResponse> getSharedDocumentsForCurrentUser() {
         User currentUser = currentUserService.getCurrentUser();
@@ -189,6 +215,9 @@ public class DocumentShareService {
                 || share.getExpiresAt().isAfter(LocalDateTime.now()));
     }
 
+    /**
+     * dùng cho owner xem danh sách user được share document.
+     */
     private SharedUserResponse toSharedUserResponse(DocumentShare share) {
         User sharedWith = share.getSharedWith();
 
@@ -204,6 +233,10 @@ public class DocumentShareService {
                 .build();
     }
 
+
+    /**
+     * dùng cho receiver xem danh sách document/folder được share với mình.
+     */
     private SharedItemResponse toSharedItemResponse(DocumentShare share) {
         Document document = share.getDocument();
         User owner = share.getOwner();

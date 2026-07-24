@@ -26,6 +26,8 @@ public class AuthController {
     private final EmailVerificationService emailVerificationService;
     private final PasswordResetService passwordResetService;
 
+    // Dang ky tai khoan moi.
+    // Goi AuthService de tao user, gan goi free va gui email verification.
     @PostMapping("/register")
     public ResponseEntity<EmailVerificationResponse> register(
             @Valid @RequestBody RegisterRequest request
@@ -35,6 +37,8 @@ public class AuthController {
                 .body(authService.register(request));
     }
 
+    // Dang nhap bang email/password.
+    // Neu hop le, AuthService se tra access token va refresh token.
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(
             @Valid @RequestBody LoginRequest request
@@ -42,6 +46,8 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request));
     }
 
+    // Gui email quen mat khau.
+    // Service tao reset token va gui link reset password cho user.
     @PostMapping("/forgot-password")
     public ResponseEntity<MessageResponse> forgotPassword(
             @Valid @RequestBody ForgotPasswordRequest request,
@@ -56,6 +62,8 @@ public class AuthController {
         );
     }
 
+    // Dat lai mat khau bang reset token.
+    // Service kiem tra token va cap nhat password moi.
     @PostMapping("/reset-password")
     public ResponseEntity<MessageResponse> resetPassword(
             @Valid @RequestBody ResetPasswordRequest request
@@ -65,6 +73,7 @@ public class AuthController {
         );
     }
 
+    // Xac thuc email bang token tren link email verification.
     @GetMapping("/verify-email")
     public ResponseEntity<EmailVerificationResponse> verifyEmail(
             @RequestParam String token
@@ -72,6 +81,7 @@ public class AuthController {
         return ResponseEntity.ok(emailVerificationService.verifyEmail(token));
     }
 
+    // Gui lai email verification cho user chua xac thuc email.
     @PostMapping("/resend-verification")
     public ResponseEntity<EmailVerificationResponse> resendVerification(
             @Valid @RequestBody ResendVerificationEmailRequest request,
@@ -86,6 +96,8 @@ public class AuthController {
         );
     }
 
+    // Dang nhap bang Google.
+    // Service kiem tra Google token, tao/tim user va tra token cua he thong.
     @PostMapping("/google")
     public ResponseEntity<AuthResponse> googleLogin(
             @Valid @RequestBody GoogleLoginRequest request
@@ -93,6 +105,8 @@ public class AuthController {
         return ResponseEntity.ok(googleAuthService.loginWithGoogle(request));
     }
 
+    // Cap lai access token bang refresh token.
+    // AuthService kiem tra refresh token va tao cap token moi.
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refresh(
             @Valid @RequestBody RefreshTokenRequest request
@@ -102,6 +116,9 @@ public class AuthController {
         );
     }
 
+    // Dang xuat thiet bi hien tai.
+    // Can access token hop le de lay authenticated email,
+    // sau do revoke refresh token duoc gui len.
     @SecurityRequirement(name = "bearerAuth")
     @PostMapping("/logout")
     public ResponseEntity<MessageResponse> logout(
@@ -118,6 +135,8 @@ public class AuthController {
         );
     }
 
+    // Lay thong tin user dang dang nhap.
+    // Can access token hop le, Spring inject Authentication tu SecurityContext.
     @SecurityRequirement(name = "bearerAuth")
     @GetMapping("/me")
     public ResponseEntity<UserResponse> me(

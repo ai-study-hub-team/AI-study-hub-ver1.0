@@ -8,9 +8,8 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 @Component
-@ConfigurationProperties(prefix = "resend")
-public class ResendProperties {
-    private String apiKey;
+@ConfigurationProperties(prefix = "mail")
+public class MailProperties {
     private String fromEmail;
     private String frontendUrl;
 }

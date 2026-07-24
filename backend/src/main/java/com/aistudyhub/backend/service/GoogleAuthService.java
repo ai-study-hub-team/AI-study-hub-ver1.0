@@ -36,6 +36,9 @@ public class GoogleAuthService {
     private final AuthService authService;
     private final SubscriptionService subscriptionService;
 
+    /**
+     *
+     */
     @Transactional
     public AuthResponse loginWithGoogle(GoogleLoginRequest request) {
         Jwt jwt = decodeAndValidate(request.getIdToken());
