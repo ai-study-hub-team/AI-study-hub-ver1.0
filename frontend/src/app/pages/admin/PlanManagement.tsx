@@ -340,7 +340,7 @@ export function PlanManagement() {
                 </h2>
                 <p className="text-sm text-slate-500">{dialogMode === "view" ? "Information returned by GET /api/admin/plans/{id}." : "Configure plan limits and upload permissions."}</p>
               </div>
-              <button type="button" onClick={closeDialog} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-5 w-5" /></button>
+              <button type="button" onClick={() => closeDialog()} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-5 w-5" /></button>
             </div>
 
             {saving && dialogMode === "view" ? (
@@ -375,7 +375,7 @@ export function PlanManagement() {
                 </div>
 
                 <div className="flex justify-end gap-3 border-t border-slate-200 pt-5 dark:border-slate-700">
-                  <button type="button" onClick={closeDialog} className="rounded-xl border border-slate-200 px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">{dialogMode === "view" ? "Close" : "Cancel"}</button>
+                  <button type="button" onClick={() => closeDialog()} className="rounded-xl border border-slate-200 px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">{dialogMode === "view" ? "Close" : "Cancel"}</button>
                   {dialogMode !== "view" && (
                     <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
                       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {dialogMode === "create" ? "Create plan" : "Save changes"}
