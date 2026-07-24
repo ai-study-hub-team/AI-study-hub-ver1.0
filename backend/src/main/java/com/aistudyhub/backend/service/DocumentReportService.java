@@ -35,6 +35,16 @@ public class DocumentReportService {
     private final UserRepository userRepository;
     private final RolePolicyService rolePolicyService;
 
+    /**
+     * Method user report document
+     * Lay thong tin user tu jwt sau do tim doc theo doc id neu ko co thi bao loi
+     * Kiem tra status ko active thi bao loi
+     * Kiem tra owner va ko cho ower tu report chinh minh
+     * Chi user co quyen xem document ms dc report neu private ma kg share cho minh bao loi
+     * Neu chon ly do la orther thi phai ghi ro li do la gi
+     * Kiem tra trung lap neu co roi thi khong tao them duoc
+     * Tao report ms status PENDING sau do gui thong bao cho cac ad or manager co trang thai active
+     */
     @Transactional
     public DocumentReportResponse reportDocument(Long documentId, ReportDocumentRequest request) {
         User reporter = currentUserService.getCurrentUser();
@@ -100,6 +110,9 @@ public class DocumentReportService {
         return toResponse(savedReport);
     }
 
+    /**
+     *
+     */
     @Transactional(readOnly = true)
     public Page<DocumentReportResponse> getReports(
             DocumentReportStatus status,

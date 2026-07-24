@@ -27,6 +27,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final UserRepository userRepository;
     private final AuthenticationEntryPoint authenticationEntryPoint;
 
+    // JWT filter chay tren moi request.
+    // Neu co Bearer token hop le, filter lay email tu token,
+    // tim user trong DB, kiem tra user ACTIVE va da verify email,
+    // sau do luu Authentication vao SecurityContext cho Controller/Service su dung.
+    // Token sai, user inactive hoac chua verify email thi chan request.
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,

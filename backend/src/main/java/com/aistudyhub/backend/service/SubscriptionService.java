@@ -26,7 +26,7 @@ public class SubscriptionService {
 
     private final UserSubscriptionRepository userSubscriptionRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
-    private final ResendEmailService resendEmailService;
+    private final SmtpEmailService smtpEmailService;
     private final NotificationService notificationService;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
@@ -193,7 +193,7 @@ public class SubscriptionService {
                 continue;
             }
 
-            resendEmailService.sendSubscriptionExpiryEmail(
+            smtpEmailService.sendSubscriptionExpiryEmail(
                     sub.getUser(),
                     sub.getPlan().getName(),
                     sub.getEndDate(),
@@ -242,7 +242,7 @@ public class SubscriptionService {
             }
 
             if (sub.getExpiredNotificationSentAt() == null) {
-                resendEmailService.sendSubscriptionExpiryEmail(
+                smtpEmailService.sendSubscriptionExpiryEmail(
                         sub.getUser(),
                         sub.getPlan().getName(),
                         sub.getEndDate(),

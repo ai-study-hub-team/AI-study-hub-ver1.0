@@ -23,6 +23,12 @@ public class FavoriteService {
     private final CurrentUserService currentUserService;
     private final DocumentAccessService documentAccessService;
 
+    /**
+     * Method them document vao danh sach yeu thich.
+     * Lay user tu JWT/SecurityContext sau do check xem user co quyen xem ko
+     * Check da favorite chua neu roi thi dung lai row cu ko can tao lai, neu chua thi tao ms
+     * sau do Response tra FavoriteDocumentResponse
+     */
     @Transactional
     public FavoriteDocumentResponse addFavorite(Long documentId) {
         User currentUser = currentUserService.getCurrentUser();
@@ -40,6 +46,12 @@ public class FavoriteService {
         return toResponse(favorite);
     }
 
+    /**
+     * Method xoa document khoi danh sach yeu thich.
+     * Lay current user tu JWT sau do kiem tra co ton tai hay khong
+     * Xoa yeu thich theo current user id va doc id
+     */
+
     @Transactional
     public void removeFavorite(Long documentId) {
         User currentUser = currentUserService.getCurrentUser();
@@ -51,6 +63,11 @@ public class FavoriteService {
         favoriteRepository.deleteByUserIdAndDocumentId(currentUser.getId(), documentId);
     }
 
+    /**
+     * Method lay danh sach favorite caa current user.
+     * Lay current user tu JWT sau do repository query favorite cua current user va chi lay document ACTIVE
+     * Sau đo map sang response
+     */
     @Transactional(readOnly = true)
     public Page<FavoriteDocumentResponse> getMyFavorites(Pageable pageable) {
         User currentUser = currentUserService.getCurrentUser();
@@ -64,6 +81,9 @@ public class FavoriteService {
                 .map(this::toResponse);
     }
 
+    /**
+     * Method map entity sang DTO
+     */
     private FavoriteDocumentResponse toResponse(Favorite favorite) {
         Document document = favorite.getDocument();
         CloudFile cloudFile = document.getCloudFile();

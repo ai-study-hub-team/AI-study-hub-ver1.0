@@ -1,6 +1,6 @@
 package com.aistudyhub.backend.service;
 
-import com.aistudyhub.backend.config.ResendProperties;
+import com.aistudyhub.backend.config.MailProperties;
 import com.aistudyhub.backend.dto.request.CreatePublicLinkRequest;
 import com.aistudyhub.backend.dto.response.PublicDocumentResponse;
 import com.aistudyhub.backend.dto.response.PublicLinkResponse;
@@ -19,7 +19,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 
+import java.net.MalformedURLException;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Base64;
@@ -35,7 +37,7 @@ public class DocumentPublicLinkService {
     private final DocumentRepository documentRepository;
     private final DocumentPublicLinkRepository documentPublicLinkRepository;
     private final CurrentUserService currentUserService;
-    private final ResendProperties resendProperties;
+    private final MailProperties mailProperties;
     private final FileStorageService fileStorageService;
 
     public record PublicDocumentFile(
@@ -114,12 +116,16 @@ public class DocumentPublicLinkService {
         documentPublicLinkRepository.save(publicLink);
 
         Document document = publicLink.getDocument();
+        CloudFile cloudFile = document.getCloudFile();
 
         return PublicDocumentResponse.builder()
                 .documentId(document.getId())
                 .title(document.getTitle())
                 .description(document.getDescription())
                 .fileUrl(buildPublicFileUrl(publicLink.getToken()))
+                .fileName(cloudFile != null ? cloudFile.getFileName() : null)
+                .originalName(cloudFile != null ? cloudFile.getOriginalName() : null)
+                .contentType(cloudFile != null ? getCloudFileContentType(cloudFile) : null)
                 .allowDownload(Boolean.TRUE.equals(publicLink.getAllowDownload()))
                 .build();
     }
@@ -138,7 +144,22 @@ public class DocumentPublicLinkService {
         Document document = publicLink.getDocument();
         CloudFile cloudFile = document.getCloudFile();
 
-        if (cloudFile == null || cloudFile.getFileName() == null || cloudFile.getFileName().isBlank()) {
+        if (cloudFile == null) {
+            throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
+        }
+
+        String contentType = getCloudFileContentType(cloudFile);
+
+        if (isExternalUrl(cloudFile.getFileUrl())) {
+            return new PublicDocumentFile(
+                    loadExternalResource(cloudFile.getFileUrl()),
+                    cloudFile.getFileName(),
+                    cloudFile.getOriginalName(),
+                    contentType
+            );
+        }
+
+        if (cloudFile.getFileName() == null || cloudFile.getFileName().isBlank()) {
             throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
         }
 
@@ -149,16 +170,43 @@ public class DocumentPublicLinkService {
             throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
         }
 
-        String contentType = cloudFile.getFileType() != null && !cloudFile.getFileType().isBlank()
-                ? cloudFile.getFileType()
-                : fileStorageService.getMimeTypeFromFileName(cloudFile.getFileName());
-
         return new PublicDocumentFile(
                 resource,
                 cloudFile.getFileName(),
                 cloudFile.getOriginalName(),
                 contentType
         );
+    }
+
+    private Resource loadExternalResource(String fileUrl) {
+        try {
+            Resource resource = new UrlResource(fileUrl);
+
+            if (!resource.exists() || !resource.isReadable()) {
+                throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
+            }
+
+            return resource;
+        } catch (MalformedURLException ex) {
+            throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
+        }
+    }
+
+    private String getCloudFileContentType(CloudFile cloudFile) {
+        if (cloudFile.getFileType() != null && !cloudFile.getFileType().isBlank()) {
+            return cloudFile.getFileType();
+        }
+
+        if (cloudFile.getOriginalName() != null && !cloudFile.getOriginalName().isBlank()) {
+            return fileStorageService.getMimeTypeFromFileName(cloudFile.getOriginalName());
+        }
+
+        return fileStorageService.getMimeTypeFromFileName(cloudFile.getFileName());
+    }
+
+    private boolean isExternalUrl(String fileUrl) {
+        return fileUrl != null
+                && (fileUrl.startsWith("http://") || fileUrl.startsWith("https://"));
     }
 
     private DocumentPublicLink getValidPublicLink(String token) {
@@ -248,7 +296,7 @@ public class DocumentPublicLinkService {
     }
 
     private String buildPublicUrl(String token) {
-        String frontendUrl = resendProperties.getFrontendUrl();
+        String frontendUrl = mailProperties.getFrontendUrl();
 
         if (frontendUrl == null || frontendUrl.isBlank()) {
             frontendUrl = "http://localhost:5173";

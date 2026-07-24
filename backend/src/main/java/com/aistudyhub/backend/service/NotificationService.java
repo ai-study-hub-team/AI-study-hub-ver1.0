@@ -22,6 +22,10 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final CurrentUserService currentUserService;
 
+    /**
+     * Method tao notification cho mot user.
+     * Neu ko co receiver hop le thi k tao tb
+     */
     @Transactional
     public void create(
             User receiver,
@@ -48,6 +52,9 @@ public class NotificationService {
                 .build());
     }
 
+    /**
+     * Lay user htai từ JWT sau do vao db lay dung tb cua user do va tb co status active
+     */
     @Transactional(readOnly = true)
     public Page<NotificationResponse> getMyNotifications(Pageable pageable) {
         User currentUser = currentUserService.getCurrentUser();
@@ -60,6 +67,10 @@ public class NotificationService {
                 .map(this::toResponse);
     }
 
+    /**
+     * Lay user htai từ JWT sau do vao db dem tb cua user do, tb co status active va readAt Null
+     * de tra ve so tb chua doc
+     */
     @Transactional(readOnly = true)
     public long getMyUnreadCount() {
         User currentUser = currentUserService.getCurrentUser();

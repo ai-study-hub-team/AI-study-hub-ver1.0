@@ -31,9 +31,17 @@ public class FolderShareService {
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
     private final ShareValidationService shareValidationService;
-    private final ResendEmailService resendEmailService;
+    private final SmtpEmailService smtpEmailService;
     private final NotificationService notificationService;
 
+    /**
+     * Method share folder cho user khac
+     * Lay user tu currentUser, kiem tra folder co ton tai hay active va co phai owner ko neu ko bao loi
+     * Kiem tra mail dc share co ton tai hay ko, ko dc tu share cho chinh ban than neu ko bao loi, kiem tra folder nay tung
+     * dc share cho user nay hay chua neu roi chi can update thay vi tao moi,kiem tra neu share da ton tai va ko co loi
+     * gi thi ko tao lai ko thong bao moi
+     * sau do gui thong bao he thong va gui thong bao qua mail
+     */
     @Transactional
     public ShareResultResponse shareFolder(Long folderId, ShareRequest request) {
         User currentUser = currentUserService.getCurrentUser();
@@ -101,7 +109,7 @@ public class FolderShareService {
 
         for (User receiver : emailReceivers) {
             try {
-                resendEmailService.sendFolderSharedEmail(receiver, currentUser, folder, permission);
+                smtpEmailService.sendFolderSharedEmail(receiver, currentUser, folder, permission);
             } catch (Exception ex) {
                 log.warn(
                         "Failed to send folder share email. folderId={}, receiverEmail={}",
@@ -120,6 +128,13 @@ public class FolderShareService {
                 .build();
     }
 
+    /**
+     * Xem nhung ai da duoc share
+     * Lay user tu currentUser, tim doc theo folderid neu ko ton tai thi bao loi, kiem tra owner
+     * Query bang lay cac share có status active, loc them share co con hieu luc khong
+     * Chuyen cho SharedUserResponse cac thong tin nhu: shareId, userId, fullName, email, permission, status,
+     * sharedAt, expiresAt
+     */
     @Transactional(readOnly = true)
     public List<SharedUserResponse> getFolderShares(Long folderId) {
         User currentUser = currentUserService.getCurrentUser();
@@ -134,6 +149,13 @@ public class FolderShareService {
                 .toList();
     }
 
+    /**
+     * Method thu hoi quyen share cho 1 user
+     * Ko cho revoke chinh owner neu truyen targetUserId la current owner thi bao loi
+     * Tim folderId va Id user dc share
+     * Neu share do da bi revoke hoac not active thi coi nhu khong co active share de revoke
+     * Neu chua thi cap nhat tu active thanh revoked trong db
+     */
     @Transactional
     public void revokeFolderShare(Long folderId, Long userId) {
         User currentUser = currentUserService.getCurrentUser();

@@ -38,7 +38,7 @@ public class PasswordResetService {
 
     private final UserRepository userRepository;
     private final EmailVerificationTokenRepository tokenRepository;
-    private final ResendEmailService resendEmailService;
+    private final SmtpEmailService smtpEmailService;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordResetProperties properties;
@@ -170,7 +170,7 @@ public class PasswordResetService {
                 .build();
 
         tokenRepository.save(token);
-        resendEmailService.sendPasswordResetEmail(
+        smtpEmailService.sendPasswordResetEmail(
                 user,
                 rawToken,
                 token.getExpiredAt()
