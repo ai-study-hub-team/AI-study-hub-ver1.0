@@ -53,14 +53,6 @@ public class UserDailyUsage {
 
     @Column(nullable = false)
     @Builder.Default
-    private Long inputToken = 0L;
-
-    @Column(nullable = false)
-    @Builder.Default
-    private Long outputToken = 0L;
-
-    @Column(nullable = false)
-    @Builder.Default
     private Long overallTokens = 0L;
 
     @Column(nullable = false, updatable = false)

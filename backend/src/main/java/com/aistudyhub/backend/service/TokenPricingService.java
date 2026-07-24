@@ -10,16 +10,16 @@ import com.aistudyhub.backend.enums.TokenUsageReportPeriod;
 import com.aistudyhub.backend.exception.BadRequestException;
 import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.TokenPricingRepository;
-import com.aistudyhub.backend.repository.UserDailyUsageRepository;
+import com.aistudyhub.backend.repository.TokenUsageLogRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
 import java.util.Locale;
@@ -32,9 +32,8 @@ public class TokenPricingService {
     private static final BigDecimal DEFAULT_INPUT_PRICE_PER_MILLION = new BigDecimal("0.25");
     private static final BigDecimal DEFAULT_OUTPUT_PRICE_PER_MILLION = new BigDecimal("1.50");
     private static final String DEFAULT_CURRENCY = "USD";
-    private static final BigDecimal ONE_MILLION = new BigDecimal("1000000");
     private final TokenPricingRepository tokenPricingRepository;
-    private final UserDailyUsageRepository userDailyUsageRepository;
+    private final TokenUsageLogRepository tokenUsageLogRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
     private final RolePolicyService rolePolicyService;
@@ -52,19 +51,31 @@ public class TokenPricingService {
     }
 
     @Transactional
+    public TokenPricing getActivePricingForUsage() {
+        return getOrCreateActivePricing(null);
+    }
+
+    @Transactional
     public TokenPricingResponse updatePricing(TokenPricingUpdateRequest request) {
         User currentUser = currentUserService.getCurrentUser();
         rolePolicyService.requireAdmin(currentUser, "Only administrators can update token pricing");
 
-        TokenPricing pricing = getOrCreateActivePricing(currentUser.getId());
-        pricing.setModelName(request.getModelName().trim());
-        pricing.setInputPricePerMillion(request.getInputPricePerMillion());
-        pricing.setOutputPricePerMillion(request.getOutputPricePerMillion());
-        pricing.setCurrency(resolveCurrency(request.getCurrency()));
-        pricing.setActive(true);
-        pricing.setUpdatedBy(currentUser.getId());
+        tokenPricingRepository.findAllByActiveTrue().forEach(pricing -> {
+            pricing.setActive(false);
+            pricing.setUpdatedBy(currentUser.getId());
+            tokenPricingRepository.save(pricing);
+        });
 
-        return toResponse(tokenPricingRepository.save(pricing));
+        TokenPricing newPricing = TokenPricing.builder()
+                .modelName(request.getModelName().trim())
+                .inputPricePerMillion(request.getInputPricePerMillion())
+                .outputPricePerMillion(request.getOutputPricePerMillion())
+                .currency(resolveCurrency(request.getCurrency()))
+                .active(true)
+                .updatedBy(currentUser.getId())
+                .build();
+
+        return toResponse(tokenPricingRepository.save(newPricing));
     }
 
     @Transactional
@@ -84,15 +95,24 @@ public class TokenPricingService {
         TokenUsageReportPeriod reportPeriod = parsePeriod(period);
         CostDateRange range = resolveDateRange(reportPeriod, date, fromDate, toDate);
         TokenPricing pricing = getOrCreateActivePricing(null);
+        LocalDateTime fromDateTime = range.fromDate().atStartOfDay();
+        LocalDateTime toDateTime = range.toDate().plusDays(1).atStartOfDay();
         TokenCostAggregate aggregate = userId == null
-                ? userDailyUsageRepository.sumTokenCostByDateRange(range.fromDate(), range.toDate())
-                : userDailyUsageRepository.sumTokenCostByUserIdAndDateRange(userId, range.fromDate(), range.toDate());
+                ? tokenUsageLogRepository.sumTokenCostByCreatedAtRange(fromDateTime, toDateTime)
+                : tokenUsageLogRepository.sumTokenCostByUserIdAndCreatedAtRange(userId, fromDateTime, toDateTime);
 
         long inputToken = aggregate == null || aggregate.getInputToken() == null ? 0L : aggregate.getInputToken();
         long outputToken = aggregate == null || aggregate.getOutputToken() == null ? 0L : aggregate.getOutputToken();
 
-        BigDecimal inputCost = calculateCost(inputToken, pricing.getInputPricePerMillion());
-        BigDecimal outputCost = calculateCost(outputToken, pricing.getOutputPricePerMillion());
+        BigDecimal inputCost = aggregate == null || aggregate.getInputCost() == null
+                ? BigDecimal.ZERO
+                : aggregate.getInputCost();
+        BigDecimal outputCost = aggregate == null || aggregate.getOutputCost() == null
+                ? BigDecimal.ZERO
+                : aggregate.getOutputCost();
+        BigDecimal totalCost = aggregate == null || aggregate.getTotalCost() == null
+                ? inputCost.add(outputCost)
+                : aggregate.getTotalCost();
 
         return TokenCostResponse.builder()
                 .scope(userId == null ? "ALL_USERS" : "SINGLE_USER")
@@ -109,7 +129,7 @@ public class TokenPricingService {
                 .outputPricePerMillion(pricing.getOutputPricePerMillion())
                 .inputCost(inputCost)
                 .outputCost(outputCost)
-                .totalCost(inputCost.add(outputCost))
+                .totalCost(totalCost)
                 .build();
     }
 
@@ -163,12 +183,6 @@ public class TokenPricingService {
                         .active(true)
                         .updatedBy(updatedBy)
                         .build()));
-    }
-
-    private BigDecimal calculateCost(long tokens, BigDecimal pricePerMillion) {
-        return BigDecimal.valueOf(tokens)
-                .multiply(pricePerMillion)
-                .divide(ONE_MILLION, 12, RoundingMode.HALF_UP);
     }
 
     private String resolveCurrency(String currency) {
