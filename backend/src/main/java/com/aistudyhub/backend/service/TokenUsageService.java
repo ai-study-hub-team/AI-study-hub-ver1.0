@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.dto.response.CurrentUserTodayTokenUsageResponse;
+import com.aistudyhub.backend.entity.TokenPricing;
 import com.aistudyhub.backend.entity.TokenUsageLog;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.UserDailyUsage;
@@ -14,6 +15,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 
 @Service
@@ -21,11 +24,14 @@ import java.time.LocalDate;
 @Slf4j
 public class TokenUsageService {
 
+    private static final BigDecimal ONE_MILLION = new BigDecimal("1000000");
+
     private final SubscriptionService subscriptionService;
     private final UserDailyUsageRepository userDailyUsageRepository;
     private final TokenUsageLogRepository tokenUsageLogRepository;
     private final UserRepository userRepository;
     private final RolePolicyService rolePolicyService;
+    private final TokenPricingService tokenPricingService;
 
     @Transactional(readOnly = true)
     public CurrentUserTodayTokenUsageResponse getTodayUsage(Long userId) {
@@ -100,6 +106,9 @@ public class TokenUsageService {
         long safeInputToken = safe(inputToken);
         long safeOutputToken = safe(outputToken);
         long safeTokens = safe(tokens);
+        if (safeInputToken + safeOutputToken == 0 && safeTokens > 0) {
+            safeInputToken = safeTokens;
+        }
         long resolvedTokens = safeTokens > 0 ? safeTokens : safeInputToken + safeOutputToken;
 
         if (resolvedTokens <= 0 && safeInputToken <= 0 && safeOutputToken <= 0) {
@@ -111,12 +120,25 @@ public class TokenUsageService {
             return;
         }
 
+        TokenPricing pricing = tokenPricingService.getActivePricingForUsage();
+        BigDecimal inputCost = calculateCost(safeInputToken, pricing.getInputPricePerMillion());
+        BigDecimal outputCost = calculateCost(safeOutputToken, pricing.getOutputPricePerMillion());
+
         // 1. Log detailed usage
         TokenUsageLog logEntry = TokenUsageLog.builder()
                 .user(user)
                 .featureType(featureType)
-                .modelName(modelName)
+                .modelName(resolveModelName(modelName, pricing))
                 .tokens(resolvedTokens)
+                .inputToken(safeInputToken)
+                .outputToken(safeOutputToken)
+                .pricing(pricing)
+                .inputPricePerMillion(pricing.getInputPricePerMillion())
+                .outputPricePerMillion(pricing.getOutputPricePerMillion())
+                .currency(pricing.getCurrency())
+                .inputCost(inputCost)
+                .outputCost(outputCost)
+                .totalCost(inputCost.add(outputCost))
                 .documentId(documentId)
                 .requestId(requestId)
                 .build();
@@ -132,8 +154,6 @@ public class TokenUsageService {
                         .quizTokens(0L)
                         .extractTokens(0L)
                         .totalTokens(0L)
-                        .inputToken(0L)
-                        .outputToken(0L)
                         .overallTokens(0L)
                         .build());
 
@@ -157,8 +177,6 @@ public class TokenUsageService {
                 log.warn("Unknown feature type for token usage: {}", featureType);
         }
 
-        usage.setInputToken(safe(usage.getInputToken()) + safeInputToken);
-        usage.setOutputToken(safe(usage.getOutputToken()) + safeOutputToken);
         usage.setOverallTokens(safe(usage.getTotalTokens()) + safe(usage.getExtractTokens()));
 
         userDailyUsageRepository.save(usage);
@@ -168,5 +186,18 @@ public class TokenUsageService {
 
     private long safe(Long value) {
         return value == null ? 0L : value;
+    }
+
+    private BigDecimal calculateCost(long tokens, BigDecimal pricePerMillion) {
+        return BigDecimal.valueOf(tokens)
+                .multiply(pricePerMillion)
+                .divide(ONE_MILLION, 12, RoundingMode.HALF_UP);
+    }
+
+    private String resolveModelName(String modelName, TokenPricing pricing) {
+        if (modelName != null && !modelName.isBlank()) {
+            return modelName.trim();
+        }
+        return pricing.getModelName();
     }
 }

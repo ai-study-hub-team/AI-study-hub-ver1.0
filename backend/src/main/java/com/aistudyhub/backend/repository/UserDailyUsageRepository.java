@@ -1,7 +1,6 @@
 package com.aistudyhub.backend.repository;
 
 import com.aistudyhub.backend.dto.projection.TokenUsageDailyAggregate;
-import com.aistudyhub.backend.dto.projection.TokenCostAggregate;
 import com.aistudyhub.backend.entity.UserDailyUsage;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -15,32 +14,6 @@ import java.util.Optional;
 @Repository
 public interface UserDailyUsageRepository extends JpaRepository<UserDailyUsage, Long> {
     Optional<UserDailyUsage> findByUserIdAndUsageDate(Long userId, LocalDate usageDate);
-
-    @Query("""
-            select
-                coalesce(sum(u.inputToken), 0) as inputToken,
-                coalesce(sum(u.outputToken), 0) as outputToken
-            from UserDailyUsage u
-            where u.usageDate between :fromDate and :toDate
-            """)
-    TokenCostAggregate sumTokenCostByDateRange(
-            @Param("fromDate") LocalDate fromDate,
-            @Param("toDate") LocalDate toDate
-    );
-
-    @Query("""
-            select
-                coalesce(sum(u.inputToken), 0) as inputToken,
-                coalesce(sum(u.outputToken), 0) as outputToken
-            from UserDailyUsage u
-            where u.user.id = :userId
-              and u.usageDate between :fromDate and :toDate
-            """)
-    TokenCostAggregate sumTokenCostByUserIdAndDateRange(
-            @Param("userId") Long userId,
-            @Param("fromDate") LocalDate fromDate,
-            @Param("toDate") LocalDate toDate
-    );
 
     @Query("""
             select
