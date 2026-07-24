@@ -34,12 +34,13 @@ public class EmailVerificationService {
 
     private final EmailVerificationTokenRepository tokenRepository;
     private final UserRepository userRepository;
-    private final ResendEmailService resendEmailService;
+    private final SmtpEmailService smtpEmailService;
     private final EmailVerificationProperties properties;
 
     /**
-     * Được gọi ngay sau khi đăng ký user thành công.
-     * Tạo token mới, vô hiệu token cũ nếu có, gửi email xác thực.
+     *Method này được gọi sau khi register user thành công.
+     *Nó tạo verification token mới, lưu token hash vào DB,
+     *gửi email xác thực, rồi trả response yêu cầu user kiểm tra email.
      */
     @Transactional
     public EmailVerificationResponse createAndSendInitialVerification(
@@ -122,8 +123,11 @@ public class EmailVerificationService {
     }
 
     /**
-     * Gửi lại email xác thực.
-     * Không tiết lộ email có tồn tại hay không.
+     * gửi lại email xác thực.
+     *normalize email, tìm user theo email. Nếu user không
+     *tồn tại thì vẫn trả message generic để tránh lộ email
+     *có tồn tại trong hệ thống hay không. Nếu user tồn tại
+     *thì gọi resendForExistingUser.
      */
     @Transactional
     public EmailVerificationResponse resendVerificationEmail(
@@ -143,6 +147,13 @@ public class EmailVerificationService {
                         .build());
     }
 
+    /**
+     * Method xử lý resend cho user thật sự tồn tại.
+     * Nếu user đã verified thì trả response báo đã verify.
+     * Nếu chưa verify thì kiểm tra cooldown dựa trên lastSentAt.
+     * Nếu còn trong thời gian chờ thì throw BadRequestException.
+     * Nếu hợp lệ thì tạo token mới và gửi email mới.
+     */
     private EmailVerificationResponse resendForExistingUser(
             User user,
             String createdIp,
@@ -193,6 +204,12 @@ public class EmailVerificationService {
                 .nextAction("CHECK_EMAIL")
                 .build();
     }
+    /**
+     * Method tạo token xác thực email.
+     * mark các token cũ chưa dùng thành used
+     * generate raw token mới -> hash token ->
+     * build EmailVerificationToken -> save DB -> gửi email verification bằng raw token.
+     */
 
     private void createAndSendToken(
             User user,
@@ -218,14 +235,19 @@ public class EmailVerificationService {
                 .build();
 
         tokenRepository.save(token);
-        resendEmailService.sendEmailVerificationEmail(
+        smtpEmailService.sendEmailVerificationEmail(
                 user,
                 rawToken,
                 token.getExpiredAt()
         );
     }
 
-    private void markTokenUsed(EmailVerificationToken token, LocalDateTime usedAt) {
+    /**
+     * Method đánh dấu token đã được sử dụng.
+     * Nó set used=true, set usedAt, rồi save lại token vào DB.
+     * Dùng khi verify thành công hoặc khi email đã verify rồi nhưng user vẫn bấm lại token.
+    */
+     private void markTokenUsed(EmailVerificationToken token, LocalDateTime usedAt) {
         token.setUsed(true);
         token.setUsedAt(usedAt);
         tokenRepository.save(token);

@@ -12,5 +12,8 @@ public class PublicDocumentResponse {
     private String title;
     private String description;
     private String fileUrl;
+    private String fileName;
+    private String originalName;
+    private String contentType;
     private Boolean allowDownload;
 }

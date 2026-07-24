@@ -8,9 +8,8 @@ application:
       access-token-expiration: 7200000
       refresh-token-expiration: 604800000
 
-resend:
-  api-key: ${RESEND_API_KEY}
-  from-email: "AI Study Hub <onboarding@resend.dev>"
+mail:
+  from-email: ${SMTP_FROM_EMAIL}
   frontend-url: http://localhost:5173
 
 email-verification:
@@ -23,11 +22,23 @@ password-reset:
 
 google:
   oauth:
-    client-id: ${GOOGLE_CLIENT_ID:}
+    client-id: ${GOOGLE_CLIENT_ID}
 
 spring:
   application:
     name: backend
+
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
   datasource:
     url: jdbc:postgresql://localhost:5433/aistudyhub_pgvector_test

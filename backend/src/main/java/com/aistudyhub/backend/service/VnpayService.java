@@ -47,7 +47,7 @@ public class VnpayService {
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final UserRepository userRepository;
     private final SubscriptionService subscriptionService;
-    private final ResendEmailService resendEmailService;
+    private final SmtpEmailService smtpEmailService;
     private final NotificationService notificationService;
 
     /**
@@ -270,7 +270,7 @@ public class VnpayService {
                     transaction.getPurchasedDays()
             );
 
-            resendEmailService.sendPaymentResultEmail(
+            smtpEmailService.sendPaymentResultEmail(
                     transaction.getUser(),
                     transaction.getPlanName(),
                     transaction.getAmount() != null ? transaction.getAmount().toPlainString() : "",
@@ -299,7 +299,7 @@ public class VnpayService {
             transaction.setFailureReason("VNPAY Response Code: " + responseCode);
             paymentTransactionRepository.save(transaction);
             log.info("Payment FAILED for vnpTxnRef: {}. Reason: {}", vnpTxnRef, responseCode);
-            resendEmailService.sendPaymentResultEmail(
+            smtpEmailService.sendPaymentResultEmail(
                     transaction.getUser(),
                     transaction.getPlanName(),
                     transaction.getAmount() != null ? transaction.getAmount().toPlainString() : "",

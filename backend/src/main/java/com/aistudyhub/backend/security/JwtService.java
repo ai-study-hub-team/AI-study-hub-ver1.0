@@ -2,7 +2,6 @@ package com.aistudyhub.backend.security;
 
 import com.aistudyhub.backend.entity.User;
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
@@ -28,6 +27,7 @@ public class JwtService {
 
     private final JwtProperties properties;
 
+    //TAO ACCESS TOKEN
     public String generateAccessToken(User user) {
         Instant now = Instant.now();
 
@@ -44,6 +44,7 @@ public class JwtService {
                 .compact();
     }
 
+    //TAO REFRESH TOKEN DUNG DE XIN ACCESS TOKEN MOI KHI TOKEN CU HET HAN
     public String generateRefreshToken() {
         byte[] bytes = new byte[32];
         SECURE_RANDOM.nextBytes(bytes);
@@ -52,6 +53,7 @@ public class JwtService {
                 .encodeToString(bytes);
     }
 
+    //HASH REFRESH TOKEN TRUOC KHI DUA VAO DB DE AN TOAN HON
     public String hashRefreshToken(String rawToken) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -67,6 +69,7 @@ public class JwtService {
         }
     }
 
+    //CHECK ACCESS TOKEN CO HOP LE HAY KHONG
     public boolean validateAccessToken(String token) {
         try {
             Claims claims = parseClaims(token);
@@ -84,28 +87,12 @@ public class JwtService {
         return parseClaims(token).getSubject();
     }
 
-    public String extractRole(String token) {
-        return parseClaims(token).get("role", String.class);
-    }
-
-    public Date extractExpiration(String token) {
-        return parseClaims(token).getExpiration();
-    }
-
-    public boolean isTokenExpired(String token) {
-        try {
-            return extractExpiration(token).before(new Date());
-        } catch (ExpiredJwtException ex) {
-            return true;
-        } catch (JwtException | IllegalArgumentException ex) {
-            return true;
-        }
-    }
-
+    //TIME HET HAN TOKEN
     public long getRefreshTokenExpirationMillis() {
         return properties.getRefreshTokenExpiration();
     }
 
+    //HAM PARSE TOKEN VA CHECK CHU KY NEU TOKEN BI SUA, SAI SERECT KEY, HET HAN HOAC FORMAT SAI THI SE LOI
     private Claims parseClaims(String token) {
         return Jwts.parser()
                 .verifyWith(getSigningKey())
@@ -114,6 +101,7 @@ public class JwtService {
                 .getPayload();
     }
 
+    //Hàm này lấy JWT_SECRET từ config để kiểm tra sau đó tạo key để ký và verify JWT.
     private SecretKey getSigningKey() {
         String secret = properties.getSecretKey();
         
