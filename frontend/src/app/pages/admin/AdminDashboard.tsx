@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
-  BarChart3,
   Database,
   FileText,
   RefreshCcw,
@@ -62,6 +61,10 @@ const formatDateTime = (value?: string | null) => {
 
 export function AdminDashboard() {
   const navigate = useNavigate();
+  const isAdmin = useMemo(() => {
+    const role = (localStorage.getItem("role") || "").toUpperCase();
+    return role === "ADMIN" || role === "ROLE_ADMIN";
+  }, []);
   const [activeUsers, setActiveUsers] = useState<AdminActiveUserItem[]>([]);
   const [revenue, setRevenue] = useState<RevenueReportResponse | null>(null);
   const [storage, setStorage] = useState<StorageReportResponse | null>(null);
@@ -76,7 +79,9 @@ export function AdminDashboard() {
       const [usersResponse, revenueResponse, storageResponse, reportsResponse] =
         await Promise.all([
           adminAnalyticsApi.getActiveUsers(),
-          adminAnalyticsApi.getRevenue({ period: "WEEK" }),
+          isAdmin
+            ? adminAnalyticsApi.getRevenue({ period: "WEEK" })
+            : Promise.resolve({ data: null }),
           adminAnalyticsApi.getStorage(),
           adminDocumentReportApi.getReports({
             status: "PENDING",
@@ -147,14 +152,7 @@ export function AdminDashboard() {
       helper: "Requires administrator review",
       icon: ShieldAlert,
     },
-  ];
-
-  const quickActions = [
-    { label: "Manage Users", path: "/admin/users", icon: Users },
-    { label: "Review Reports", path: "/admin/reports", icon: ShieldAlert },
-    { label: "Manage Documents", path: "/admin/documents", icon: FileText },
-    { label: "View Analytics", path: "/admin/analytics", icon: BarChart3 },
-  ];
+  ].filter((stat) => isAdmin || stat.label !== "Weekly Revenue");
 
   return (
     <div className="space-y-8">
@@ -164,7 +162,9 @@ export function AdminDashboard() {
             Admin Dashboard
           </h1>
           <p className="text-slate-500 dark:text-slate-400">
-            Monitor users, content, storage, reports, and revenue.
+            {isAdmin
+              ? "Monitor users, content, storage, reports, and revenue."
+              : "Monitor users, content, storage, and reports."}
           </p>
         </div>
 
@@ -202,8 +202,7 @@ export function AdminDashboard() {
         ))}
       </section>
 
-      <div className="grid grid-cols-1 gap-8 xl:grid-cols-3">
-        <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-700 dark:bg-slate-900 xl:col-span-2">
+      {isAdmin && <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="mb-6 flex items-center justify-between">
             <div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">
@@ -215,7 +214,7 @@ export function AdminDashboard() {
             </div>
             <button
               type="button"
-              onClick={() => navigate("/admin/analytics")}
+              onClick={() => navigate("/admin/pricing")}
               className="text-sm font-bold text-blue-600 hover:underline"
             >
               View analytics
@@ -247,30 +246,7 @@ export function AdminDashboard() {
               </ResponsiveContainer>
             )}
           </div>
-        </section>
-
-        <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-            Quick Actions
-          </h3>
-          <p className="mb-5 text-sm text-slate-500">Common administration tasks</p>
-          <div className="space-y-3">
-            {quickActions.map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                onClick={() => navigate(action.path)}
-                className="flex w-full items-center gap-3 rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50/50 dark:border-slate-700 dark:hover:bg-slate-800"
-              >
-                <action.icon className="h-5 w-5 text-blue-600" />
-                <span className="font-semibold text-slate-800 dark:text-slate-100">
-                  {action.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      </div>
+        </section>}
 
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
         <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-700 dark:bg-slate-900">

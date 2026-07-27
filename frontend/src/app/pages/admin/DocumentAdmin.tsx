@@ -393,7 +393,10 @@ export function DocumentAdmin() {
 
   const handleDownload = async (document: AdminDocument) => {
     try {
-      const response = await documentApi.downloadDocument(document.id);
+      const role = (localStorage.getItem("role") || "").toUpperCase();
+      const response = role === "ADMIN" || role === "ROLE_ADMIN"
+        ? await documentApi.getAdminDocumentFile(document.id)
+        : await documentApi.downloadDocument(document.id);
 
       const blob = new Blob([response.data], {
         type: getFileType(document),
@@ -568,7 +571,7 @@ export function DocumentAdmin() {
         </div>
       </div>
 
-      <div className="space-y-5 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <div className="space-y-5 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-5">
         <div className="flex flex-col items-center gap-4 lg:flex-row">
           <div className="relative w-full lg:max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
@@ -582,8 +585,18 @@ export function DocumentAdmin() {
           </div>
         </div>
 
-        <div className="max-h-[620px] overflow-auto rounded-2xl">
-          <table className="min-w-[1250px] w-full border-separate border-spacing-y-2">
+        <div className="overflow-hidden rounded-2xl">
+          <table className="w-full table-fixed border-separate border-spacing-y-2">
+            <colgroup>
+              <col className="w-[26%]" />
+              <col className="w-[21%]" />
+              <col className="w-[9%]" />
+              <col className="w-[7%]" />
+              <col className="w-[11%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[6%]" />
+            </colgroup>
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50 text-left text-xs font-bold uppercase tracking-widest text-slate-500 shadow-sm dark:bg-slate-800 dark:text-slate-400">
                 <th className="px-4 py-3">Document</th>
@@ -618,8 +631,8 @@ export function DocumentAdmin() {
                       }}
                       className="group cursor-pointer bg-white transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500/30 dark:bg-slate-900 dark:hover:bg-slate-800"
                     >
-                      <td className="rounded-l-2xl px-4 py-3">
-                        <div className="flex max-w-[460px] items-center gap-2">
+                      <td className="overflow-hidden rounded-l-2xl px-3 py-3">
+                        <div className="flex min-w-0 items-center gap-2">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 dark:bg-slate-800">
                             <FileText className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                           </div>
@@ -636,8 +649,8 @@ export function DocumentAdmin() {
                         </div>
                       </td>
 
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <div className="flex items-center gap-3">
+                      <td className="overflow-hidden px-3 py-3">
+                        <div className="flex min-w-0 items-center gap-2">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-xs font-extrabold text-white">
                             {getAvatar(getOwnerName(document))}
                           </div>

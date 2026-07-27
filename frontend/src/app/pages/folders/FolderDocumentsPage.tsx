@@ -33,6 +33,7 @@ import type { DocumentListItemResponse } from "../../types/documents/types";
 import type { AiStatus } from "../../constants/documentStatus";
 import { useTheme } from "../../../layouts/ThemeProvider";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 import { FolderShareModal } from "../library/components/FolderShareModal";
 import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
 import { DocumentInformationModal } from "../../components/ui/DocumentInformationModal";
@@ -468,6 +469,8 @@ export function FolderDocumentsPage() {
   const [isDragOverCurrentFolder, setIsDragOverCurrentFolder] = useState(false);
 
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const [deleteDocumentId, setDeleteDocumentId] = useState<number | null>(null);
   const [viewingDocumentInfo, setViewingDocumentInfo] = useState<LibraryDocument | null>(null);
 
@@ -614,6 +617,13 @@ export function FolderDocumentsPage() {
       );
     });
   }, [documents, search]);
+
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageEnd = currentPage * pageSize;
+  const paginatedSubfolders = subfolders.slice(pageStart, pageEnd);
+  const documentStart = Math.max(0, pageStart - subfolders.length);
+  const documentEnd = Math.max(0, pageEnd - subfolders.length);
+  const paginatedDocuments = filteredDocuments.slice(documentStart, documentEnd);
 
   const moveFolderDestinations = useMemo(() => {
     if (!movingFolder) return folders;
@@ -1354,7 +1364,7 @@ export function FolderDocumentsPage() {
 
         {subfolders.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {subfolders.map((item) => (
+            {paginatedSubfolders.map((item) => (
               <div
                 key={item.id}
                 draggable
@@ -1495,7 +1505,7 @@ export function FolderDocumentsPage() {
               </div>
 
               {filteredDocuments.length > 0 ? (
-                filteredDocuments.map((document) => (
+                paginatedDocuments.map((document) => (
                   <div
                     key={document.id}
                     draggable
@@ -1534,7 +1544,7 @@ export function FolderDocumentsPage() {
           </div>
         ) : filteredDocuments.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {filteredDocuments.map((document) => (
+            {paginatedDocuments.map((document) => (
               <div
                 key={document.id}
                 draggable
@@ -1563,6 +1573,7 @@ export function FolderDocumentsPage() {
         ) : (
           <EmptyDocuments onUpload={goToUploadWithCurrentFolder} />
         )}
+        <PaginationControls currentPage={currentPage} totalItems={subfolders.length + filteredDocuments.length} pageSize={pageSize} onPageChange={setCurrentPage} />
       </section>
 
       {sharingFolder && (

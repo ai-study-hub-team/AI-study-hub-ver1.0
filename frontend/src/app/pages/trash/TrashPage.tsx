@@ -23,6 +23,7 @@ import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu
 import type { AiStatus } from "../../constants/documentStatus";
 import { documentApi } from "../../services/documentApi";
 import type { DocumentListItemResponse } from "../../types/documents/types";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 interface TrashDocument {
   id: number;
@@ -109,7 +110,7 @@ const toTrashDocument = (document: DocumentListItemResponse): TrashDocument => (
 });
 
 export function TrashPage() {
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [view, setView] = useState<"grid" | "list">("list");
   const [documents, setDocuments] = useState<TrashDocument[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
@@ -118,6 +119,8 @@ export function TrashPage() {
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [deleteDocument, setDeleteDocument] = useState<TrashDocument | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const loadTrashDocuments = useCallback(async () => {
     setLoading(true);
@@ -139,7 +142,7 @@ export function TrashPage() {
     void loadTrashDocuments();
   }, [loadTrashDocuments]);
 
-  const filteredDocuments = useMemo(() => {
+  const matchingDocuments = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     let result = [...documents];
 
@@ -163,6 +166,13 @@ export function TrashPage() {
 
     return result;
   }, [documents, searchQuery, aiStatusFilter, sortOrder]);
+
+  const filteredDocuments = matchingDocuments.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  useEffect(() => setCurrentPage(1), [searchQuery, aiStatusFilter, sortOrder, view]);
 
   const handleRestore = async (document: TrashDocument) => {
     if (pendingId !== null) return;
@@ -257,6 +267,7 @@ export function TrashPage() {
             {filteredDocuments.map((document) => { const FileIcon = getFileIcon(document); return <div key={document.id} className="grid gap-3 border-t border-slate-100 p-4 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/70 md:grid-cols-[minmax(240px,2fr)_minmax(150px,1fr)_minmax(180px,1fr)_minmax(120px,0.8fr)_72px] md:items-center"><div className="flex min-w-0 items-center gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600"><FileIcon className="h-5 w-5" /></div><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{document.name}</p><p className="text-[11px] font-bold uppercase text-slate-400">{getFileExtension(document)}</p></div></div><p className="text-sm font-semibold text-slate-500">{formatDateTime(document.trashedAt)}</p><div><p className="text-sm font-semibold text-slate-600 dark:text-slate-300">{formatDateTime(document.deleteAfter)}</p><p className="text-xs text-amber-600">{renderRetentionText(document)}</p></div><p className="text-sm font-semibold text-slate-500">{(document.fileSize / 1024).toFixed(1)} KB</p><div className="flex min-w-[72px] items-center justify-center"><RowActionMenu><ActionMenuItem icon={RotateCcw} label="Restore" onClick={() => void handleRestore(document)} /><ActionMenuItem icon={Trash2} label="Delete forever" onClick={() => setDeleteDocument(document)} danger /></RowActionMenu></div></div>; })}
           </div>
         )}
+        <PaginationControls currentPage={currentPage} totalItems={matchingDocuments.length} pageSize={pageSize} onPageChange={setCurrentPage} />
       </section>
 
       {deleteDocument !== null && (

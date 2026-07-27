@@ -1,4 +1,3 @@
-
 package com.aistudyhub.backend.security;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,7 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 @Component
 @RequiredArgsConstructor
-public class RestAccessDeniedHandler implements AccessDeniedHandler {
+    public class RestAccessDeniedHandler implements AccessDeniedHandler {
     private final ObjectMapper objectMapper;
     @Override
     public void handle(

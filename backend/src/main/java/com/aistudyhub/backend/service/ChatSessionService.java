@@ -50,6 +50,7 @@ public class ChatSessionService {
     private final DocumentChunkRepository documentChunkRepository;
     private final SemanticSearchService semanticSearchService;
     private final TokenUsageService tokenUsageService;
+    private final TokenPricingService tokenPricingService;
     private final CurrentUserService currentUserService;
     private final DocumentAccessService documentAccessService;
 
@@ -285,9 +286,11 @@ public class ChatSessionService {
         long plannerTokens = safeTokens(plannerUsage);
         long answerTokens  = safeTokens(answerUsage);
         long totalChatTokens = plannerTokens + answerTokens;
+        long totalInputToken = safePromptTokens(plannerUsage) + safePromptTokens(answerUsage);
+        long totalOutputToken = safeCompletionTokens(plannerUsage) + safeCompletionTokens(answerUsage);
 
-        log.info("[Chat][TokenTracking] plannerTokens={}, answerTokens={}, totalChatTokens={}",
-                plannerTokens, answerTokens, totalChatTokens);
+        log.info("[Chat][TokenTracking] plannerTokens={}, answerTokens={}, totalChatTokens={}, inputToken={}, outputToken={}",
+                plannerTokens, answerTokens, totalChatTokens, totalInputToken, totalOutputToken);
 
         if (totalChatTokens > 0) {
             try {
@@ -297,7 +300,9 @@ public class ChatSessionService {
                 tokenUsageService.recordUsage(
                         user,
                         "CHAT",
-                        "gemini",           // model name label
+                        tokenPricingService.getActiveModelNameForUsage(),
+                        totalInputToken,
+                        totalOutputToken,
                         totalChatTokens,
                         null,               // no single documentId for chat
                         null                // no requestId currently
@@ -440,6 +445,16 @@ public class ChatSessionService {
     private long safeTokens(PythonTokenUsage usage) {
         if (usage == null || usage.getTotalTokens() == null) return 0L;
         return usage.getTotalTokens();
+    }
+
+    private long safePromptTokens(PythonTokenUsage usage) {
+        if (usage == null || usage.getPromptTokens() == null) return 0L;
+        return usage.getPromptTokens();
+    }
+
+    private long safeCompletionTokens(PythonTokenUsage usage) {
+        if (usage == null || usage.getCompletionTokens() == null) return 0L;
+        return usage.getCompletionTokens();
     }
 
     /** Standard semantic search — single query wrapper used by all branches. */

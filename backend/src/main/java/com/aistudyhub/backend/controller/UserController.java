@@ -1,5 +1,7 @@
 package com.aistudyhub.backend.controller;
 
+import com.aistudyhub.backend.dto.request.AdminUpdateUserRequest;
+import com.aistudyhub.backend.dto.request.AdminCreateUserRequest;
 import com.aistudyhub.backend.dto.request.UserPlanUpdateRequest;
 import com.aistudyhub.backend.dto.request.UserStatusUpdateRequest;
 import com.aistudyhub.backend.dto.request.UserUpdateRequest;
@@ -10,6 +12,7 @@ import com.aistudyhub.backend.service.UserService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,6 +33,14 @@ public class UserController {
         return ResponseEntity.ok(userService.getAll());
     }
 
+    @PostMapping
+    public ResponseEntity<UserResponse> createUser(
+            @Valid @RequestBody AdminCreateUserRequest request) {
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(userService.createUserByAdmin(request));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<UserResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(userService.getById(id));
@@ -38,7 +49,7 @@ public class UserController {
     @PutMapping("/{id}")
     public ResponseEntity<UserResponse> update(
             @PathVariable Long id,
-            @Valid @RequestBody UserUpdateRequest request) {
+            @Valid @RequestBody AdminUpdateUserRequest request) {
         return ResponseEntity.ok(userService.update(id, request));
     }
 

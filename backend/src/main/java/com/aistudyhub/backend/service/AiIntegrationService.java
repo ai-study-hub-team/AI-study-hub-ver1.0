@@ -33,6 +33,7 @@ public class AiIntegrationService {
     private final DocumentChunkRepository documentChunkRepository;
     private final PgvectorSearchService pgvectorSearchService;
     private final TokenUsageService tokenUsageService;
+    private final TokenPricingService tokenPricingService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
@@ -61,7 +62,6 @@ public class AiIntegrationService {
                     ? filePath
                     : Paths.get(filePath).toAbsolutePath().toString();
             log.info("Stored file location: {} | Location sent to AI: {}", filePath, fileLocation);
-
             String url = aiServiceBaseUrl + "/process-document";
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -173,7 +173,8 @@ public class AiIntegrationService {
     // ─── Update metadata helper ────────────────────────────────────────────────
 
     private void recordExtractUsageIfPresent(Long documentId, Map<String, Object> body) {
-        Long totalTokens = extractTotalTokens(body.get("usage"));
+        ExtractTokenUsage usage = extractTokenUsage(body.get("usage"));
+        Long totalTokens = usage.totalTokens();
         if (totalTokens == null || totalTokens <= 0) {
             log.info("[Extract][TokenTracking] No extract token usage recorded for documentId={} because totalTokens={}",
                     documentId, totalTokens);
@@ -191,34 +192,43 @@ public class AiIntegrationService {
             User user = document.getUser();
             String modelName = body.get("modelName") instanceof String model && !model.isBlank()
                     ? model
-                    : "gemini";
+                    : tokenPricingService.getActiveModelNameForUsage();
             String requestId = UUID.randomUUID().toString();
 
             tokenUsageService.recordUsage(
                     user,
                     "EXTRACT",
                     modelName,
+                    usage.inputToken(),
+                    usage.outputToken(),
                     totalTokens,
                     documentId,
                     requestId
             );
-            log.info("[Extract][TokenTracking] recorded {} tokens for documentId={}, userId={}",
-                    totalTokens, documentId, user.getId());
+            log.info("[Extract][TokenTracking] recorded {} tokens, inputToken={}, outputToken={} for documentId={}, userId={}",
+                    totalTokens, usage.inputToken(), usage.outputToken(), documentId, user.getId());
         } catch (Exception e) {
             log.error("[Extract][TokenTracking] Failed to record token usage for documentId={}: {}",
                     documentId, e.getMessage(), e);
         }
     }
 
-    private Long extractTotalTokens(Object usageObject) {
+    private ExtractTokenUsage extractTokenUsage(Object usageObject) {
         if (!(usageObject instanceof Map<?, ?> usageMap)) {
-            return 0L;
+            return new ExtractTokenUsage(0L, 0L, 0L);
         }
-        Object totalTokens = usageMap.get("totalTokens");
-        if (totalTokens instanceof Number number) {
+        return new ExtractTokenUsage(
+                parseLongToken(usageMap.get("promptTokens")),
+                parseLongToken(usageMap.get("completionTokens")),
+                parseLongToken(usageMap.get("totalTokens"))
+        );
+    }
+
+    private Long parseLongToken(Object tokenValue) {
+        if (tokenValue instanceof Number number) {
             return number.longValue();
         }
-        if (totalTokens instanceof String text) {
+        if (tokenValue instanceof String text) {
             try {
                 return Long.parseLong(text);
             } catch (NumberFormatException ignored) {
@@ -226,6 +236,9 @@ public class AiIntegrationService {
             }
         }
         return 0L;
+    }
+
+    private record ExtractTokenUsage(Long inputToken, Long outputToken, Long totalTokens) {
     }
 
     private boolean isRemoteUrl(String value) {

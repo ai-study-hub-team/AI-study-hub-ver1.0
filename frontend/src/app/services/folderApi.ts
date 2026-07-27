@@ -64,7 +64,8 @@ export const folderApi = {
   },
 
   getSharedFolderDocuments: (folderId: number) => {
-    return apiClient.get(`/api/shared-with-me/folders/${folderId}/documents`);
+    // Backend applies owner/share/management access checks on this endpoint.
+    return apiClient.get(`/api/folders/${folderId}/documents`);
   },
 
   createFolder: (data: FolderRequest) => {

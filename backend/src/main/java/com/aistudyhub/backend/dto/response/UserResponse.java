@@ -24,4 +24,5 @@ public class UserResponse {
     private Boolean emailVerified;
     private String avatarUrl;
     private String phone;
+    private String currentPlan;
 }

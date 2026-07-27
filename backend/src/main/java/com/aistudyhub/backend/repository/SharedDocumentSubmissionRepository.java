@@ -3,6 +3,7 @@ package com.aistudyhub.backend.repository;
 import com.aistudyhub.backend.entity.SharedDocumentSubmission;
 import com.aistudyhub.backend.entity.SharedSubmissionStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -12,32 +13,68 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface SharedDocumentSubmissionRepository extends JpaRepository<SharedDocumentSubmission, Long> {
+public interface SharedDocumentSubmissionRepository
+        extends JpaRepository<SharedDocumentSubmission, Long> {
 
-    /** All submissions owned by User A (any status), newest first. */
     List<SharedDocumentSubmission> findByOwnerUserIdOrderBySubmittedAtDesc(Long ownerUserId);
 
-    /** Submissions for User A filtered by status. */
     List<SharedDocumentSubmission> findByOwnerUserIdAndStatusOrderBySubmittedAtDesc(
             Long ownerUserId, SharedSubmissionStatus status);
 
-    /** Ownership check: a specific submission that belongs to User A. */
-    Optional<SharedDocumentSubmission> findByIdAndOwnerUserId(Long id, Long ownerUserId);
+    @Query("""
+            SELECT s FROM SharedDocumentSubmission s
+            JOIN FETCH s.shareLink link
+            JOIN FETCH link.owner owner
+            WHERE s.id = :submissionId
+              AND owner.id = :ownerUserId
+            """)
+    Optional<SharedDocumentSubmission> findByIdAndOwnerUserId(
+            @Param("submissionId") Long submissionId,
+            @Param("ownerUserId") Long ownerUserId
+    );
 
-    /** All submissions for a specific share link. */
     List<SharedDocumentSubmission> findByShareLinkId(Long shareLinkId);
 
-    /**
-     * Find all PENDING_REVIEW submissions whose 30-day retention window has expired.
-     * Used exclusively by {@code SharedSubmissionCleanupScheduler}.
-     * Only matches rows where:
-     *   status = PENDING_REVIEW
-     *   AND deleteAfter IS NOT NULL
-     *   AND deleteAfter <= :now
-     */
-    @Query("SELECT s FROM SharedDocumentSubmission s " +
-           "WHERE s.status = com.aistudyhub.backend.entity.SharedSubmissionStatus.PENDING_REVIEW " +
-           "AND s.deleteAfter IS NOT NULL " +
-           "AND s.deleteAfter <= :now")
+    @Query("""
+            SELECT COUNT(s) FROM SharedDocumentSubmission s
+            WHERE s.shareLink.id = :shareLinkId
+              AND s.uploaderUserId = :uploaderUserId
+            """)
+    long countByShareLinkIdAndUploaderUserId(
+            @Param("shareLinkId") Long shareLinkId,
+            @Param("uploaderUserId") Long uploaderUserId
+    );
+
+    /** Expired PENDING_REVIEW submissions whose cloud object must be deleted. */
+    @Query("""
+            SELECT s FROM SharedDocumentSubmission s
+            WHERE s.status = com.aistudyhub.backend.entity.SharedSubmissionStatus.PENDING_REVIEW
+              AND s.deleteAfter IS NOT NULL
+              AND s.deleteAfter <= :now
+            """)
     List<SharedDocumentSubmission> findExpiredPendingSubmissions(@Param("now") LocalDateTime now);
+
+    /**
+     * Submissions where a previous Cloudinary deletion attempt failed and must be retried.
+     * The cloudDeleteFailedId is non-null when a retry is needed.
+     */
+    @Query("""
+            SELECT s FROM SharedDocumentSubmission s
+            WHERE s.cloudDeleteFailedId IS NOT NULL
+              AND s.status != com.aistudyhub.backend.entity.SharedSubmissionStatus.APPROVED
+            """)
+    List<SharedDocumentSubmission> findSubmissionsWithFailedCloudDeletion();
+
+    /**
+     * Atomically claims the right to release quota by setting quotaReleasedAt to CURRENT_TIMESTAMP
+     * IF it is currently NULL.
+     * Returns 1 if the claim was successful, 0 if another worker already claimed it.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE SharedDocumentSubmission s
+            SET s.quotaReleasedAt = CURRENT_TIMESTAMP
+            WHERE s.id = :id AND s.quotaReleasedAt IS NULL
+            """)
+    int atomicClaimQuotaRelease(@Param("id") Long id);
 }

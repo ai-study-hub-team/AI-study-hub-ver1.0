@@ -12,11 +12,15 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { ActionMenuItem, RowActionMenu } from "../../components/ui/RowActionMenu";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 export function AllCategoriesPage() {
   const navigate = useNavigate();
 
   const [categories, setCategories] = useState<CategoryResponse[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const paginatedCategories = categories.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const [editingCategory, setEditingCategory] =
     useState<CategoryResponse | null>(null);
   const [editName, setEditName] = useState("");
@@ -111,7 +115,7 @@ const handleUpdateCategory = async () => {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {categories.map((category) => (
+        {paginatedCategories.map((category) => (
           <div
             key={category.id}
             onClick={() =>
@@ -142,6 +146,7 @@ const handleUpdateCategory = async () => {
           </div>
         ))}
       </div>
+      <PaginationControls currentPage={currentPage} totalItems={categories.length} pageSize={pageSize} onPageChange={setCurrentPage} />
 
       {categories.length === 0 && (
         <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center">

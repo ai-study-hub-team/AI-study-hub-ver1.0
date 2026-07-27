@@ -7,7 +7,7 @@ export type ReportPeriod =
   | "CUSTOM";
 
 /**
- * Alias dùng trong AnalyticsDashboard.
+ * Shared report-period alias used by the admin analytics pages.
  * Giữ cả hai tên để tránh lỗi import giữa các phiên bản.
  */
 export type BackendReportPeriod =
@@ -118,6 +118,50 @@ export interface TokenUsageReportParams {
   toDate?: string;
 }
 
+export interface TokenCostResponse {
+  scope: string;
+  userId?: number | null;
+  period: string;
+  modelName: string;
+  currency: string;
+  fromDate: string;
+  toDate: string;
+  numberOfDays: number;
+  totalInputToken: number;
+  totalOutputToken: number;
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
+  inputCost: number;
+  outputCost: number;
+  totalCost: number;
+}
+
+export interface TokenPricingResponse {
+  id: number;
+  modelName: string;
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
+  currency: string;
+  active: boolean;
+  updatedBy?: number | null;
+  updatedAt?: string | null;
+}
+
+export interface PaymentHistoryItem {
+  userId: number;
+  userEmail: string;
+  userFullName: string;
+  orderCode: string;
+  amount: number;
+  provider: string;
+  status: string;
+  transactionNo?: string | null;
+  paymentTime?: string | null;
+  planCode: string;
+  planName: string;
+  createdAt: string;
+}
+
 export const adminAnalyticsApi = {
   /** GET /api/admin/dashboard/active-users */
   getActiveUsers: () => {
@@ -171,4 +215,16 @@ export const adminAnalyticsApi = {
       },
     );
   },
-};  
+
+  getTokenCost: (params: TokenUsageReportParams) =>
+    apiClient.get<TokenCostResponse>("/api/admin/token-usage/cost", { params }),
+
+  getPaymentHistory: (params: RevenueReportParams & { userId?: number }) =>
+    apiClient.get<PaymentHistoryItem[]>("/api/admin/payments/history", { params }),
+
+  getTokenPricing: () =>
+    apiClient.get<TokenPricingResponse>("/api/admin/token-usage/pricing"),
+
+  updateTokenPricing: (payload: Pick<TokenPricingResponse, "modelName" | "inputPricePerMillion" | "outputPricePerMillion" | "currency">) =>
+    apiClient.patch<TokenPricingResponse>("/api/admin/token-usage/pricing", payload),
+};

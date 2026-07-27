@@ -25,11 +25,9 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class AuthService {
 
-    private static final String INVALID_CREDENTIALS =
-            "Incorrect email or password";
+    private static final String INVALID_CREDENTIALS = "Incorrect email or password";
 
-    private static final String INVALID_REFRESH =
-            "Refresh token is invalid or has expired";
+    private static final String INVALID_REFRESH = "Refresh token is invalid or has expired";
 
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -38,6 +36,15 @@ public class AuthService {
     private final SubscriptionService subscriptionService;
     private final EmailVerificationService emailVerificationService;
 
+    // Chuan hoa email truoc khi xu ly:
+    // xoa khoang trang dau/cuoi va chuyen ve chu thuong.
+    private String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+
+    // Dang ky tai khoan moi, kiem tra email trung,
+    // ma hoa password, luu user vao DB, gan goi free va gui email verify.
     @Transactional
     public com.aistudyhub.backend.dto.response.EmailVerificationResponse register(RegisterRequest request) {
         String email = normalizeEmail(request.getEmail());
@@ -68,6 +75,9 @@ public class AuthService {
         return emailVerificationService.createAndSendInitialVerification(user, null, null);
     }
 
+    // Dang nhap bang email/password.
+    // Neu thong tin hop le, user ACTIVE va da verify email,
+    // thi cap nhat thoi gian hoat dong va tao cap access/refresh token.
     @Transactional
     public AuthResponse login(LoginRequest request) {
         String email = normalizeEmail(request.getEmail());
@@ -101,6 +111,9 @@ public class AuthService {
         return issueTokenPair(user);
     }
 
+    // Dung refresh token de xin cap access token moi.
+    // Kiem tra refresh token trong DB, token con han, chua bi revoke,
+    // user con ACTIVE va da verify email, sau do revoke token cu va tao token moi.
     @Transactional
     public AuthResponse refresh(String rawRefreshToken) {
         String tokenHash = jwtService.hashRefreshToken(rawRefreshToken);
@@ -133,6 +146,8 @@ public class AuthService {
         return issueTokenPair(user);
     }
 
+    // Dang xuat tren thiet bi hien tai bang cach revoke refresh token.
+    // Chi revoke neu refresh token thuoc ve user dang dang nhap.
     @Transactional
     public void logout(
             String rawRefreshToken,
@@ -154,19 +169,9 @@ public class AuthService {
         // Does not reveal whether the refresh token exists.
     }
 
-    @Transactional
-    public void logoutAll(String authenticatedEmail) {
-        User user = userRepository
-                .findByEmail(normalizeEmail(authenticatedEmail))
-                .orElseThrow(() ->
-                        new UnauthorizedException(
-                                "Unable to authenticate user"
-                        )
-                );
-
-        refreshTokenRepository.revokeAllActiveByUserId(user.getId());
-    }
-
+    // Tao cap token moi gom access token va refresh token.
+    // Refresh token goc duoc tra ve cho frontend,
+    // con ban hash cua refresh token duoc luu vao DB de bao mat.
     public AuthResponse issueTokenPair(User user) {
         String accessToken = jwtService.generateAccessToken(user);
         String rawRefreshToken = jwtService.generateRefreshToken();
@@ -195,7 +200,4 @@ public class AuthService {
                 .build();
     }
 
-    private String normalizeEmail(String email) {
-        return email.trim().toLowerCase(Locale.ROOT);
-    }
 }

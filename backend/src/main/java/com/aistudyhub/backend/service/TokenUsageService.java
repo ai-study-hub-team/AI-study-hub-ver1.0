@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.dto.response.CurrentUserTodayTokenUsageResponse;
+import com.aistudyhub.backend.entity.TokenPricing;
 import com.aistudyhub.backend.entity.TokenUsageLog;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.UserDailyUsage;
@@ -8,11 +9,14 @@ import com.aistudyhub.backend.entity.UserSubscription;
 import com.aistudyhub.backend.exception.QuotaExceededException;
 import com.aistudyhub.backend.repository.TokenUsageLogRepository;
 import com.aistudyhub.backend.repository.UserDailyUsageRepository;
+import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 
 @Service
@@ -20,9 +24,14 @@ import java.time.LocalDate;
 @Slf4j
 public class TokenUsageService {
 
+    private static final BigDecimal ONE_MILLION = new BigDecimal("1000000");
+
     private final SubscriptionService subscriptionService;
     private final UserDailyUsageRepository userDailyUsageRepository;
     private final TokenUsageLogRepository tokenUsageLogRepository;
+    private final UserRepository userRepository;
+    private final RolePolicyService rolePolicyService;
+    private final TokenPricingService tokenPricingService;
 
     @Transactional(readOnly = true)
     public CurrentUserTodayTokenUsageResponse getTodayUsage(Long userId) {
@@ -50,8 +59,18 @@ public class TokenUsageService {
     @Transactional(readOnly = true)
     // so sánh token hằng ngày
     public void validateTokenQuota(Long userId, String featureType) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+
+        if (rolePolicyService.isManagementAccount(user)) {
+            log.info("[TokenQuota][{}] bypass for management account userId={}, role={}",
+                    featureType, user.getId(), user.getRole());
+            return;
+        }
+
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
         Long dailyLimit = subscription.getPlan().getDailyTokenLimit();
+
         LocalDate today = LocalDate.now();
 
         UserDailyUsage usage = userDailyUsageRepository.findByUserIdAndUsageDate(userId, today)
@@ -63,19 +82,36 @@ public class TokenUsageService {
                 featureType, userId, today, used, dailyLimit);
 
         if (used >= dailyLimit) {
-            log.warn("[TokenQuota][{}] QUOTA EXCEEDED userId={}, used={}, limit={}",
-                    featureType, userId, used, dailyLimit);
             throw new QuotaExceededException("Daily token quota exceeded. Please upgrade your plan or try again tomorrow.");
         }
-        
-        log.info("[TokenQuota][{}] allowed userId={}, used={}, limit={}",
-                featureType, userId, used, dailyLimit);
     }
 
     @Transactional
     // ghi lại lịch sử token và tỏngo token
     public void recordUsage(User user, String featureType, String modelName, Long tokens, Long documentId, String requestId) {
-        if (tokens == null || tokens <= 0) {
+        recordUsage(user, featureType, modelName, 0L, 0L, tokens, documentId, requestId);
+    }
+
+    @Transactional
+    public void recordUsage(
+            User user,
+            String featureType,
+            String modelName,
+            Long inputToken,
+            Long outputToken,
+            Long tokens,
+            Long documentId,
+            String requestId
+    ) {
+        long safeInputToken = safe(inputToken);
+        long safeOutputToken = safe(outputToken);
+        long safeTokens = safe(tokens);
+        if (safeInputToken + safeOutputToken == 0 && safeTokens > 0) {
+            safeInputToken = safeTokens;
+        }
+        long resolvedTokens = safeTokens > 0 ? safeTokens : safeInputToken + safeOutputToken;
+
+        if (resolvedTokens <= 0 && safeInputToken <= 0 && safeOutputToken <= 0) {
             return;
         }
         if (requestId != null && !requestId.isBlank() && tokenUsageLogRepository.existsByRequestId(requestId)) {
@@ -84,12 +120,25 @@ public class TokenUsageService {
             return;
         }
 
+        TokenPricing pricing = tokenPricingService.getActivePricingForUsage();
+        BigDecimal inputCost = calculateCost(safeInputToken, pricing.getInputPricePerMillion());
+        BigDecimal outputCost = calculateCost(safeOutputToken, pricing.getOutputPricePerMillion());
+
         // 1. Log detailed usage
         TokenUsageLog logEntry = TokenUsageLog.builder()
                 .user(user)
                 .featureType(featureType)
-                .modelName(modelName)
-                .tokens(tokens)
+                .modelName(resolveModelName(modelName, pricing))
+                .tokens(resolvedTokens)
+                .inputToken(safeInputToken)
+                .outputToken(safeOutputToken)
+                .pricing(pricing)
+                .inputPricePerMillion(pricing.getInputPricePerMillion())
+                .outputPricePerMillion(pricing.getOutputPricePerMillion())
+                .currency(pricing.getCurrency())
+                .inputCost(inputCost)
+                .outputCost(outputCost)
+                .totalCost(inputCost.add(outputCost))
                 .documentId(documentId)
                 .requestId(requestId)
                 .build();
@@ -110,19 +159,19 @@ public class TokenUsageService {
 
         switch (featureType.toUpperCase()) {
             case "CHAT":
-                usage.setChatTokens(safe(usage.getChatTokens()) + tokens);
-                usage.setTotalTokens(safe(usage.getTotalTokens()) + tokens);
+                usage.setChatTokens(safe(usage.getChatTokens()) + resolvedTokens);
+                usage.setTotalTokens(safe(usage.getTotalTokens()) + resolvedTokens);
                 break;
             case "SUMMARY":
-                usage.setSummaryTokens(safe(usage.getSummaryTokens()) + tokens);
-                usage.setTotalTokens(safe(usage.getTotalTokens()) + tokens);
+                usage.setSummaryTokens(safe(usage.getSummaryTokens()) + resolvedTokens);
+                usage.setTotalTokens(safe(usage.getTotalTokens()) + resolvedTokens);
                 break;
             case "QUIZ":
-                usage.setQuizTokens(safe(usage.getQuizTokens()) + tokens);
-                usage.setTotalTokens(safe(usage.getTotalTokens()) + tokens);
+                usage.setQuizTokens(safe(usage.getQuizTokens()) + resolvedTokens);
+                usage.setTotalTokens(safe(usage.getTotalTokens()) + resolvedTokens);
                 break;
             case "EXTRACT":
-                usage.setExtractTokens(safe(usage.getExtractTokens()) + tokens);
+                usage.setExtractTokens(safe(usage.getExtractTokens()) + resolvedTokens);
                 break;
             default:
                 log.warn("Unknown feature type for token usage: {}", featureType);
@@ -131,10 +180,24 @@ public class TokenUsageService {
         usage.setOverallTokens(safe(usage.getTotalTokens()) + safe(usage.getExtractTokens()));
 
         userDailyUsageRepository.save(usage);
-        log.info("[TokenUsage][{}] recorded tokens={}, userId={}", featureType, tokens, user.getId());
+        log.info("[TokenUsage][{}] recorded tokens={}, inputToken={}, outputToken={}, userId={}",
+                featureType, resolvedTokens, safeInputToken, safeOutputToken, user.getId());
     }
 
     private long safe(Long value) {
         return value == null ? 0L : value;
+    }
+
+    private BigDecimal calculateCost(long tokens, BigDecimal pricePerMillion) {
+        return BigDecimal.valueOf(tokens)
+                .multiply(pricePerMillion)
+                .divide(ONE_MILLION, 12, RoundingMode.HALF_UP);
+    }
+
+    private String resolveModelName(String modelName, TokenPricing pricing) {
+        if (modelName != null && !modelName.isBlank()) {
+            return modelName.trim();
+        }
+        return pricing.getModelName();
     }
 }

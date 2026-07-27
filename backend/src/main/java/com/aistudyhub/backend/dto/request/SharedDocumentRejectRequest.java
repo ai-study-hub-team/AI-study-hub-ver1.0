@@ -10,9 +10,6 @@ import lombok.Setter;
 @Setter
 public class SharedDocumentRejectRequest {
 
-    /** Reviewer's user ID (User A). */
-    private Long userId;
-
     /** Human-readable reason shown to the submitter (optional but recommended). */
     private String reason;
 }

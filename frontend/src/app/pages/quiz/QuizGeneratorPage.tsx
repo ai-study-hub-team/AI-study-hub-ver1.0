@@ -262,11 +262,8 @@ export function QuizGeneratorPage() {
      FETCH DOCUMENTS
   ======================================================= */
 
-  const fetchDocuments =
-    async () => {
-      try {
-        const userId =
-          getCurrentUserId();
+      const data = await documentApi.getAiReadyDocumentsForSelect(userId);
+      setDocuments(data);
 
         if (!userId) {
           toast.error(

@@ -2,6 +2,8 @@ package com.aistudyhub.backend.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -29,6 +31,37 @@ public class TokenUsageLog {
 
     @Column(nullable = false)
     private Long tokens;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Long inputToken = 0L;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Long outputToken = 0L;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pricing_id")
+    private TokenPricing pricing;
+
+    @Column(nullable = false, precision = 19, scale = 6)
+    private BigDecimal inputPricePerMillion;
+
+    @Column(nullable = false, precision = 19, scale = 6)
+    private BigDecimal outputPricePerMillion;
+
+    @Column(nullable = false, length = 10)
+    @Builder.Default
+    private String currency = "USD";
+
+    @Column(nullable = false, precision = 19, scale = 12)
+    private BigDecimal inputCost;
+
+    @Column(nullable = false, precision = 19, scale = 12)
+    private BigDecimal outputCost;
+
+    @Column(nullable = false, precision = 19, scale = 12)
+    private BigDecimal totalCost;
 
     private Long documentId;
 

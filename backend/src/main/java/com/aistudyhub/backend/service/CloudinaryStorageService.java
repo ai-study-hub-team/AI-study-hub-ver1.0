@@ -59,6 +59,43 @@ public class CloudinaryStorageService {
         return uploadResource(resource, originalFilename, fileSize, resourceType, publicId);
     }
 
+    /**
+     * Deletes a Cloudinary object by public ID.
+     *
+     * @param publicId     the Cloudinary public_id
+     * @param resourceType the resource_type (image / video / raw); null defaults to "image"
+     * @throws RuntimeException if the Cloudinary API returns an error response
+     */
+    public void delete(String publicId, String resourceType) {
+        ensureConfigured();
+        if (resourceType == null || resourceType.isBlank()) resourceType = "raw";
+
+        long timestamp = Instant.now().getEpochSecond();
+        String signature = signDestroy(publicId, timestamp);
+        String url = "https://api.cloudinary.com/v1_1/" + cloudName + "/" + resourceType + "/destroy";
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("public_id", publicId);
+        body.add("api_key", apiKey);
+        body.add("timestamp", timestamp);
+        body.add("signature", signature);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        ResponseEntity<Map> response = restTemplate.postForEntity(
+                url, new HttpEntity<>(body, headers), Map.class);
+
+        Map<?, ?> responseBody = response.getBody();
+        if (!response.getStatusCode().is2xxSuccessful() || responseBody == null) {
+            throw new RuntimeException("Cloudinary delete failed with status: " + response.getStatusCode());
+        }
+        String result = asString(responseBody.get("result"));
+        if (result == null || (!result.equals("ok") && !result.equals("not found"))) {
+            throw new RuntimeException("Cloudinary delete returned unexpected result: " + result);
+        }
+    }
+
     private UploadResult uploadResource(
             Resource resource,
             String originalFilename,
@@ -121,12 +158,21 @@ public class CloudinaryStorageService {
 
     private String signUpload(String publicId, long timestamp) {
         String payload = "public_id=" + publicId + "&timestamp=" + timestamp + apiSecret;
+        return sha1Hex(payload);
+    }
+
+    private String signDestroy(String publicId, long timestamp) {
+        String payload = "public_id=" + publicId + "&timestamp=" + timestamp + apiSecret;
+        return sha1Hex(payload);
+    }
+
+    private String sha1Hex(String payload) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-1");
             byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(hash);
         } catch (Exception e) {
-            throw new IllegalStateException("Could not sign Cloudinary upload request", e);
+            throw new IllegalStateException("Could not sign Cloudinary request", e);
         }
     }
 

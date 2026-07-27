@@ -10,6 +10,8 @@ import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.enums.PaymentProvider;
 import com.aistudyhub.backend.enums.PaymentStatus;
+import com.aistudyhub.backend.enums.UserRole;
+import com.aistudyhub.backend.exception.ForbiddenException;
 import com.aistudyhub.backend.exception.PaymentException;
 import com.aistudyhub.backend.repository.PaymentTransactionRepository;
 import com.aistudyhub.backend.repository.SubscriptionPlanRepository;
@@ -45,7 +47,7 @@ public class VnpayService {
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final UserRepository userRepository;
     private final SubscriptionService subscriptionService;
-    private final ResendEmailService resendEmailService;
+    private final SmtpEmailService smtpEmailService;
     private final NotificationService notificationService;
 
     /**
@@ -71,6 +73,10 @@ public class VnpayService {
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (user.getRole() != UserRole.USER) {
+            throw new ForbiddenException("Only regular users can purchase subscription plans");
+        }
 
         SubscriptionPlan plan = subscriptionPlanRepository.findByCode(planCode)
                 .orElseThrow(() -> new RuntimeException("Plan not found: " + planCode));
@@ -264,7 +270,7 @@ public class VnpayService {
                     transaction.getPurchasedDays()
             );
 
-            resendEmailService.sendPaymentResultEmail(
+            smtpEmailService.sendPaymentResultEmail(
                     transaction.getUser(),
                     transaction.getPlanName(),
                     transaction.getAmount() != null ? transaction.getAmount().toPlainString() : "",
@@ -293,7 +299,7 @@ public class VnpayService {
             transaction.setFailureReason("VNPAY Response Code: " + responseCode);
             paymentTransactionRepository.save(transaction);
             log.info("Payment FAILED for vnpTxnRef: {}. Reason: {}", vnpTxnRef, responseCode);
-            resendEmailService.sendPaymentResultEmail(
+            smtpEmailService.sendPaymentResultEmail(
                     transaction.getUser(),
                     transaction.getPlanName(),
                     transaction.getAmount() != null ? transaction.getAmount().toPlainString() : "",

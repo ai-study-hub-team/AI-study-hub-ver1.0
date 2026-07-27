@@ -25,6 +25,7 @@ import {
 import { folderApi, type FolderResponse } from "../../services/folderApi";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { getCurrentUserId } from "../../services/apiClient";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 
 type ListResponse<T> = T[] | { content?: T[] };
 
@@ -34,9 +35,16 @@ type SubmissionStatusFilter =
   | "ALL"
   | "PENDING_REVIEW"
   | "APPROVED"
-  | "REJECTED";
+  | "REJECTED"
+  | "EXPIRED";
 
-const DOCUMENT_TYPE_OPTIONS = ["PDF", "DOCX", "TXT", "PPTX"] as const;
+const MIME_OPTIONS = [
+  ["PDF", "application/pdf"],
+  ["TXT", "text/plain"],
+  ["DOCX", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  ["PPTX", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+  ["XLSX", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+] as const;
 
 const VISIBILITY_OPTIONS = ["PRIVATE", "PUBLIC"] as const;
 
@@ -235,10 +243,18 @@ const detectDocumentType = (
 
   if (value.includes("PPT") || value.includes("POWERPOINT")) return "PPTX";
   if (value.includes("DOC") || value.includes("WORD")) return "DOCX";
+  if (
+    value.includes("XLS") ||
+    value.includes("EXCEL") ||
+    value.includes("SPREADSHEET")
+  ) {
+    return "XLSX";
+  }
   if (value.includes("TXT") || value.includes("TEXT")) return "TXT";
   if (value.includes("PDF")) return "PDF";
 
-  return "PDF";
+  const extension = fileName?.split(".").pop()?.trim().toUpperCase();
+  return extension || "OTHER";
 };
 
 const getSubmittedDate = (submission: SharedDocumentSubmissionResponse) => {
@@ -249,6 +265,9 @@ export function DocumentSharesPage() {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("links");
+  const [linksPage, setLinksPage] = useState(1);
+  const [submissionsPage, setSubmissionsPage] = useState(1);
+  const pageSize = 10;
 
   const [links, setLinks] = useState<DocumentShareLinkResponse[]>([]);
   const [submissions, setSubmissions] = useState<
@@ -284,6 +303,14 @@ export function DocumentSharesPage() {
     description: "",
     expiresAt: defaultExpiry,
     maxUploads: "10",
+    maxUploadsPerUser: "3",
+    maxFileSizeMb: "10",
+    maxTotalSizeMb: "100",
+    accessPolicy: "PRIVATE_ALLOWLIST" as
+      | "PRIVATE_ALLOWLIST"
+      | "ANY_AUTHENTICATED_USER",
+    allowedUserEmails: "",
+    allowedFileTypes: ["application/pdf", "text/plain"] as string[],
     defaultFolderId: "",
   });
 
@@ -325,9 +352,8 @@ export function DocumentSharesPage() {
 
       const [linksRes, submissionsRes, foldersRes, categoriesRes] =
         await Promise.all([
-          documentShareLinkApi.getDocumentShareLinks(userId),
+          documentShareLinkApi.getDocumentShareLinks(),
           sharedDocumentSubmissionApi.getSubmissions({
-            userId,
             ...(submissionStatusFilter !== "ALL"
               ? { status: submissionStatusFilter }
               : {}),
@@ -392,9 +418,37 @@ export function DocumentSharesPage() {
     }
 
     const maxUploads = Number(linkForm.maxUploads);
+    const maxUploadsPerUser = Number(linkForm.maxUploadsPerUser);
+    const maxFileSizeBytes = Number(linkForm.maxFileSizeMb) * 1024 * 1024;
+    const maxTotalBytes = Number(linkForm.maxTotalSizeMb) * 1024 * 1024;
+    const allowedUserEmails = linkForm.allowedUserEmails
+      .split(/[\n,;]+/)
+      .map((email) => email.trim().toLowerCase())
+      .filter((email, index, emails) => email && emails.indexOf(email) === index);
 
-    if (!Number.isInteger(maxUploads) || maxUploads <= 0) {
-      toast.error("Max uploads must be greater than 0.");
+    if (
+      !Number.isInteger(maxUploads) ||
+      maxUploads <= 0 ||
+      !Number.isInteger(maxUploadsPerUser) ||
+      maxUploadsPerUser <= 0 ||
+      maxUploadsPerUser > maxUploads
+    ) {
+      toast.error("Upload limits must be positive and the per-user limit cannot exceed the total.");
+      return;
+    }
+
+    if (maxFileSizeBytes <= 0 || maxTotalBytes <= 0 || maxFileSizeBytes > maxTotalBytes) {
+      toast.error("File size limits are invalid.");
+      return;
+    }
+
+    if (!linkForm.allowedFileTypes.length) {
+      toast.error("Choose at least one accepted file type.");
+      return;
+    }
+
+    if (linkForm.accessPolicy === "PRIVATE_ALLOWLIST" && !allowedUserEmails.length) {
+      toast.error("Add at least one registered email for a private link.");
       return;
     }
 
@@ -402,11 +456,17 @@ export function DocumentSharesPage() {
       setIsCreating(true);
 
       const response = await documentShareLinkApi.createDocumentShareLink({
-        userId,
         title: linkForm.title.trim(),
         description: linkForm.description.trim(),
         expiresAt: toApiDatetime(linkForm.expiresAt),
         maxUploads,
+        maxUploadsPerUser,
+        maxFileSizeBytes,
+        maxTotalBytes,
+        allowedFileTypes: linkForm.allowedFileTypes.join(","),
+        accessPolicy: linkForm.accessPolicy,
+        allowedUserEmails:
+          linkForm.accessPolicy === "PRIVATE_ALLOWLIST" ? allowedUserEmails : [],
         ...(linkForm.defaultFolderId
           ? { defaultFolderId: Number(linkForm.defaultFolderId) }
           : {}),
@@ -421,6 +481,12 @@ export function DocumentSharesPage() {
         description: "",
         expiresAt: defaultExpiry,
         maxUploads: "10",
+        maxUploadsPerUser: "3",
+        maxFileSizeMb: "10",
+        maxTotalSizeMb: "100",
+        accessPolicy: "PRIVATE_ALLOWLIST",
+        allowedUserEmails: "",
+        allowedFileTypes: ["application/pdf", "text/plain"],
         defaultFolderId: "",
       });
 
@@ -491,7 +557,7 @@ export function DocumentSharesPage() {
     try {
       setDisablingLinkId(linkId);
 
-      await documentShareLinkApi.disableDocumentShareLink(linkId, userId);
+      await documentShareLinkApi.disableDocumentShareLink(linkId);
       setLinks((current) =>
         current.filter((item) => getShareLinkId(item) !== linkId),
       );
@@ -519,7 +585,7 @@ export function DocumentSharesPage() {
     }
 
     try {
-      const blob = await sharedDocumentSubmissionApi.viewSubmissionFile(submission.id, userId);
+      const blob = await sharedDocumentSubmissionApi.viewSubmissionFile(submission.id);
       const objectUrl = URL.createObjectURL(blob);
       window.open(objectUrl, "_blank", "noopener,noreferrer");
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
@@ -537,7 +603,7 @@ export function DocumentSharesPage() {
     }
 
     try {
-      const blob = await sharedDocumentSubmissionApi.downloadSubmissionFile(submission.id, userId);
+      const blob = await sharedDocumentSubmissionApi.downloadSubmissionFile(submission.id);
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
@@ -586,7 +652,6 @@ export function DocumentSharesPage() {
 
       const response = await sharedDocumentSubmissionApi.getSubmission(
         submission.id,
-        userId,
       );
 
       setSelectedSubmission(response.data);
@@ -642,7 +707,6 @@ export function DocumentSharesPage() {
       await sharedDocumentSubmissionApi.approveSubmission(
         approveForm.submissionId,
         {
-          userId,
           title: approveForm.title.trim(),
           description: approveForm.description.trim(),
           categoryId: approveForm.categoryId
@@ -713,7 +777,6 @@ export function DocumentSharesPage() {
       await sharedDocumentSubmissionApi.rejectSubmission(
         rejectForm.submissionId,
         {
-          userId,
           reason: rejectForm.reason.trim(),
         },
       );
@@ -826,6 +889,56 @@ export function DocumentSharesPage() {
               />
 
               <input
+                value={linkForm.maxUploadsPerUser}
+                onChange={(event) =>
+                  setLinkForm((current) => ({
+                    ...current,
+                    maxUploadsPerUser: event.target.value,
+                  }))
+                }
+                placeholder="Max uploads per user"
+                type="number"
+                min={1}
+                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              />
+
+              <select
+                value={linkForm.accessPolicy}
+                onChange={(event) =>
+                  setLinkForm((current) => ({
+                    ...current,
+                    accessPolicy: event.target.value as typeof current.accessPolicy,
+                  }))
+                }
+                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              >
+                <option value="PRIVATE_ALLOWLIST">Private allowlist</option>
+                <option value="ANY_AUTHENTICATED_USER">Any authenticated user</option>
+              </select>
+
+              <input
+                value={linkForm.maxFileSizeMb}
+                onChange={(event) =>
+                  setLinkForm((current) => ({ ...current, maxFileSizeMb: event.target.value }))
+                }
+                placeholder="Max file size (MB)"
+                type="number"
+                min={1}
+                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              />
+
+              <input
+                value={linkForm.maxTotalSizeMb}
+                onChange={(event) =>
+                  setLinkForm((current) => ({ ...current, maxTotalSizeMb: event.target.value }))
+                }
+                placeholder="Max total size (MB)"
+                type="number"
+                min={1}
+                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              />
+
+              <input
                 value={linkForm.expiresAt}
                 onChange={(event) =>
                   setLinkForm((current) => ({
@@ -868,6 +981,57 @@ export function DocumentSharesPage() {
                 rows={3}
                 className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none md:col-span-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               />
+
+              {linkForm.accessPolicy === "PRIVATE_ALLOWLIST" && (
+                <textarea
+                  value={linkForm.allowedUserEmails}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({
+                      ...current,
+                      allowedUserEmails: event.target.value,
+                    }))
+                  }
+                  placeholder="Allowed emails (comma or one per line)"
+                  rows={3}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none md:col-span-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              )}
+
+              <fieldset className="md:col-span-2">
+                <legend className="mb-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Accepted file types
+                </legend>
+                <div className="flex flex-wrap gap-2">
+                  {MIME_OPTIONS.map(([label, mime]) => {
+                    const selected = linkForm.allowedFileTypes.includes(mime);
+                    return (
+                      <label
+                        key={mime}
+                        className={`cursor-pointer rounded-full border px-3 py-1.5 text-sm font-bold ${
+                          selected
+                            ? "border-blue-600 bg-blue-50 text-blue-700"
+                            : "border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() =>
+                            setLinkForm((current) => ({
+                              ...current,
+                              allowedFileTypes: selected
+                                ? current.allowedFileTypes.filter((value) => value !== mime)
+                                : [...current.allowedFileTypes, mime],
+                            }))
+                          }
+                          className="sr-only"
+                        />
+                        {label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
             </div>
 
             <button
@@ -919,7 +1083,7 @@ export function DocumentSharesPage() {
 
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {links.length > 0 ? (
-                links.map((link) => (
+                links.slice((linksPage - 1) * pageSize, linksPage * pageSize).map((link) => (
                   <div key={getShareLinkId(link) ?? link.shareUrl ?? link.token ?? link.title} className="p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
@@ -996,6 +1160,7 @@ export function DocumentSharesPage() {
                 </div>
               )}
             </div>
+            <div className="px-5 pb-5"><PaginationControls currentPage={linksPage} totalItems={links.length} pageSize={pageSize} onPageChange={setLinksPage} /></div>
           </section>
         </>
       )}
@@ -1027,6 +1192,7 @@ export function DocumentSharesPage() {
                 <option value="PENDING_REVIEW">PENDING_REVIEW</option>
                 <option value="APPROVED">APPROVED</option>
                 <option value="REJECTED">REJECTED</option>
+                <option value="EXPIRED">EXPIRED</option>
                 <option value="ALL">ALL</option>
               </select>
             </div>
@@ -1034,7 +1200,7 @@ export function DocumentSharesPage() {
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {submissions.length > 0 ? (
-              submissions.map((submission) => (
+              submissions.slice((submissionsPage - 1) * pageSize, submissionsPage * pageSize).map((submission) => (
                 <div key={submission.id} className="p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
@@ -1163,6 +1329,7 @@ export function DocumentSharesPage() {
               </div>
             )}
           </div>
+          <div className="px-5 pb-5"><PaginationControls currentPage={submissionsPage} totalItems={submissions.length} pageSize={pageSize} onPageChange={setSubmissionsPage} /></div>
         </section>
       )}
 
@@ -1393,22 +1560,15 @@ export function DocumentSharesPage() {
                 ))}
               </select>
 
-              <select
-                value={approveForm.documentType}
-                onChange={(event) =>
-                  setApproveForm((current) => ({
-                    ...current,
-                    documentType: event.target.value,
-                  }))
-                }
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              <div
+                aria-label="File type detected automatically"
+                className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
               >
-                {DOCUMENT_TYPE_OPTIONS.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
+                <span className="font-semibold">{approveForm.documentType}</span>
+                <span className="ml-2 text-xs text-slate-500">
+                  (detected from uploaded file)
+                </span>
+              </div>
 
               <select
                 value={approveForm.visibility}

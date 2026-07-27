@@ -12,7 +12,6 @@ import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.DocumentReportHistoryRepository;
 import com.aistudyhub.backend.repository.DocumentReportRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
-import com.aistudyhub.backend.enums.UserRole;
 import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -34,7 +33,18 @@ public class DocumentReportService {
     private final DocumentAccessService documentAccessService;
     private final NotificationService notificationService;
     private final UserRepository userRepository;
+    private final RolePolicyService rolePolicyService;
 
+    /**
+     * Method user report document
+     * Lay thong tin user tu jwt sau do tim doc theo doc id neu ko co thi bao loi
+     * Kiem tra status ko active thi bao loi
+     * Kiem tra owner va ko cho ower tu report chinh minh
+     * Chi user co quyen xem document ms dc report neu private ma kg share cho minh bao loi
+     * Neu chon ly do la orther thi phai ghi ro li do la gi
+     * Kiem tra trung lap neu co roi thi khong tao them duoc
+     * Tao report ms status PENDING sau do gui thong bao cho cac ad or manager co trang thai active
+     */
     @Transactional
     public DocumentReportResponse reportDocument(Long documentId, ReportDocumentRequest request) {
         User reporter = currentUserService.getCurrentUser();
@@ -84,20 +94,25 @@ public class DocumentReportService {
 
         DocumentReport savedReport = reportRepository.save(report);
 
-        userRepository.findByRoleAndStatus(UserRole.ADMIN, UserStatus.ACTIVE)
-                .forEach(admin -> notificationService.create(
-                        admin,
-                        NotificationType.DOCUMENT_REPORTED,
-                        "New document report",
-                        reporter.getEmail() + " reported document: " + document.getTitle(),
-                        "DOCUMENT_REPORT",
-                        savedReport.getId(),
-                        "/admin/document-reports/" + savedReport.getId()
-                ));
+        userRepository.findByRoleInAndStatus(
+                List.of(UserRole.ADMIN, UserRole.MANAGER),
+                UserStatus.ACTIVE
+        ).forEach(handler -> notificationService.create(
+                handler,
+                NotificationType.DOCUMENT_REPORTED,
+                "New document report",
+                reporter.getEmail() + " reported document: " + document.getTitle(),
+                "DOCUMENT_REPORT",
+                savedReport.getId(),
+                "/admin/document-reports/" + savedReport.getId()
+        ));
 
         return toResponse(savedReport);
     }
 
+    /**
+     *
+     */
     @Transactional(readOnly = true)
     public Page<DocumentReportResponse> getReports(
             DocumentReportStatus status,
@@ -118,9 +133,9 @@ public class DocumentReportService {
             Long reportId,
             AdminUpdateDocumentReportStatusRequest request
     ) {
-        User admin = currentUserService.getCurrentUser();
-        if (admin.getRole() != UserRole.ADMIN) {
-            throw new ForbiddenException("Only admin can handle reports");
+        User handler = currentUserService.getCurrentUser();
+        if (!rolePolicyService.isManagementAccount(handler)) {
+            throw new ForbiddenException("Only admin or manager can handle reports");
         }
 
         DocumentReport report = findReport(reportId);
@@ -128,7 +143,7 @@ public class DocumentReportService {
 
         report.setStatus(request.getStatus());
         report.setAdminNote(trimToNull(request.getAdminNote()));
-        report.setHandledBy(admin);
+        report.setHandledBy(handler);
         report.setHandledAt(LocalDateTime.now());
 
         if (Boolean.TRUE.equals(request.getHideDocument())) {
@@ -166,7 +181,7 @@ public class DocumentReportService {
                 .oldStatus(oldStatus)
                 .newStatus(saved.getStatus())
                 .adminNote(saved.getAdminNote())
-                .handledBy(admin)
+                .handledBy(handler)
                 .build());
 
         return toResponse(saved);

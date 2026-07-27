@@ -483,7 +483,7 @@ export function AllDocumentsPage() {
   const [folders, setFolders] = useState<FolderResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [editingDocument, setEditingDocument] =
     useState<LibraryDocument | null>(null);
   const [editTitle, setEditTitle] = useState("");

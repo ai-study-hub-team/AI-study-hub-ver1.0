@@ -266,9 +266,23 @@ export function LoginPage() {
   const navigateAfterLogin =
     useCallback(
       (role: string) => {
+        const queryRedirect = new URLSearchParams(window.location.search).get(
+          "redirect",
+        );
+        const storedRedirect = sessionStorage.getItem("postLoginRedirect");
+        const redirect = queryRedirect || storedRedirect;
+
+        if (redirect?.startsWith("/shared-upload/")) {
+          sessionStorage.removeItem("postLoginRedirect");
+          navigate(redirect, { replace: true });
+          return;
+        }
+
         if (
           role === "ADMIN" ||
-          role === "ROLE_ADMIN"
+          role === "ROLE_ADMIN" ||
+          role === "MANAGER" ||
+          role === "ROLE_MANAGER"
         ) {
           navigate("/admin", {
             replace: true,
