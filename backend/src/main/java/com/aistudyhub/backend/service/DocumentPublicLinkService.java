@@ -180,13 +180,7 @@ public class DocumentPublicLinkService {
 
     private Resource loadExternalResource(String fileUrl) {
         try {
-            Resource resource = new UrlResource(fileUrl);
-
-            if (!resource.exists() || !resource.isReadable()) {
-                throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
-            }
-
-            return resource;
+            return new UrlResource(fileUrl);
         } catch (MalformedURLException ex) {
             throw new NotFoundException(PUBLIC_DOCUMENT_NOT_FOUND);
         }
