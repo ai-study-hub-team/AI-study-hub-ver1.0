@@ -20,6 +20,11 @@ public interface DocumentShareLinkRepository extends JpaRepository<DocumentShare
     /** Active links only for a given user. */
     List<DocumentShareLink> findByOwnerIdAndStatus(Long ownerId, DocumentShareStatus status);
 
+    /** Active links whose configured expiry time has passed. */
+    List<DocumentShareLink> findByStatusAndExpiresAtBefore(
+            DocumentShareStatus status,
+            java.time.LocalDateTime now);
+
     /** Ownership check: find a specific link that belongs to a user. */
     Optional<DocumentShareLink> findByIdAndOwnerId(Long id, Long ownerId);
 }

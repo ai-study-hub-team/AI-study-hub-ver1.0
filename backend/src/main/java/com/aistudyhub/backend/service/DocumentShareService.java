@@ -104,6 +104,15 @@ public class DocumentShareService {
                     document.getId(),
                     "/documents/" + document.getId()
             );
+            notificationService.create(
+                    currentUser,
+                    NotificationType.DOCUMENT_SHARE_SENT,
+                    "Document shared successfully",
+                    "You shared document \"" + document.getTitle() + "\" with " + receiver.getEmail(),
+                    "DOCUMENT",
+                    document.getId(),
+                    "/app/library/" + document.getId() + "/preview"
+            );
             sharedEmails.add(email);
             emailReceivers.add(receiver);
         }
@@ -175,6 +184,26 @@ public class DocumentShareService {
 
         share.setStatus(DocumentShareStatus.REVOKED);
         documentShareRepository.save(share);
+
+        notificationService.create(
+                currentUser,
+                NotificationType.DOCUMENT_SHARE_REVOKED_BY_OWNER,
+                "Document share revoked",
+                "You revoked " + share.getSharedWith().getEmail()
+                        + "'s access to document \"" + document.getTitle() + "\"",
+                "DOCUMENT",
+                document.getId(),
+                "/app/library/" + document.getId() + "/preview"
+        );
+        notificationService.create(
+                share.getSharedWith(),
+                NotificationType.DOCUMENT_ACCESS_REVOKED,
+                "Document access removed",
+                "Your access to document \"" + document.getTitle() + "\" was revoked",
+                "DOCUMENT",
+                document.getId(),
+                "/app/shared-with-me"
+        );
     }
 
     /**

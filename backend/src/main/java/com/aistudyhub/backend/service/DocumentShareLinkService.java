@@ -28,6 +28,7 @@ import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -41,6 +42,7 @@ public class DocumentShareLinkService {
     private final UserRepository userRepository;
     private final FolderRepository folderRepository;
     private final CurrentUserService currentUserService;
+    private final NotificationService notificationService;
 
     @Value("${app.frontend.base-url:http://localhost:5173}")
     private String frontendBaseUrl;
@@ -111,15 +113,19 @@ public class DocumentShareLinkService {
         DocumentShareLink saved = shareLinkRepository.save(link);
 
         // Pre-populate allowlist if provided
+        List<User> addedUsers = List.of();
         if (policy == ShareLinkAccessPolicy.PRIVATE_ALLOWLIST
                 && request.getAllowedUserEmails() != null
                 && !request.getAllowedUserEmails().isEmpty()) {
-            addAllowedUsers(saved, request.getAllowedUserEmails(), owner.getId());
+            addedUsers = addAllowedUsers(saved, request.getAllowedUserEmails(), owner.getId());
         }
 
         String shareUrl = frontendBaseUrl + "/shared-upload/" + plainToken;
         log.info("[ShareLink] Created link id={} for owner userId={} policy={}",
                 saved.getId(), owner.getId(), policy);
+
+        notifyUploadLinkCreated(owner, saved);
+        notifyAllowedUsersAdded(saved, owner, addedUsers);
 
         DocumentShareLinkResponse response = toResponse(saved);
         response.setToken(plainToken);
@@ -153,6 +159,7 @@ public class DocumentShareLinkService {
         link.setStatus(DocumentShareStatus.DISABLED);
         link.setUpdatedAt(LocalDateTime.now());
         DocumentShareLink saved = shareLinkRepository.save(link);
+        notifyUploadLinkRevoked(saved);
         log.info("[ShareLink] Disabled link id={} by userId={}", linkId, owner.getId());
         return toResponse(saved);
     }
@@ -171,20 +178,29 @@ public class DocumentShareLinkService {
                     "Allowlist management is only applicable to PRIVATE_ALLOWLIST links.");
         }
 
+        List<User> addedUsers = List.of();
         if (request.getUserEmailsToAdd() != null) {
-            addAllowedUsers(link, request.getUserEmailsToAdd(), owner.getId());
+            addedUsers = addAllowedUsers(link, request.getUserEmailsToAdd(), owner.getId());
         }
+        List<User> removedUsers = List.of();
         if (request.getUserEmailsToRemove() != null) {
-            for (User user : resolveRegisteredUsers(request.getUserEmailsToRemove())) {
+            List<User> usersToRemove = resolveRegisteredUsers(request.getUserEmailsToRemove());
+            removedUsers = usersToRemove.stream()
+                    .filter(user -> allowedUserRepository.existsByShareLinkIdAndAllowedUserId(linkId, user.getId()))
+                    .collect(Collectors.toList());
+            for (User user : usersToRemove) {
                 allowedUserRepository.deleteByShareLinkIdAndAllowedUserId(linkId, user.getId());
                 log.info("[ShareLink] Removed userId={} from allowlist for linkId={}", user.getId(), linkId);
             }
         }
 
+        notifyAllowedUsersAdded(link, owner, addedUsers);
+        notifyAllowedUsersRemoved(link, owner, removedUsers);
         return toResponse(link);
     }
 
-    private void addAllowedUsers(DocumentShareLink link, List<String> emails, Long grantedBy) {
+    private List<User> addAllowedUsers(DocumentShareLink link, List<String> emails, Long grantedBy) {
+        List<User> addedUsers = new java.util.ArrayList<>();
         for (User user : resolveRegisteredUsers(emails)) {
             if (!allowedUserRepository.existsByShareLinkIdAndAllowedUserId(link.getId(), user.getId())) {
                 DocumentShareLinkAllowedUser entry = DocumentShareLinkAllowedUser.builder()
@@ -194,8 +210,10 @@ public class DocumentShareLinkService {
                         .build();
                 allowedUserRepository.save(entry);
                 log.info("[ShareLink] Added userId={} to allowlist for linkId={}", user.getId(), link.getId());
+                addedUsers.add(user);
             }
         }
+        return addedUsers;
     }
 
     private List<User> resolveRegisteredUsers(List<String> emails) {
@@ -263,6 +281,7 @@ public class DocumentShareLinkService {
             if (link.getStatus() != DocumentShareStatus.EXPIRED) {
                 link.setStatus(DocumentShareStatus.EXPIRED);
                 shareLinkRepository.save(link);
+                notifyUploadLinkExpired(link);
             }
             throw new ForbiddenException("This share link has expired.");
         }
@@ -271,6 +290,21 @@ public class DocumentShareLinkService {
                     "This share link has reached its maximum number of uploads.");
         }
         return link;
+    }
+
+    @Transactional
+    public void expireLinkAndNotify(DocumentShareLink staleRef) {
+        DocumentShareLink link = shareLinkRepository.findById(staleRef.getId()).orElse(null);
+        if (link == null || link.getStatus() != DocumentShareStatus.ACTIVE) {
+            return;
+        }
+        if (link.getExpiresAt() == null || link.getExpiresAt().isAfter(LocalDateTime.now())) {
+            return;
+        }
+
+        link.setStatus(DocumentShareStatus.EXPIRED);
+        shareLinkRepository.save(link);
+        notifyUploadLinkExpired(link);
     }
 
     // ─── Mapper ────────────────────────────────────────────────────────────────
@@ -355,5 +389,130 @@ public class DocumentShareLinkService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 not available", e);
         }
+    }
+
+    private void notifyUploadLinkCreated(User owner, DocumentShareLink link) {
+        notificationService.create(
+                owner,
+                NotificationType.UPLOAD_LINK_CREATED,
+                "Upload link created",
+                "You created upload link \"" + linkTitle(link) + "\"",
+                "UPLOAD_LINK",
+                link.getId(),
+                "/app/shares"
+        );
+    }
+
+    private void notifyAllowedUsersAdded(DocumentShareLink link, User owner, List<User> addedUsers) {
+        for (User user : addedUsers) {
+            notificationService.create(
+                    user,
+                    NotificationType.UPLOAD_LINK_ACCESS_GRANTED,
+                    "Upload link access granted",
+                    owner.getFullName() + " granted you access to upload documents through \""
+                            + linkTitle(link) + "\"",
+                    "UPLOAD_LINK",
+                    link.getId(),
+                    "/shared-upload/" + link.getPlainToken()
+            );
+            notificationService.create(
+                    owner,
+                    NotificationType.UPLOAD_LINK_USER_ADDED,
+                    "User added to upload link",
+                    "You added " + user.getEmail() + " to upload link \"" + linkTitle(link) + "\"",
+                    "UPLOAD_LINK",
+                    link.getId(),
+                    "/app/shares"
+            );
+        }
+    }
+
+    private void notifyAllowedUsersRemoved(DocumentShareLink link, User owner, List<User> removedUsers) {
+        for (User user : removedUsers) {
+            notificationService.create(
+                    owner,
+                    NotificationType.UPLOAD_LINK_USER_REMOVED,
+                    "User removed from upload link",
+                    "You removed " + user.getEmail() + " from upload link \"" + linkTitle(link) + "\"",
+                    "UPLOAD_LINK",
+                    link.getId(),
+                    "/app/shares"
+            );
+            notificationService.create(
+                    user,
+                    NotificationType.UPLOAD_LINK_ACCESS_REMOVED,
+                    "Upload link access removed",
+                    "You no longer have permission to upload documents through \""
+                            + linkTitle(link) + "\"",
+                    "UPLOAD_LINK",
+                    link.getId(),
+                    "/app/upload"
+            );
+        }
+    }
+
+    private void notifyUploadLinkRevoked(DocumentShareLink link) {
+        User owner = link.getOwner();
+        notificationService.create(
+                owner,
+                NotificationType.UPLOAD_LINK_REVOKED_OWNER,
+                "Upload link disabled",
+                "You disabled upload link \"" + linkTitle(link) + "\"",
+                "UPLOAD_LINK",
+                link.getId(),
+                "/app/shares"
+        );
+
+        for (User user : resolveAllowedUsers(link)) {
+            notificationService.create(
+                    user,
+                    NotificationType.UPLOAD_LINK_REVOKED_RECEIVER,
+                    "Upload link disabled",
+                    "Upload link \"" + linkTitle(link) + "\" is no longer available",
+                    "UPLOAD_LINK",
+                    link.getId(),
+                    "/app/upload"
+            );
+        }
+    }
+
+    private void notifyUploadLinkExpired(DocumentShareLink link) {
+        User owner = link.getOwner();
+        notificationService.create(
+                owner,
+                NotificationType.UPLOAD_LINK_EXPIRED_OWNER,
+                "Upload link expired",
+                "Upload link \"" + linkTitle(link) + "\" has expired",
+                "UPLOAD_LINK",
+                link.getId(),
+                "/app/shares"
+        );
+
+        for (User user : resolveAllowedUsers(link)) {
+            notificationService.create(
+                    user,
+                    NotificationType.UPLOAD_LINK_EXPIRED_RECEIVER,
+                    "Upload link expired",
+                    "Upload link \"" + linkTitle(link) + "\" has expired",
+                    "UPLOAD_LINK",
+                    link.getId(),
+                    "/app/upload"
+            );
+        }
+    }
+
+    private List<User> resolveAllowedUsers(DocumentShareLink link) {
+        return allowedUserRepository.findByShareLinkId(link.getId())
+                .stream()
+                .map(DocumentShareLinkAllowedUser::getAllowedUserId)
+                .map(userRepository::findById)
+                .flatMap(Optional::stream)
+                .collect(Collectors.toList());
+    }
+
+    private String linkTitle(DocumentShareLink link) {
+        return link.getTitle() != null && !link.getTitle().isBlank()
+                ? link.getTitle()
+                : "Untitled upload link";
     }
 }

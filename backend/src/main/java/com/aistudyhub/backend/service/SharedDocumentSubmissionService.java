@@ -62,6 +62,7 @@ public class SharedDocumentSubmissionService {
     private final StorageQuotaService storageQuotaService;
     private final ShareLinkAccessPolicyService accessPolicyService;
     private final FileStorageService fileStorageService; // kept for MIME detection only
+    private final NotificationService notificationService;
 
     // ─── Authenticated upload ──────────────────────────────────────────────────
 
@@ -206,6 +207,8 @@ public class SharedDocumentSubmissionService {
         log.info("[SharedUpload] Submission id={} created for linkId={} uploaderUserId={} ownerId={} size={}B cloudId={}",
                 saved.getId(), link.getId(), uploader.getId(), ownerId, fileSize, cloudPublicId);
 
+        notifySubmissionCreated(saved, uploader, link.getOwner());
+
         return toResponse(saved);
     }
 
@@ -308,6 +311,8 @@ public class SharedDocumentSubmissionService {
         log.info("[SharedUpload] Approved submission id={} → Document id={} reviewer={} cloudId={}",
                 submissionId, savedDoc.getId(), reviewer.getId(), submission.getCloudPublicId());
 
+        notifySubmissionApproved(submission, savedDoc);
+
         Long savedDocId = savedDoc.getId();
         dispatchAfterCommit(() -> {
             documentProcessingAsyncService.processDocumentAsync(savedDocId);
@@ -360,6 +365,7 @@ public class SharedDocumentSubmissionService {
         }
 
         SharedDocumentSubmission saved = submissionRepository.save(submission);
+        notifySubmissionRejected(saved);
         log.info("[SharedUpload] Submission id={} rejected by userId={} cloudDeleted={}",
                 submissionId, reviewer.getId(), cloudDeleted);
         return toResponse(saved);
@@ -602,5 +608,61 @@ public class SharedDocumentSubmissionService {
             sb.append(visibility.toUpperCase());
         }
         return sb.isEmpty() ? null : sb.toString();
+    }
+
+    private void notifySubmissionCreated(SharedDocumentSubmission submission, User uploader, User owner) {
+        notificationService.create(
+                uploader,
+                NotificationType.SHARED_UPLOAD_SUBMITTED_RECEIVER,
+                "Document uploaded successfully",
+                "Your document \"" + submission.getTitle() + "\" was submitted for review",
+                "SHARED_UPLOAD",
+                submission.getId(),
+                "/app/upload"
+        );
+        notificationService.create(
+                owner,
+                NotificationType.SHARED_UPLOAD_SUBMITTED_OWNER,
+                "New shared upload",
+                uploader.getEmail() + " uploaded document \"" + submission.getTitle() + "\" through your upload link",
+                "SHARED_UPLOAD",
+                submission.getId(),
+                "/app/shares"
+        );
+    }
+
+    private void notifySubmissionApproved(SharedDocumentSubmission submission, Document document) {
+        findUser(submission.getUploaderUserId()).ifPresent(uploader ->
+                notificationService.create(
+                        uploader,
+                        NotificationType.SHARED_UPLOAD_APPROVED,
+                        "Uploaded document approved",
+                        "Your uploaded document \"" + submission.getTitle() + "\" was approved",
+                        "DOCUMENT",
+                        document.getId(),
+                        "/app/library/" + document.getId() + "/preview"
+                )
+        );
+    }
+
+    private void notifySubmissionRejected(SharedDocumentSubmission submission) {
+        findUser(submission.getUploaderUserId()).ifPresent(uploader ->
+                notificationService.create(
+                        uploader,
+                        NotificationType.SHARED_UPLOAD_REJECTED,
+                        "Uploaded document rejected",
+                        "Your uploaded document \"" + submission.getTitle() + "\" was rejected",
+                        "SHARED_UPLOAD",
+                        submission.getId(),
+                        "/app/upload"
+                )
+        );
+    }
+
+    private java.util.Optional<User> findUser(Long userId) {
+        if (userId == null) {
+            return java.util.Optional.empty();
+        }
+        return userRepository.findById(userId);
     }
 }
