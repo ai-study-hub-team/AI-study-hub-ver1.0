@@ -179,13 +179,6 @@ export function QuizGeneratorPage() {
           DISPLAY_LIMIT,
         );
 
-  const hiddenDocumentCount =
-    Math.max(
-      documents.length -
-        DISPLAY_LIMIT,
-      0,
-    );
-
   const currentQuestion =
     questions[currentQ];
 
@@ -210,33 +203,34 @@ export function QuizGeneratorPage() {
             : "F";
 
   /* =======================================================
-     LOAD DOCUMENTS
-  ======================================================= */
-
-  useEffect(() => {
-    fetchDocuments();
-  }, []);
-
-  /* =======================================================
      DOCUMENT HELPERS
   ======================================================= */
 
   const getProcessStatus = (
     doc: any,
   ): string => {
-    return (
+    return String(
       doc?.processStatus ||
-      doc?.aiStatus ||
-      ""
-    );
+        doc?.aiStatus ||
+        "",
+    ).toUpperCase();
   };
 
   const isDocumentProcessed = (
     doc: any,
   ): boolean => {
+    /*
+     * API này đã lấy AI-ready documents.
+     * Tuy nhiên vẫn kiểm tra status để tránh chọn
+     * nhầm document chưa xử lý.
+     */
     const processStatus =
       getProcessStatus(doc);
 
+    /*
+     * Nếu API AI-ready không trả field status,
+     * vẫn cho phép document được sử dụng.
+     */
     if (!processStatus) {
       return true;
     }
@@ -262,19 +256,22 @@ export function QuizGeneratorPage() {
      FETCH DOCUMENTS
   ======================================================= */
 
-      const data = await documentApi.getAiReadyDocumentsForSelect(userId);
-      setDocuments(data);
+  const fetchDocuments =
+    async () => {
+      const userId =
+        getCurrentUserId();
 
-        if (!userId) {
-          toast.error(
-            "Please login again.",
-          );
+      if (!userId) {
+        toast.error(
+          "Please login again.",
+        );
 
-          return;
-        }
+        return;
+      }
 
+      try {
         const data =
-          await documentApi.getAllDocumentsForSelect(
+          await documentApi.getAiReadyDocumentsForSelect(
             userId,
           );
 
@@ -325,7 +322,7 @@ export function QuizGeneratorPage() {
         );
       } catch (error: any) {
         console.error(
-          "Cannot load uploaded documents:",
+          "Cannot load AI-ready documents:",
           error,
         );
 
@@ -336,8 +333,22 @@ export function QuizGeneratorPage() {
               ?.error ||
             "Cannot load uploaded documents",
         );
+
+        setDocuments([]);
+        setSelectedDocumentId(
+          null,
+        );
+        setSelectedDocName("");
       }
     };
+
+  /* =======================================================
+     LOAD DOCUMENTS
+  ======================================================= */
+
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
 
   /* =======================================================
      SELECT DOCUMENT
@@ -391,78 +402,109 @@ export function QuizGeneratorPage() {
       return [];
     }
 
-    return rawQuestions.map(
-      (question: any) => {
-        const rawOptions =
-          question?.options ||
-          question?.answers ||
-          question?.quizOptions ||
-          question?.optionResponses ||
-          [];
+    return rawQuestions
+      .map(
+        (question: any) => {
+          const rawOptions =
+            question?.options ||
+            question?.answers ||
+            question?.quizOptions ||
+            question?.optionResponses ||
+            [];
 
-        const optionTexts =
-          Array.isArray(
-            rawOptions,
-          )
-            ? rawOptions.map(
-                (option: any) => {
-                  if (
-                    typeof option ===
-                    "string"
-                  ) {
-                    return option;
-                  }
+          const optionTexts =
+            Array.isArray(
+              rawOptions,
+            )
+              ? rawOptions.map(
+                  (
+                    option: any,
+                  ) => {
+                    if (
+                      typeof option ===
+                      "string"
+                    ) {
+                      return option;
+                    }
 
-                  return (
-                    option?.optionContent ||
-                    option?.optionText ||
-                    option?.content ||
-                    option?.text ||
-                    option?.answerText ||
-                    ""
-                  );
-                },
-              )
-            : [];
+                    return (
+                      option?.optionContent ||
+                      option?.optionText ||
+                      option?.content ||
+                      option?.text ||
+                      option?.answerText ||
+                      ""
+                    );
+                  },
+                )
+              : [];
 
-        const correctIndex =
-          Array.isArray(
-            rawOptions,
-          )
-            ? rawOptions.findIndex(
-                (
-                  option: any,
-                ) =>
-                  option?.isCorrect ===
-                    true ||
-                  option?.correct ===
-                    true,
-              )
-            : -1;
+          const correctIndex =
+            Array.isArray(
+              rawOptions,
+            )
+              ? rawOptions.findIndex(
+                  (
+                    option: any,
+                  ) =>
+                    option?.isCorrect ===
+                      true ||
+                    option?.correct ===
+                      true,
+                )
+              : -1;
 
-        return {
-          question:
-            question?.questionText ||
-            question?.question ||
-            question?.content ||
-            question?.text ||
-            "",
+          /*
+           * Một số API có thể trả trực tiếp index đáp án đúng.
+           */
+          const directCorrectIndex =
+            Number.isInteger(
+              question?.correct,
+            )
+              ? question.correct
+              : Number.isInteger(
+                    question?.correctIndex,
+                  )
+                ? question.correctIndex
+                : Number.isInteger(
+                      question?.correctAnswerIndex,
+                    )
+                  ? question.correctAnswerIndex
+                  : -1;
 
-          options:
-            optionTexts,
+          return {
+            question:
+              question?.questionText ||
+              question?.question ||
+              question?.content ||
+              question?.text ||
+              "",
 
-          correct:
-            correctIndex >= 0
-              ? correctIndex
-              : 0,
+            options:
+              optionTexts,
 
-          explanation:
-            question?.explanation ||
-            question?.reason ||
-            "",
-        };
-      },
-    );
+            correct:
+              correctIndex >= 0
+                ? correctIndex
+                : directCorrectIndex >=
+                    0
+                  ? directCorrectIndex
+                  : 0,
+
+            explanation:
+              question?.explanation ||
+              question?.reason ||
+              "",
+          };
+        },
+      )
+      .filter(
+        (question) =>
+          question.question.trim()
+            .length > 0 &&
+          question.options.length >
+            0,
+      );
   };
 
   /* =======================================================
@@ -482,7 +524,9 @@ export function QuizGeneratorPage() {
         return;
       }
 
-      setIsLoadingHistory(true);
+      setIsLoadingHistory(
+        true,
+      );
 
       try {
         const response =
@@ -584,6 +628,11 @@ export function QuizGeneratorPage() {
         );
 
         setCurrentQ(0);
+
+        /*
+         * History API hiện chưa lấy lại đáp án
+         * user đã chọn, nên reset score và answers.
+         */
         setScore(0);
 
         setAnswers(
@@ -676,13 +725,17 @@ export function QuizGeneratorPage() {
         const response =
           await generateQuizApi({
             userId,
+
             documentId:
               selectedDocumentId,
+
             questionCount,
+
             difficulty:
               difficultyMap[
                 difficulty
               ],
+
             quizType:
               "MULTIPLE_CHOICE",
           });
@@ -758,6 +811,9 @@ export function QuizGeneratorPage() {
       return;
     }
 
+    /*
+     * Không cho chọn lại khi đã click đáp án.
+     */
     if (
       selectedAnswer !== null
     ) {
@@ -801,7 +857,6 @@ export function QuizGeneratorPage() {
 
       if (isLastQuestion) {
         setView("result");
-
         return;
       }
 
@@ -817,6 +872,41 @@ export function QuizGeneratorPage() {
   };
 
   /* =======================================================
+     RETAKE
+
+     Làm lại đúng bộ câu hỏi hiện tại.
+     KHÔNG gọi generateQuizApi.
+     KHÔNG tốn thêm token AI.
+  ======================================================= */
+
+  const handleRetakeQuiz = () => {
+    if (
+      questions.length === 0
+    ) {
+      toast.error(
+        "No quiz available to retake.",
+      );
+
+      return;
+    }
+
+    setCurrentQ(0);
+    setScore(0);
+
+    setAnswers(
+      new Array(
+        questions.length,
+      ).fill(null),
+    );
+
+    setSelectedAnswer(
+      null,
+    );
+
+    setView("quiz");
+  };
+
+  /* =======================================================
      QUIT CURRENT QUIZ
   ======================================================= */
 
@@ -827,14 +917,17 @@ export function QuizGeneratorPage() {
     setCurrentQ(0);
     setScore(0);
     setAnswers([]);
-    setSelectedAnswer(null);
+
+    setSelectedAnswer(
+      null,
+    );
   };
 
   /* =======================================================
      BACK TO QUIZ PAGE
 
-     Đây là nút mới ở màn hình Quiz Complete.
-     Quay lại Quiz Configuration mà KHÔNG gọi API.
+     Quay về configuration.
+     Không gọi API.
   ======================================================= */
 
   const handleBackToQuiz = () => {
@@ -843,7 +936,6 @@ export function QuizGeneratorPage() {
     setQuestions([]);
     setCurrentQ(0);
     setScore(0);
-
     setAnswers([]);
 
     setSelectedAnswer(
@@ -857,13 +949,11 @@ export function QuizGeneratorPage() {
 
   return (
     <div className="space-y-8">
-
       {/* ===================================================
           HEADER
       =================================================== */}
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
             Quiz Generator
@@ -877,7 +967,6 @@ export function QuizGeneratorPage() {
         </div>
 
         <div className="flex items-center gap-2">
-
           {(
             [
               "setup",
@@ -903,12 +992,10 @@ export function QuizGeneratorPage() {
                 : "History"}
             </button>
           ))}
-
         </div>
       </div>
 
       <AnimatePresence mode="wait">
-
         {/* =================================================
             SETUP
         ================================================= */}
@@ -927,11 +1014,8 @@ export function QuizGeneratorPage() {
             }}
             className="grid grid-cols-1 lg:grid-cols-3 gap-6"
           >
-
             <div className="lg:col-span-2 space-y-5">
-
               <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-5">
                   Quiz Configuration
                 </h2>
@@ -941,7 +1025,6 @@ export function QuizGeneratorPage() {
                 ========================================= */}
 
                 <div className="mb-5">
-
                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
                     Source Document
                   </label>
@@ -949,12 +1032,11 @@ export function QuizGeneratorPage() {
                   {documents.length ===
                   0 ? (
                     <p className="text-sm text-slate-500 dark:text-slate-400">
-                      No uploaded
+                      No AI-ready
                       documents found.
                     </p>
                   ) : (
                     <>
-
                       {visibleDocuments.map(
                         (doc: any) => {
                           const docName =
@@ -991,7 +1073,6 @@ export function QuizGeneratorPage() {
                                   : "border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
                               }`}
                             >
-
                               <input
                                 type="radio"
                                 checked={
@@ -1036,7 +1117,6 @@ export function QuizGeneratorPage() {
                                   event,
                                 ) => {
                                   event.preventDefault();
-
                                   event.stopPropagation();
 
                                   createAndCopyPublicLink(
@@ -1060,7 +1140,6 @@ export function QuizGeneratorPage() {
                                   }`}
                                 />
                               </button>
-
                             </label>
                           );
                         },
@@ -1082,13 +1161,11 @@ export function QuizGeneratorPage() {
                         >
                           {showAllDocuments
                             ? "Thu gọn"
-                            : `Xem thêm`}
+                            : `Xem thêm (${documents.length - DISPLAY_LIMIT})`}
                         </button>
                       )}
-
                     </>
                   )}
-
                 </div>
 
                 {/* =========================================
@@ -1096,14 +1173,12 @@ export function QuizGeneratorPage() {
                 ========================================= */}
 
                 <div className="mb-5">
-
                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
                     Difficulty
                     Level
                   </label>
 
                   <div className="grid grid-cols-3 gap-3">
-
                     {[
                       "Easy",
                       "Intermediate",
@@ -1133,9 +1208,7 @@ export function QuizGeneratorPage() {
                         </button>
                       ),
                     )}
-
                   </div>
-
                 </div>
 
                 {/* =========================================
@@ -1143,9 +1216,7 @@ export function QuizGeneratorPage() {
                 ========================================= */}
 
                 <div className="mb-6">
-
                   <div className="flex justify-between mb-2">
-
                     <label className="text-sm font-bold text-slate-700 dark:text-slate-300">
                       Number of
                       Questions
@@ -1156,7 +1227,6 @@ export function QuizGeneratorPage() {
                         questionCount
                       }
                     </span>
-
                   </div>
 
                   <input
@@ -1180,7 +1250,6 @@ export function QuizGeneratorPage() {
                     }
                     className="w-full accent-blue-600"
                   />
-
                 </div>
 
                 {/* =========================================
@@ -1204,11 +1273,8 @@ export function QuizGeneratorPage() {
                     ? "Generating..."
                     : "Generate & Start Quiz"}
                 </button>
-
               </div>
-
             </div>
-
           </motion.div>
         )}
 
@@ -1231,13 +1297,9 @@ export function QuizGeneratorPage() {
               }}
               className="max-w-2xl mx-auto"
             >
-
               <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-8">
-
                 <div className="flex items-center justify-between gap-4 mb-6">
-
                   <div>
-
                     <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Question{" "}
                       {currentQ +
@@ -1249,7 +1311,6 @@ export function QuizGeneratorPage() {
                     </span>
 
                     <div className="bg-slate-100 dark:bg-slate-800 h-2 rounded-full mt-2 w-48 max-w-full overflow-hidden">
-
                       <div
                         className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                         style={{
@@ -1261,13 +1322,10 @@ export function QuizGeneratorPage() {
                           }%`,
                         }}
                       />
-
                     </div>
-
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
-
                     <Clock className="w-4 h-4 text-slate-500" />
 
                     <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
@@ -1275,9 +1333,7 @@ export function QuizGeneratorPage() {
                         difficulty
                       }
                     </span>
-
                   </div>
-
                 </div>
 
                 <h2 className="text-xl font-extrabold text-slate-900 dark:text-white mb-6 leading-relaxed">
@@ -1287,7 +1343,6 @@ export function QuizGeneratorPage() {
                 </h2>
 
                 <div className="space-y-3">
-
                   {currentQuestion.options.map(
                     (
                       option,
@@ -1330,9 +1385,7 @@ export function QuizGeneratorPage() {
                               : "border-slate-200 dark:border-slate-700 hover:border-blue-400 text-slate-700 dark:text-slate-300"
                           }`}
                         >
-
                           <div className="w-8 h-8 rounded-xl flex items-center justify-center font-extrabold text-sm shrink-0 bg-slate-50 dark:bg-slate-800">
-
                             {showResult &&
                             isCorrect ? (
                               <CheckCircle2 className="w-4 h-4" />
@@ -1345,7 +1398,6 @@ export function QuizGeneratorPage() {
                                   index,
                               )
                             )}
-
                           </div>
 
                           <span>
@@ -1353,12 +1405,10 @@ export function QuizGeneratorPage() {
                               option
                             }
                           </span>
-
                         </button>
                       );
                     },
                   )}
-
                 </div>
 
                 {selectedAnswer !==
@@ -1374,7 +1424,6 @@ export function QuizGeneratorPage() {
                     }}
                     className="mt-5 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800"
                   >
-
                     <p className="text-sm font-bold mb-1">
                       {selectedAnswer ===
                       currentQuestion.correct
@@ -1386,14 +1435,11 @@ export function QuizGeneratorPage() {
                       {currentQuestion.explanation ||
                         "No explanation provided."}
                     </p>
-
                   </motion.div>
                 )}
-
               </div>
 
               <div className="flex justify-center mt-5">
-
                 <button
                   type="button"
                   onClick={
@@ -1405,9 +1451,7 @@ export function QuizGeneratorPage() {
 
                   Quit Quiz
                 </button>
-
               </div>
-
             </motion.div>
           )}
 
@@ -1428,9 +1472,7 @@ export function QuizGeneratorPage() {
             }}
             className="max-w-2xl mx-auto space-y-5"
           >
-
             <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-8 text-center">
-
               <Trophy className="w-12 h-12 text-amber-400 mx-auto mb-3" />
 
               <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-1">
@@ -1446,9 +1488,7 @@ export function QuizGeneratorPage() {
               {/* SCORE */}
 
               <div className="grid grid-cols-3 gap-4 mb-8">
-
                 <div>
-
                   <div
                     className={`text-5xl md:text-6xl font-extrabold ${gradeColors[grade]}`}
                   >
@@ -1458,11 +1498,9 @@ export function QuizGeneratorPage() {
                   <p className="text-sm text-slate-500">
                     Grade
                   </p>
-
                 </div>
 
                 <div>
-
                   <div className="text-5xl md:text-6xl font-extrabold text-slate-900 dark:text-white">
                     {pct}%
                   </div>
@@ -1470,11 +1508,9 @@ export function QuizGeneratorPage() {
                   <p className="text-sm text-slate-500">
                     Score
                   </p>
-
                 </div>
 
                 <div>
-
                   <div className="text-5xl md:text-6xl font-extrabold text-blue-600">
                     {score}/
                     {
@@ -1485,9 +1521,7 @@ export function QuizGeneratorPage() {
                   <p className="text-sm text-slate-500">
                     Correct
                   </p>
-
                 </div>
-
               </div>
 
               {/* ===========================================
@@ -1495,22 +1529,15 @@ export function QuizGeneratorPage() {
               =========================================== */}
 
               <div className="space-y-3">
-
                 <div className="flex flex-col sm:flex-row gap-3">
-
                   <button
                     type="button"
                     onClick={
-                      handleStartQuiz
+                      handleRetakeQuiz
                     }
-                    disabled={
-                      isGenerating
-                    }
-                    className="flex-1 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-700 transition disabled:opacity-60"
+                    className="flex-1 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-700 transition"
                   >
-                    {isGenerating
-                      ? "Generating..."
-                      : "Retake Quiz"}
+                    Retake Quiz
                   </button>
 
                   <button
@@ -1524,12 +1551,7 @@ export function QuizGeneratorPage() {
                   >
                     Review Answers
                   </button>
-
                 </div>
-
-                {/* =========================================
-                    NEW BUTTON - BACK TO QUIZ
-                ========================================= */}
 
                 <button
                   type="button"
@@ -1542,11 +1564,8 @@ export function QuizGeneratorPage() {
 
                   Back to Quiz
                 </button>
-
               </div>
-
             </div>
-
           </motion.div>
         )}
 
@@ -1565,7 +1584,6 @@ export function QuizGeneratorPage() {
             }}
             className="max-w-2xl mx-auto space-y-4"
           >
-
             <button
               type="button"
               onClick={() =>
@@ -1602,7 +1620,6 @@ export function QuizGeneratorPage() {
                     key={index}
                     className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6"
                   >
-
                     <h3 className="font-bold text-slate-900 dark:text-white mb-4 leading-relaxed">
                       Question{" "}
                       {index +
@@ -1614,7 +1631,6 @@ export function QuizGeneratorPage() {
                     </h3>
 
                     <div className="space-y-2">
-
                       {question.options.map(
                         (
                           option,
@@ -1663,7 +1679,6 @@ export function QuizGeneratorPage() {
                           );
                         },
                       )}
-
                     </div>
 
                     {hasUserAnswer && (
@@ -1681,7 +1696,6 @@ export function QuizGeneratorPage() {
                     )}
 
                     <p className="text-sm text-slate-600 dark:text-slate-300 mt-3">
-
                       <span className="font-bold">
                         Correct
                         answer:
@@ -1692,25 +1706,20 @@ export function QuizGeneratorPage() {
                         question.correct
                       ] ||
                         "N/A"}
-
                     </p>
 
                     <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
-
                       <span className="font-bold">
                         Explanation:
                       </span>{" "}
 
                       {question.explanation ||
                         "No explanation provided."}
-
                     </p>
-
                   </div>
                 );
               },
             )}
-
           </motion.div>
         )}
 
@@ -1729,28 +1738,22 @@ export function QuizGeneratorPage() {
             }}
             className="space-y-5"
           >
-
             {isLoadingHistory ? (
-
               <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 text-center">
                 <p className="text-slate-500 dark:text-slate-400">
                   Loading quiz
                   history...
                 </p>
               </div>
-
             ) : quizHistoryData.length ===
               0 ? (
-
               <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 text-center">
                 <p className="text-slate-500 dark:text-slate-400">
                   No quiz history
                   found.
                 </p>
               </div>
-
             ) : (
-
               quizHistoryData.map(
                 (
                   quiz,
@@ -1794,13 +1797,11 @@ export function QuizGeneratorPage() {
                       }}
                       className="w-full text-left bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-blue-500 transition disabled:opacity-60"
                     >
-
                       <p className="font-bold text-slate-900 dark:text-white">
                         {title}
                       </p>
 
                       <p className="text-sm text-slate-500 mt-1">
-
                         {quiz.score !==
                         undefined
                           ? `${quiz.score}% · `
@@ -1815,7 +1816,6 @@ export function QuizGeneratorPage() {
                           totalQuestions
                         }{" "}
                         questions
-
                       </p>
 
                       <p className="text-xs text-slate-400 mt-1">
@@ -1823,19 +1823,14 @@ export function QuizGeneratorPage() {
                           quiz.date ||
                           ""}
                       </p>
-
                     </button>
                   );
                 },
               )
-
             )}
-
           </motion.div>
         )}
-
       </AnimatePresence>
-
     </div>
   );
 }
