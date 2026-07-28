@@ -103,6 +103,15 @@ public class FolderShareService {
                     folder.getId(),
                     "/folders/" + folder.getId()
             );
+            notificationService.create(
+                    currentUser,
+                    NotificationType.FOLDER_SHARE_SENT,
+                    "Folder shared successfully",
+                    "You shared folder \"" + folder.getName() + "\" with " + receiver.getEmail(),
+                    "FOLDER",
+                    folder.getId(),
+                    "/app/folders/" + folder.getId()
+            );
             sharedEmails.add(email);
             emailReceivers.add(receiver);
         }
@@ -176,6 +185,26 @@ public class FolderShareService {
 
         share.setStatus(FolderShareStatus.REVOKED);
         folderShareRepository.save(share);
+
+        notificationService.create(
+                currentUser,
+                NotificationType.FOLDER_SHARE_REVOKED_BY_OWNER,
+                "Folder share revoked",
+                "You revoked " + share.getSharedWith().getEmail()
+                        + "'s access to folder \"" + folder.getName() + "\"",
+                "FOLDER",
+                folder.getId(),
+                "/app/folders/" + folder.getId()
+        );
+        notificationService.create(
+                share.getSharedWith(),
+                NotificationType.FOLDER_ACCESS_REVOKED,
+                "Folder access removed",
+                "Your access to folder \"" + folder.getName() + "\" was revoked",
+                "FOLDER",
+                folder.getId(),
+                "/app/shared-with-me"
+        );
     }
 
 

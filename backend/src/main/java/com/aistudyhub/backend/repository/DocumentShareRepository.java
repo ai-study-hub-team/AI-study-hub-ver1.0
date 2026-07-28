@@ -28,6 +28,11 @@ public interface DocumentShareRepository extends JpaRepository<DocumentShare, Lo
             DocumentShareStatus status
     );
 
+    List<DocumentShare> findByStatusAndExpiresAtBefore(
+            DocumentShareStatus status,
+            LocalDateTime now
+    );
+
 
     @Query("""
             select case when count(s) > 0 then true else false end
