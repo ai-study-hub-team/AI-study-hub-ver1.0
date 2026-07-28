@@ -597,11 +597,9 @@ frontend/dist/
 | Thành viên 4 | Developer | Chức năng hệ thống và kiểm thử |
 | Thành viên 5 | Developer | Chức năng hệ thống và tài liệu |
 
-> Cập nhật lại tên thành viên và vai trò thực tế của nhóm trước khi nộp dự án.
 
 ## 15. Tài liệu liên quan
 
-Có thể lưu tài liệu trong thư mục `docs/`:
 
 ```text
 docs/
