@@ -1,17 +1,12 @@
 import {
   Bell,
   BellRing,
-  Bot,
   Check,
   CheckCheck,
-  CreditCard,
-  FileCheck2,
-  FileWarning,
-  FolderOpen,
-  Share2,
   Trash2,
   X,
 } from "lucide-react";
+
 import {
   useCallback,
   useEffect,
@@ -19,6 +14,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+
 import { useNavigate } from "react-router";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -28,10 +24,24 @@ import {
   type NotificationResponse,
 } from "../../services/notificationApi";
 
+import {
+  getNotificationIcon,
+  getNotificationLabel,
+  normalizeActionUrl,
+} from "../../utils/notificationUtils";
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
 const POLL_INTERVAL_MS = 30_000;
 
 const DESKTOP_BASELINE_KEY =
   "notificationDesktopBaselineId";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 type ApiError = {
   response?: {
@@ -42,6 +52,10 @@ type ApiError = {
   };
   message?: string;
 };
+
+/* =========================================================
+   ERROR MESSAGE
+========================================================= */
 
 const getErrorMessage = (
   error: unknown,
@@ -57,90 +71,9 @@ const getErrorMessage = (
   );
 };
 
-const getNotificationIcon = (
-  type: string,
-) => {
-  switch (type) {
-    case "AI_PROCESSING_COMPLETED":
-      return Bot;
-
-    case "DOCUMENT_REPORTED":
-      return FileWarning;
-
-    case "REPORT_RESOLVED":
-      return FileCheck2;
-
-    case "PAYMENT_SUCCESS":
-    case "PAYMENT_FAILED":
-    case "SUBSCRIPTION_EXPIRING_7_DAYS":
-    case "SUBSCRIPTION_EXPIRED":
-      return CreditCard;
-
-    case "DOCUMENT_SHARED":
-      return Share2;
-
-    case "FOLDER_SHARED":
-      return FolderOpen;
-
-    default:
-      return BellRing;
-  }
-};
-
-/**
- * Chuyển route backend về route frontend hiện tại.
- */
-const normalizeActionUrl = (
-  url?: string | null,
-): string | null => {
-  if (!url) {
-    return null;
-  }
-
-  const trimmedUrl = url.trim();
-
-  // Chỉ cho phép điều hướng nội bộ.
-  if (!trimmedUrl.startsWith("/")) {
-    return null;
-  }
-
-  if (
-    trimmedUrl.startsWith(
-      "/admin/document-reports",
-    )
-  ) {
-    return "/admin/reports";
-  }
-
-  if (
-    trimmedUrl.startsWith(
-      "/document-reports",
-    )
-  ) {
-    return "/app/dashboard";
-  }
-
-  if (
-    trimmedUrl.startsWith("/documents/")
-  ) {
-    const urlParts = trimmedUrl
-      .split("/")
-      .filter(Boolean);
-
-    const documentId =
-      urlParts.length > 0
-        ? urlParts[urlParts.length - 1]
-        : undefined;
-
-    if (documentId) {
-      return `/app/library/${documentId}/preview`;
-    }
-
-    return null;
-  }
-
-  return trimmedUrl;
-};
+/* =========================================================
+   FORMAT CREATED AT
+========================================================= */
 
 const formatCreatedAt = (
   createdAt: string,
@@ -155,6 +88,10 @@ const formatCreatedAt = (
     addSuffix: true,
   });
 };
+
+/* =========================================================
+   COMPONENT
+========================================================= */
 
 export function NotificationBell() {
   const navigate = useNavigate();
@@ -171,8 +108,10 @@ export function NotificationBell() {
   const [loading, setLoading] =
     useState(false);
 
-  const [unreadCount, setUnreadCount] =
-    useState(0);
+  const [
+    unreadCount,
+    setUnreadCount,
+  ] = useState(0);
 
   const [
     notifications,
@@ -191,151 +130,184 @@ export function NotificationBell() {
       : "unsupported",
   );
 
-  const loadNotifications = useCallback(
-    async (showDesktop = false) => {
-      try {
-        const [
-          listResponse,
-          countResponse,
-        ] = await Promise.all([
-          notificationApi.getNotifications(
-            0,
-            8,
-          ),
-          notificationApi.getUnreadCount(),
-        ]);
+  /* =========================================================
+     LOAD NOTIFICATIONS
+  ========================================================= */
 
-        const nextNotifications =
-          listResponse.data.content || [];
+  const loadNotifications =
+    useCallback(
+      async (
+        showDesktop = false,
+      ) => {
+        try {
+          const [
+            listResponse,
+            countResponse,
+          ] = await Promise.all([
+            notificationApi.getNotifications(
+              0,
+              8,
+            ),
+            notificationApi.getUnreadCount(),
+          ]);
 
-        setNotifications(
-          nextNotifications,
-        );
+          const nextNotifications =
+            listResponse.data.content || [];
 
-        setUnreadCount(
-          Number(
-            countResponse.data.count || 0,
-          ),
-        );
+          setNotifications(
+            nextNotifications,
+          );
 
-        const maxId =
-          nextNotifications.reduce(
-            (currentMax, item) =>
-              Math.max(
+          setUnreadCount(
+            Number(
+              countResponse.data.count || 0,
+            ),
+          );
+
+          const maxId =
+            nextNotifications.reduce(
+              (
                 currentMax,
-                item.id,
-              ),
-            0,
-          );
+                item,
+              ) =>
+                Math.max(
+                  currentMax,
+                  item.id,
+                ),
+              0,
+            );
 
-        const storedBaseline = Number(
-          localStorage.getItem(
-            DESKTOP_BASELINE_KEY,
-          ) || "0",
-        );
+          const storedBaseline =
+            Number(
+              localStorage.getItem(
+                DESKTOP_BASELINE_KEY,
+              ) || "0",
+            );
 
-        /*
-         * Lần tải đầu tiên chỉ lưu mốc ID.
-         * Không hiển thị desktop notification
-         * cho các thông báo cũ.
-         */
-        if (
-          !initialPollCompletedRef.current
-        ) {
-          localStorage.setItem(
-            DESKTOP_BASELINE_KEY,
-            String(maxId),
-          );
+          /*
+           * Lần tải đầu tiên chỉ lưu mốc ID.
+           * Không hiển thị desktop notification
+           * cho các notification cũ.
+           */
+          if (
+            !initialPollCompletedRef.current
+          ) {
+            localStorage.setItem(
+              DESKTOP_BASELINE_KEY,
+              String(maxId),
+            );
 
-          initialPollCompletedRef.current =
-            true;
+            initialPollCompletedRef.current =
+              true;
 
-          return;
-        }
+            return;
+          }
 
-        if (
-          showDesktop &&
-          desktopPermission === "granted"
-        ) {
-          const newUnreadNotifications =
-            nextNotifications
-              .filter(
-                (item) =>
-                  !item.read &&
-                  item.id > storedBaseline,
-              )
-              .sort(
-                (left, right) =>
-                  left.id - right.id,
-              );
+          /* =================================================
+             DESKTOP NOTIFICATION
+          ================================================= */
 
-          newUnreadNotifications.forEach(
-            (item) => {
-              const browserNotification =
-                new window.Notification(
-                  item.title,
-                  {
-                    body: item.message,
-                    icon: "/favicon.ico",
-                    tag: `ai-study-hub-notification-${item.id}`,
-                  },
+          if (
+            showDesktop &&
+            desktopPermission === "granted"
+          ) {
+            const newUnreadNotifications =
+              nextNotifications
+                .filter(
+                  (item) =>
+                    !item.read &&
+                    item.id >
+                      storedBaseline,
+                )
+                .sort(
+                  (
+                    left,
+                    right,
+                  ) =>
+                    left.id -
+                    right.id,
                 );
 
-              browserNotification.onclick =
-                () => {
-                  window.focus();
+            newUnreadNotifications.forEach(
+              (item) => {
+                const browserNotification =
+                  new window.Notification(
+                    item.title,
+                    {
+                      body: item.message,
+                      icon: "/favicon.ico",
+                      tag: `ai-study-hub-notification-${item.id}`,
+                    },
+                  );
 
-                  const actionUrl =
-                    normalizeActionUrl(
-                      item.actionUrl,
-                    );
+                browserNotification.onclick =
+                  () => {
+                    window.focus();
 
-                  if (actionUrl) {
-                    navigate(actionUrl);
-                  }
+                    const actionUrl =
+                      normalizeActionUrl(
+                        item.actionUrl,
+                      );
 
-                  browserNotification.close();
-                };
-            },
+                    if (actionUrl) {
+                      navigate(
+                        actionUrl,
+                      );
+                    }
+
+                    browserNotification.close();
+                  };
+              },
+            );
+          }
+
+          if (
+            maxId >
+            storedBaseline
+          ) {
+            localStorage.setItem(
+              DESKTOP_BASELINE_KEY,
+              String(maxId),
+            );
+          }
+        } catch (error) {
+          console.error(
+            "Load notifications failed:",
+            error,
           );
         }
+      },
+      [
+        desktopPermission,
+        navigate,
+      ],
+    );
 
-        if (maxId > storedBaseline) {
-          localStorage.setItem(
-            DESKTOP_BASELINE_KEY,
-            String(maxId),
-          );
-        }
-      } catch (error) {
-        console.error(
-          "Load notifications failed:",
-          error,
-        );
-      }
-    },
-    [desktopPermission, navigate],
-  );
+  /* =========================================================
+     POLLING
+  ========================================================= */
 
-  /*
-   * Tải thông báo lần đầu và kiểm tra
-   * thông báo mới mỗi 30 giây.
-   */
   useEffect(() => {
     void loadNotifications(false);
 
     const intervalId =
       window.setInterval(() => {
-        void loadNotifications(true);
+        void loadNotifications(
+          true,
+        );
       }, POLL_INTERVAL_MS);
 
     return () => {
-      window.clearInterval(intervalId);
+      window.clearInterval(
+        intervalId,
+      );
     };
   }, [loadNotifications]);
 
-  /*
-   * Đóng dropdown khi click bên ngoài.
-   */
+  /* =========================================================
+     CLICK OUTSIDE
+  ========================================================= */
+
   useEffect(() => {
     const handleDocumentClick = (
       event: MouseEvent,
@@ -364,23 +336,34 @@ export function NotificationBell() {
     };
   }, [open]);
 
-  const handleToggle = async () => {
-    const nextOpen = !open;
+  /* =========================================================
+     TOGGLE DROPDOWN
+  ========================================================= */
 
-    setOpen(nextOpen);
+  const handleToggle =
+    async () => {
+      const nextOpen = !open;
 
-    if (!nextOpen) {
-      return;
-    }
+      setOpen(nextOpen);
 
-    setLoading(true);
+      if (!nextOpen) {
+        return;
+      }
 
-    try {
-      await loadNotifications(false);
-    } finally {
-      setLoading(false);
-    }
-  };
+      setLoading(true);
+
+      try {
+        await loadNotifications(
+          false,
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+  /* =========================================================
+     OPEN NOTIFICATION
+  ========================================================= */
 
   const handleNotificationClick =
     async (
@@ -396,8 +379,11 @@ export function NotificationBell() {
           setNotifications(
             (currentItems) =>
               currentItems.map(
-                (currentItem) =>
-                  currentItem.id === item.id
+                (
+                  currentItem,
+                ) =>
+                  currentItem.id ===
+                  item.id
                     ? response.data
                     : currentItem,
               ),
@@ -430,6 +416,10 @@ export function NotificationBell() {
       }
     };
 
+  /* =========================================================
+     MARK ALL READ
+  ========================================================= */
+
   const handleMarkAllRead =
     async () => {
       try {
@@ -437,13 +427,17 @@ export function NotificationBell() {
 
         setNotifications(
           (currentItems) =>
-            currentItems.map((item) => ({
-              ...item,
-              read: true,
-              readAt:
-                item.readAt ||
-                new Date().toISOString(),
-            })),
+            currentItems.map(
+              (item) => ({
+                ...item,
+
+                read: true,
+
+                readAt:
+                  item.readAt ||
+                  new Date().toISOString(),
+              }),
+            ),
         );
 
         setUnreadCount(0);
@@ -461,48 +455,63 @@ export function NotificationBell() {
       }
     };
 
-  const handleDelete = async (
-    event: ReactMouseEvent<HTMLButtonElement>,
-    notificationId: number,
-    wasUnread: boolean,
-  ) => {
-    event.stopPropagation();
+  /* =========================================================
+     DELETE NOTIFICATION
+  ========================================================= */
 
-    try {
-      await notificationApi.deleteNotification(
-        notificationId,
-      );
+  const handleDelete =
+    async (
+      event: ReactMouseEvent<HTMLButtonElement>,
+      notificationId: number,
+      wasUnread: boolean,
+    ) => {
+      event.stopPropagation();
 
-      setNotifications(
-        (currentItems) =>
-          currentItems.filter(
-            (item) =>
-              item.id !== notificationId,
-          ),
-      );
+      try {
+        await notificationApi.deleteNotification(
+          notificationId,
+        );
 
-      if (wasUnread) {
-        setUnreadCount(
-          (currentCount) =>
-            Math.max(
-              0,
-              currentCount - 1,
+        setNotifications(
+          (currentItems) =>
+            currentItems.filter(
+              (item) =>
+                item.id !==
+                notificationId,
             ),
         );
+
+        if (wasUnread) {
+          setUnreadCount(
+            (currentCount) =>
+              Math.max(
+                0,
+                currentCount - 1,
+              ),
+          );
+        }
+      } catch (error) {
+        toast.error(
+          getErrorMessage(
+            error,
+            "Cannot delete notification",
+          ),
+        );
       }
-    } catch (error) {
-      toast.error(
-        getErrorMessage(
-          error,
-          "Cannot delete notification",
-        ),
-      );
-    }
-  };
+    };
+
+  /* =========================================================
+     ENABLE DESKTOP NOTIFICATIONS
+  ========================================================= */
 
   const handleEnableDesktopNotifications =
     async () => {
-      if (!("Notification" in window)) {
+      if (
+        !(
+          "Notification" in
+          window
+        )
+      ) {
         setDesktopPermission(
           "unsupported",
         );
@@ -522,7 +531,10 @@ export function NotificationBell() {
           permission,
         );
 
-        if (permission === "granted") {
+        if (
+          permission ===
+          "granted"
+        ) {
           toast.success(
             "Desktop notifications enabled",
           );
@@ -543,11 +555,19 @@ export function NotificationBell() {
       }
     };
 
+  /* =========================================================
+     UI
+  ========================================================= */
+
   return (
     <div
       ref={containerRef}
       className="relative"
     >
+      {/* =====================================================
+          BELL BUTTON
+      ===================================================== */}
+
       <button
         type="button"
         onClick={handleToggle}
@@ -566,8 +586,14 @@ export function NotificationBell() {
         )}
       </button>
 
+      {/* =====================================================
+          DROPDOWN
+      ===================================================== */}
+
       {open && (
         <div className="absolute right-0 top-12 z-[10000] w-[min(92vw,400px)] overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl">
+          {/* HEADER */}
+
           <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
             <div>
               <h3 className="font-extrabold text-slate-900 dark:text-white">
@@ -580,7 +606,8 @@ export function NotificationBell() {
             </div>
 
             <div className="flex items-center gap-1">
-              {unreadCount > 0 && (
+              {unreadCount >
+                0 && (
                 <button
                   type="button"
                   onClick={
@@ -606,6 +633,10 @@ export function NotificationBell() {
             </div>
           </div>
 
+          {/* =================================================
+              ENABLE DESKTOP
+          ================================================= */}
+
           {desktopPermission ===
             "default" && (
             <button
@@ -630,6 +661,10 @@ export function NotificationBell() {
               </span>
             </button>
           )}
+
+          {/* =================================================
+              NOTIFICATION LIST
+          ================================================= */}
 
           <div className="max-h-[420px] overflow-y-auto">
             {loading ? (
@@ -658,6 +693,11 @@ export function NotificationBell() {
                       item.type,
                     );
 
+                  const label =
+                    getNotificationLabel(
+                      item.type,
+                    );
+
                   return (
                     <div
                       key={item.id}
@@ -674,7 +714,8 @@ export function NotificationBell() {
                         if (
                           event.key ===
                             "Enter" ||
-                          event.key === " "
+                          event.key ===
+                            " "
                         ) {
                           event.preventDefault();
 
@@ -689,9 +730,13 @@ export function NotificationBell() {
                           : "bg-blue-50/60 dark:bg-blue-500/5 hover:bg-blue-50 dark:hover:bg-blue-500/10"
                       }`}
                     >
+                      {/* ICON */}
+
                       <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center shrink-0">
                         <Icon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                       </div>
+
+                      {/* CONTENT */}
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start gap-2">
@@ -708,12 +753,22 @@ export function NotificationBell() {
                           {item.message}
                         </p>
 
-                        <p className="mt-2 text-xs text-slate-400">
-                          {formatCreatedAt(
-                            item.createdAt,
-                          )}
-                        </p>
+                        {/* LABEL + TIME */}
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                            {label}
+                          </span>
+
+                          <span className="text-xs text-slate-400">
+                            {formatCreatedAt(
+                              item.createdAt,
+                            )}
+                          </span>
+                        </div>
                       </div>
+
+                      {/* ACTIONS */}
 
                       <div className="flex flex-col gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         {!item.read && (
@@ -748,6 +803,10 @@ export function NotificationBell() {
               )
             )}
           </div>
+
+          {/* =================================================
+              VIEW ALL
+          ================================================= */}
 
           <button
             type="button"

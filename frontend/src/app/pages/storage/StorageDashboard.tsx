@@ -9,34 +9,44 @@ import {
   Upload,
   Zap,
 } from "lucide-react";
+
 import {
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
+
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
+
 import {
   Cell,
   Pie,
   PieChart,
   ResponsiveContainer,
 } from "recharts";
+
 import { toast } from "sonner";
 
 import {
   userApi,
   type UserResponse,
 } from "../../services/userApi";
+
 import {
   subscriptionApi,
   type SubscriptionResponse,
 } from "../../services/subscriptionApi";
+
 import {
   tokenUsageApi,
   type TodayTokenUsageResponse,
 } from "../../services/tokenUsageApi";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 type ApiError = {
   response?: {
@@ -45,22 +55,35 @@ type ApiError = {
       error?: string;
     };
   };
+
   message?: string;
 };
 
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
 const BYTES_PER_KB = 1024;
 const BYTES_PER_MB = 1024 * 1024;
-const BYTES_PER_GB = 1024 * 1024 * 1024;
+const BYTES_PER_GB =
+  1024 * 1024 * 1024;
+
+/* =========================================================
+   HELPERS
+========================================================= */
 
 const getErrorMessage = (
   error: unknown,
   fallbackMessage: string,
 ): string => {
-  const apiError = error as ApiError;
+  const apiError =
+    error as ApiError;
 
   return (
-    apiError.response?.data?.message ||
-    apiError.response?.data?.error ||
+    apiError.response?.data
+      ?.message ||
+    apiError.response?.data
+      ?.error ||
     apiError.message ||
     fallbackMessage
   );
@@ -69,10 +92,13 @@ const getErrorMessage = (
 const toSafeNumber = (
   value: unknown,
 ): number => {
-  const numberValue = Number(value);
+  const numberValue =
+    Number(value);
 
   if (
-    !Number.isFinite(numberValue) ||
+    !Number.isFinite(
+      numberValue,
+    ) ||
     numberValue < 0
   ) {
     return 0;
@@ -93,7 +119,9 @@ const calculatePercent = (
     100,
     Math.max(
       0,
-      Math.round((used / total) * 100),
+      Math.round(
+        (used / total) * 100,
+      ),
     ),
   );
 };
@@ -101,34 +129,51 @@ const calculatePercent = (
 const formatBytes = (
   bytes: number,
 ): string => {
-  const safeBytes = toSafeNumber(bytes);
+  const safeBytes =
+    toSafeNumber(bytes);
 
-  if (safeBytes >= BYTES_PER_GB) {
+  if (
+    safeBytes >=
+    BYTES_PER_GB
+  ) {
     const value =
-      safeBytes / BYTES_PER_GB;
+      safeBytes /
+      BYTES_PER_GB;
 
     return `${value.toFixed(
       value >= 10 ? 1 : 2,
     )} GB`;
   }
 
-  if (safeBytes >= BYTES_PER_MB) {
+  if (
+    safeBytes >=
+    BYTES_PER_MB
+  ) {
     const value =
-      safeBytes / BYTES_PER_MB;
+      safeBytes /
+      BYTES_PER_MB;
 
     return `${value.toFixed(
       value >= 10 ? 1 : 2,
     )} MB`;
   }
 
-  if (safeBytes >= BYTES_PER_KB) {
+  if (
+    safeBytes >=
+    BYTES_PER_KB
+  ) {
     const value =
-      safeBytes / BYTES_PER_KB;
+      safeBytes /
+      BYTES_PER_KB;
 
-    return `${value.toFixed(1)} KB`;
+    return `${value.toFixed(
+      1,
+    )} KB`;
   }
 
-  return `${Math.round(safeBytes)} B`;
+  return `${Math.round(
+    safeBytes,
+  )} B`;
 };
 
 const formatStorageLimit = (
@@ -137,13 +182,21 @@ const formatStorageLimit = (
   const safeLimitMb =
     toSafeNumber(limitMb);
 
-  if (safeLimitMb >= 1024) {
+  if (
+    safeLimitMb >= 1024
+  ) {
     const limitGb =
       safeLimitMb / 1024;
 
-    return `${Number.isInteger(limitGb)
-      ? limitGb
-      : limitGb.toFixed(1)} GB`;
+    return `${
+      Number.isInteger(
+        limitGb,
+      )
+        ? limitGb
+        : limitGb.toFixed(
+            1,
+          )
+    } GB`;
   }
 
   return `${safeLimitMb.toLocaleString(
@@ -156,7 +209,9 @@ const formatNumber = (
 ): string => {
   return Math.floor(
     toSafeNumber(value),
-  ).toLocaleString("en-US");
+  ).toLocaleString(
+    "en-US",
+  );
 };
 
 const formatDate = (
@@ -166,14 +221,22 @@ const formatDate = (
     return "No expiration";
   }
 
-  const normalizedValue = value.replace(
-    /\.(\d{3})\d+/,
-    ".$1",
-  );
+  const normalizedValue =
+    value.replace(
+      /\.(\d{3})\d+/,
+      ".$1",
+    );
 
-  const date = new Date(normalizedValue);
+  const date =
+    new Date(
+      normalizedValue,
+    );
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
     return value;
   }
 
@@ -187,25 +250,60 @@ const formatDate = (
   );
 };
 
+/* =========================================================
+   STORAGE USAGE CIRCLE
+========================================================= */
+
 function UsageCircle({
   percent,
+  unlimited = false,
 }: {
   percent: number;
+  unlimited?: boolean;
 }) {
-  const safePercent = Math.min(
-    100,
-    Math.max(0, percent),
-  );
+  if (unlimited) {
+    return (
+      <div className="relative w-48 h-48 flex items-center justify-center">
+        <div className="absolute inset-4 rounded-full border-[18px] border-blue-100 dark:border-blue-500/15" />
+
+        <div className="absolute inset-7 rounded-full border-4 border-blue-600/20 dark:border-blue-400/20" />
+
+        <div className="relative z-10 flex flex-col items-center justify-center text-center">
+          <HardDrive className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-2" />
+
+          <span className="text-xl font-extrabold text-slate-900 dark:text-white">
+            Unlimited
+          </span>
+
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            storage
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const safePercent =
+    Math.min(
+      100,
+      Math.max(
+        0,
+        percent,
+      ),
+    );
 
   const chartData = [
     {
-      value: safePercent,
+      value:
+        safePercent,
     },
     {
-      value: Math.max(
-        0,
-        100 - safePercent,
-      ),
+      value:
+        Math.max(
+          0,
+          100 -
+            safePercent,
+        ),
     },
   ];
 
@@ -228,6 +326,7 @@ function UsageCircle({
             strokeWidth={0}
           >
             <Cell fill="#2563EB" />
+
             <Cell fill="#E2E8F0" />
           </Pie>
         </PieChart>
@@ -246,15 +345,23 @@ function UsageCircle({
   );
 }
 
+/* =========================================================
+   PROGRESS BAR
+========================================================= */
+
 function ProgressBar({
   percent,
 }: {
   percent: number;
 }) {
-  const safePercent = Math.min(
-    100,
-    Math.max(0, percent),
-  );
+  const safePercent =
+    Math.min(
+      100,
+      Math.max(
+        0,
+        percent,
+      ),
+    );
 
   return (
     <div className="w-full h-2.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
@@ -268,13 +375,25 @@ function ProgressBar({
   );
 }
 
+/* =========================================================
+   STORAGE DASHBOARD
+========================================================= */
+
 export function StorageDashboard() {
-  const navigate = useNavigate();
+  const navigate =
+    useNavigate();
+
+  /* =========================================================
+     STATE
+  ========================================================= */
 
   const [
     profile,
     setProfile,
-  ] = useState<UserResponse | null>(null);
+  ] =
+    useState<UserResponse | null>(
+      null,
+    );
 
   const [
     subscription,
@@ -287,219 +406,318 @@ export function StorageDashboard() {
   const [
     tokenUsage,
     setTokenUsage,
-  ] = useState<TodayTokenUsageResponse | null>(
-    null,
-  );
+  ] =
+    useState<TodayTokenUsageResponse | null>(
+      null,
+    );
 
   const [
     tokenUsageError,
     setTokenUsageError,
   ] = useState("");
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
-  const [refreshing, setRefreshing] =
-    useState(false);
+  const [
+    refreshing,
+    setRefreshing,
+  ] = useState(false);
 
   const [
     loadError,
     setLoadError,
   ] = useState("");
 
-  const loadData = useCallback(
-    async (
-      showRefreshLoading = false,
-    ): Promise<void> => {
-      if (showRefreshLoading) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
+  /* =========================================================
+     LOAD DATA
+  ========================================================= */
 
-      setLoadError("");
-      setTokenUsageError("");
+  const loadData =
+    useCallback(
+      async (
+        showRefreshLoading = false,
+      ): Promise<void> => {
+        if (
+          showRefreshLoading
+        ) {
+          setRefreshing(
+            true,
+          );
+        } else {
+          setLoading(
+            true,
+          );
+        }
 
-      try {
-        /*
-         * API 1:
-         * GET /api/account/me
-         *
-         * Lấy:
-         * - totalStorageUsedBytes
-         * - documentCount
-         * - categoryCount
-         */
-        const profileRequest =
-          userApi.getProfile();
+        setLoadError("");
+        setTokenUsageError(
+          "",
+        );
 
-        /*
-         * API 2:
-         * GET /api/subscriptions/current
-         *
-         * Lấy:
-         * - plan.code
-         * - plan.storageLimitMb
-         * - plan.dailyTokenLimit
-         * - subscription status
-         */
-        const subscriptionRequest =
-          subscriptionApi.getCurrentSubscription();
+        try {
+          /*
+           * GET /api/account/me
+           */
+          const profileRequest =
+            userApi.getProfile();
 
-        /*
-         * API 3:
-         * GET /api/token-usage/today
-         *
-         * Lấy số token người dùng đã sử dụng hôm nay:
-         * - total
-         * - chat
-         * - summarize
-         * - quiz
-         *
-         * Token usage is optional for this page. If this request fails,
-         * storage and subscription information can still be displayed.
-         */
-        const tokenUsageRequest = tokenUsageApi
-          .getTodayUsage()
-          .catch((error: unknown) => {
-            console.error(
-              "Load token usage failed:",
-              error,
+          /*
+           * GET /api/subscriptions/current
+           */
+          const subscriptionRequest =
+            subscriptionApi.getCurrentSubscription();
+
+          /*
+           * GET /api/token-usage/today
+           *
+           * Nếu API này lỗi,
+           * trang vẫn hiển thị storage
+           * và subscription.
+           */
+          const tokenUsageRequest =
+            tokenUsageApi
+              .getTodayUsage()
+              .catch(
+                (
+                  error: unknown,
+                ) => {
+                  console.error(
+                    "Load token usage failed:",
+                    error,
+                  );
+
+                  setTokenUsageError(
+                    getErrorMessage(
+                      error,
+                      "Cannot load today's token usage.",
+                    ),
+                  );
+
+                  return null;
+                },
+              );
+
+          const [
+            profileResponse,
+            subscriptionResponse,
+            tokenUsageResponse,
+          ] =
+            await Promise.all(
+              [
+                profileRequest,
+                subscriptionRequest,
+                tokenUsageRequest,
+              ],
             );
 
-            setTokenUsageError(
-              getErrorMessage(
-                error,
-                "Cannot load today's token usage.",
-              ),
-            );
-
-            return null;
-          });
-
-        const [
-          profileResponse,
-          subscriptionResponse,
-          tokenUsageResponse,
-        ] = await Promise.all([
-          profileRequest,
-          subscriptionRequest,
-          tokenUsageRequest,
-        ]);
-
-        setProfile(
-          profileResponse.data,
-        );
-
-        setSubscription(
-          subscriptionResponse.data,
-        );
-
-        setTokenUsage(
-          tokenUsageResponse?.data ?? null,
-        );
-      } catch (error) {
-        console.error(
-          "Load storage information failed:",
-          error,
-        );
-
-        const errorMessage =
-          getErrorMessage(
-            error,
-            "Cannot load storage information.",
+          setProfile(
+            profileResponse.data,
           );
 
-        setLoadError(errorMessage);
-        toast.error(errorMessage);
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [],
-  );
+          setSubscription(
+            subscriptionResponse.data,
+          );
+
+          setTokenUsage(
+            tokenUsageResponse?.data ??
+              null,
+          );
+        } catch (error) {
+          console.error(
+            "Load storage information failed:",
+            error,
+          );
+
+          const errorMessage =
+            getErrorMessage(
+              error,
+              "Cannot load storage information.",
+            );
+
+          setLoadError(
+            errorMessage,
+          );
+
+          toast.error(
+            errorMessage,
+          );
+        } finally {
+          setLoading(false);
+          setRefreshing(
+            false,
+          );
+        }
+      },
+      [],
+    );
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
-  const planCode =
+  /* =========================================================
+     USER ROLE
+  ========================================================= */
+
+  const normalizedRole =
+    String(
+      profile?.role || "",
+    )
+      .trim()
+      .toUpperCase();
+
+  const isAdmin =
+    normalizedRole ===
+      "ADMIN" ||
+    normalizedRole ===
+      "ROLE_ADMIN";
+
+  /* =========================================================
+     PLAN
+  ========================================================= */
+
+  const subscriptionPlanCode =
     subscription?.plan?.code
       ?.trim()
-      .toUpperCase() || "FREE";
+      .toUpperCase() ||
+    "FREE";
 
+  /*
+   * Admin được xem như PRO trên UI,
+   * nhưng thực tế không bị quota.
+   */
   const isPro =
-    planCode === "PRO";
+    isAdmin ||
+    subscriptionPlanCode ===
+      "PRO";
+
+  const planCode =
+    isAdmin
+      ? "PRO"
+      : subscriptionPlanCode;
 
   const planName =
-    subscription?.plan?.name ||
-    (isPro
-      ? "Pro Plan"
-      : "Free Plan");
+    isAdmin
+      ? "Administrator Pro"
+      : subscription?.plan
+          ?.name ||
+        (isPro
+          ? "Pro Plan"
+          : "Free Plan");
 
   /*
-   * Ưu tiên giới hạn backend trả về.
-   *
-   * Nếu database chưa có giá trị thì
-   * mới dùng fallback:
-   * FREE = 500 MB
-   * PRO = 2 GB
+   * Admin = unlimited quota.
    */
-  const storageLimitMb = useMemo(() => {
-    const apiLimit = toSafeNumber(
-      subscription?.plan
-        ?.storageLimitMb,
-    );
+  const hasUnlimitedQuota =
+    isAdmin;
 
-    if (apiLimit > 0) {
-      return apiLimit;
-    }
+  /* =========================================================
+     STORAGE LIMIT
+  ========================================================= */
 
-    return isPro ? 2048 : 500;
-  }, [
-    subscription,
-    isPro,
-  ]);
-
-  /*
-   * Ưu tiên dailyTokenLimit từ API.
-   *
-   * Fallback:
-   * FREE = 500 token/ngày
-   * PRO = 3.000.000 token/ngày
-   */
-  const dailyTokenLimit =
+  const storageLimitMb =
     useMemo(() => {
-      const apiLimit = toSafeNumber(
-        subscription?.plan
-          ?.dailyTokenLimit,
-      );
+      /*
+       * Admin không có storage quota.
+       * Giá trị 0 được dùng làm sentinel.
+       */
+      if (isAdmin) {
+        return 0;
+      }
 
-      if (apiLimit > 0) {
+      const apiLimit =
+        toSafeNumber(
+          subscription?.plan
+            ?.storageLimitMb,
+        );
+
+      if (
+        apiLimit > 0
+      ) {
         return apiLimit;
       }
 
+      /*
+       * Fallback
+       */
+      return isPro
+        ? 2048
+        : 500;
+    }, [
+      subscription,
+      isAdmin,
+      isPro,
+    ]);
+
+  /* =========================================================
+     DAILY TOKEN LIMIT
+  ========================================================= */
+
+  const dailyTokenLimit =
+    useMemo(() => {
+      /*
+       * Admin không có daily token limit.
+       */
+      if (isAdmin) {
+        return 0;
+      }
+
+      const apiLimit =
+        toSafeNumber(
+          subscription?.plan
+            ?.dailyTokenLimit,
+        );
+
+      if (
+        apiLimit > 0
+      ) {
+        return apiLimit;
+      }
+
+      /*
+       * Fallback
+       */
       return isPro
         ? 3_000_000
         : 500;
     }, [
       subscription,
+      isAdmin,
       isPro,
     ]);
 
+  /* =========================================================
+     TOKEN USAGE
+  ========================================================= */
+
   const usedTokensToday =
-    toSafeNumber(tokenUsage?.total);
+    toSafeNumber(
+      tokenUsage?.total,
+    );
 
-  const remainingTokensToday = Math.max(
-    0,
-    dailyTokenLimit - usedTokensToday,
-  );
+  const remainingTokensToday =
+    hasUnlimitedQuota
+      ? 0
+      : Math.max(
+          0,
+          dailyTokenLimit -
+            usedTokensToday,
+        );
 
-  const tokenUsagePercent = calculatePercent(
-    usedTokensToday,
-    dailyTokenLimit,
-  );
+  const tokenUsagePercent =
+    hasUnlimitedQuota
+      ? 0
+      : calculatePercent(
+          usedTokensToday,
+          dailyTokenLimit,
+        );
+
+  /* =========================================================
+     STORAGE USAGE
+  ========================================================= */
 
   const usedStorageBytes =
     toSafeNumber(
@@ -507,20 +725,31 @@ export function StorageDashboard() {
     );
 
   const totalStorageBytes =
-    storageLimitMb * BYTES_PER_MB;
+    hasUnlimitedQuota
+      ? 0
+      : storageLimitMb *
+        BYTES_PER_MB;
 
   const remainingStorageBytes =
-    Math.max(
-      0,
-      totalStorageBytes -
-        usedStorageBytes,
-    );
+    hasUnlimitedQuota
+      ? 0
+      : Math.max(
+          0,
+          totalStorageBytes -
+            usedStorageBytes,
+        );
 
   const storagePercent =
-    calculatePercent(
-      usedStorageBytes,
-      totalStorageBytes,
-    );
+    hasUnlimitedQuota
+      ? 0
+      : calculatePercent(
+          usedStorageBytes,
+          totalStorageBytes,
+        );
+
+  /* =========================================================
+     ACCOUNT STATS
+  ========================================================= */
 
   const documentCount =
     toSafeNumber(
@@ -532,16 +761,26 @@ export function StorageDashboard() {
       profile?.categoryCount,
     );
 
+  /* =========================================================
+     LOADING
+  ========================================================= */
+
   if (loading) {
     return (
       <div className="min-h-[420px] flex items-center justify-center">
         <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 font-semibold">
           <RefreshCw className="w-5 h-5 animate-spin" />
-          Loading storage information...
+
+          Loading storage
+          information...
         </div>
       </div>
     );
   }
+
+  /* =========================================================
+     LOAD ERROR
+  ========================================================= */
 
   if (
     loadError &&
@@ -554,7 +793,8 @@ export function StorageDashboard() {
           <AlertCircle className="w-12 h-12 mx-auto text-red-500" />
 
           <h2 className="mt-4 text-xl font-extrabold text-red-700 dark:text-red-300">
-            Cannot load storage information
+            Cannot load storage
+            information
           </h2>
 
           <p className="mt-2 text-sm text-red-600 dark:text-red-300">
@@ -569,6 +809,7 @@ export function StorageDashboard() {
             className="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700"
           >
             <RefreshCw className="w-4 h-4" />
+
             Try Again
           </button>
         </div>
@@ -576,8 +817,16 @@ export function StorageDashboard() {
     );
   }
 
+  /* =========================================================
+     UI
+  ========================================================= */
+
   return (
     <div className="space-y-8">
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
@@ -585,8 +834,9 @@ export function StorageDashboard() {
           </h1>
 
           <p className="mt-1 text-slate-500 dark:text-slate-400">
-            View your real storage usage
-            and current plan limits.
+            {isAdmin
+              ? "Administrator account with Pro access and unlimited system quota."
+              : "View your real storage usage and current plan limits."}
           </p>
         </div>
 
@@ -594,9 +844,13 @@ export function StorageDashboard() {
           <button
             type="button"
             onClick={() =>
-              void loadData(true)
+              void loadData(
+                true,
+              )
             }
-            disabled={refreshing}
+            disabled={
+              refreshing
+            }
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-60"
           >
             <RefreshCw
@@ -613,18 +867,28 @@ export function StorageDashboard() {
           <button
             type="button"
             onClick={() =>
-              navigate("/app/upload")
+              navigate(
+                "/app/upload",
+              )
             }
             className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all"
           >
             <Upload className="w-4 h-4" />
+
             Upload Files
           </button>
         </div>
       </div>
 
+      {/* =====================================================
+          MAIN CARDS
+      ===================================================== */}
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {/* Storage quota */}
+        {/* ===================================================
+            STORAGE QUOTA
+        =================================================== */}
+
         <motion.section
           initial={{
             opacity: 0,
@@ -636,6 +900,8 @@ export function StorageDashboard() {
           }}
           className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 md:p-8"
         >
+          {/* HEADER */}
+
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
@@ -655,9 +921,11 @@ export function StorageDashboard() {
 
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 Total limit:{" "}
-                {formatStorageLimit(
-                  storageLimitMb,
-                )}
+                {hasUnlimitedQuota
+                  ? "Unlimited"
+                  : formatStorageLimit(
+                      storageLimitMb,
+                    )}
               </p>
             </div>
 
@@ -674,15 +942,47 @@ export function StorageDashboard() {
 
           <div className="mt-7 flex flex-col sm:flex-row items-center gap-8">
             <UsageCircle
-              percent={storagePercent}
+              percent={
+                storagePercent
+              }
+              unlimited={
+                hasUnlimitedQuota
+              }
             />
 
             <div className="flex-1 w-full space-y-5">
-              <ProgressBar
-                percent={storagePercent}
-              />
+              {hasUnlimitedQuota ? (
+                <div className="rounded-2xl border border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10 p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-blue-600 dark:text-blue-300 shrink-0 mt-0.5" />
+
+                    <div>
+                      <p className="font-extrabold text-blue-700 dark:text-blue-200">
+                        Unlimited
+                        storage
+                      </p>
+
+                      <p className="mt-1 text-xs leading-5 text-blue-600 dark:text-blue-300">
+                        Administrator
+                        accounts are
+                        not subject to
+                        the user
+                        storage quota.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <ProgressBar
+                  percent={
+                    storagePercent
+                  }
+                />
+              )}
 
               <div className="grid grid-cols-2 gap-3">
+                {/* USED */}
+
                 <div className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4">
                   <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                     Used
@@ -695,18 +995,24 @@ export function StorageDashboard() {
                   </p>
                 </div>
 
+                {/* AVAILABLE */}
+
                 <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 p-4">
                   <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-300">
                     Available
                   </p>
 
                   <p className="mt-1 font-extrabold text-emerald-700 dark:text-emerald-200">
-                    {formatBytes(
-                      remainingStorageBytes,
-                    )}
+                    {hasUnlimitedQuota
+                      ? "Unlimited"
+                      : formatBytes(
+                          remainingStorageBytes,
+                        )}
                   </p>
                 </div>
               </div>
+
+              {/* STORAGE LIMIT */}
 
               <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4">
                 <div className="flex items-center justify-between gap-4">
@@ -715,9 +1021,11 @@ export function StorageDashboard() {
                   </span>
 
                   <span className="font-extrabold text-slate-900 dark:text-white">
-                    {formatStorageLimit(
-                      storageLimitMb,
-                    )}
+                    {hasUnlimitedQuota
+                      ? "Unlimited"
+                      : formatStorageLimit(
+                          storageLimitMb,
+                        )}
                   </span>
                 </div>
               </div>
@@ -725,7 +1033,10 @@ export function StorageDashboard() {
           </div>
         </motion.section>
 
-        {/* AI token limit */}
+        {/* ===================================================
+            AI TOKEN USAGE
+        =================================================== */}
+
         <motion.section
           initial={{
             opacity: 0,
@@ -740,6 +1051,8 @@ export function StorageDashboard() {
           }}
           className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 md:p-8"
         >
+          {/* HEADER */}
+
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-violet-600 dark:text-violet-400">
@@ -751,12 +1064,15 @@ export function StorageDashboard() {
               </div>
 
               <h2 className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">
-                Daily Token Limit
+                {hasUnlimitedQuota
+                  ? "Unlimited AI Access"
+                  : "Daily Token Limit"}
               </h2>
 
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Limit supplied by your
-                current subscription API.
+                {hasUnlimitedQuota
+                  ? "Administrator accounts are not subject to daily AI token limits."
+                  : "Limit supplied by your current subscription API."}
               </p>
             </div>
 
@@ -771,35 +1087,71 @@ export function StorageDashboard() {
             </span>
           </div>
 
+          {/* AI ACCESS CARD */}
+
           <div className="mt-8 rounded-[2rem] bg-gradient-to-br from-violet-600 to-indigo-700 p-7 text-white">
             <p className="text-xs font-bold uppercase tracking-widest text-white/70">
-              Tokens per day
+              {hasUnlimitedQuota
+                ? "AI ACCESS"
+                : "TOKENS PER DAY"}
             </p>
 
             <p className="mt-2 text-4xl font-extrabold">
-              {formatNumber(
-                dailyTokenLimit,
-              )}
+              {hasUnlimitedQuota
+                ? "Unlimited"
+                : formatNumber(
+                    dailyTokenLimit,
+                  )}
             </p>
 
             <p className="mt-2 text-sm text-white/75">
-              Available under the{" "}
-              {planName}.
+              {hasUnlimitedQuota
+                ? "Administrator account with unrestricted AI access."
+                : `Available under the ${planName}.`}
             </p>
           </div>
 
-          {tokenUsageError ? (
+          {/* TOKEN USAGE STATUS */}
+
+          {hasUnlimitedQuota ? (
+            <div className="mt-5 rounded-2xl border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 p-4">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-violet-600 dark:text-violet-300 shrink-0 mt-0.5" />
+
+                <div>
+                  <p className="font-extrabold text-violet-700 dark:text-violet-200">
+                    No daily
+                    limit
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-violet-600 dark:text-violet-300">
+                    Administrator
+                    accounts bypass
+                    the daily AI
+                    token quota.
+                    Usage is still
+                    recorded for
+                    statistics.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : tokenUsageError ? (
             <div className="mt-5 rounded-2xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-300 shrink-0 mt-0.5" />
 
                 <div>
                   <p className="text-sm font-extrabold text-amber-800 dark:text-amber-200">
-                    Token usage could not be loaded
+                    Token usage
+                    could not be
+                    loaded
                   </p>
 
                   <p className="mt-1 text-xs leading-5 text-amber-700 dark:text-amber-300">
-                    {tokenUsageError}
+                    {
+                      tokenUsageError
+                    }
                   </p>
                 </div>
               </div>
@@ -812,7 +1164,10 @@ export function StorageDashboard() {
                 </span>
 
                 <span className="text-violet-600 dark:text-violet-300">
-                  {tokenUsagePercent}%
+                  {
+                    tokenUsagePercent
+                  }
+                  %
                 </span>
               </div>
 
@@ -827,6 +1182,8 @@ export function StorageDashboard() {
             </div>
           )}
 
+          {/* USED / REMAINING */}
+
           <div className="mt-5 grid grid-cols-2 gap-3">
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-4">
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -836,7 +1193,9 @@ export function StorageDashboard() {
               <p className="mt-1 font-extrabold text-slate-900 dark:text-white">
                 {tokenUsageError
                   ? "Unavailable"
-                  : formatNumber(usedTokensToday)}
+                  : formatNumber(
+                      usedTokensToday,
+                    )}
               </p>
             </div>
 
@@ -846,21 +1205,33 @@ export function StorageDashboard() {
               </p>
 
               <p className="mt-1 font-extrabold text-emerald-600 dark:text-emerald-300">
-                {tokenUsageError
-                  ? "Unavailable"
-                  : formatNumber(remainingTokensToday)}
+                {hasUnlimitedQuota
+                  ? "Unlimited"
+                  : tokenUsageError
+                    ? "Unavailable"
+                    : formatNumber(
+                        remainingTokensToday,
+                      )}
               </p>
             </div>
           </div>
 
-          {!tokenUsageError && tokenUsage ? (
+          {/* TOKEN BREAKDOWN */}
+
+          {!tokenUsageError &&
+          tokenUsage ? (
             <div className="mt-3 grid grid-cols-3 gap-3 text-center">
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2">
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Chat
                 </p>
+
                 <p className="mt-1 text-sm font-extrabold text-slate-900 dark:text-white">
-                  {formatNumber(toSafeNumber(tokenUsage.chat))}
+                  {formatNumber(
+                    toSafeNumber(
+                      tokenUsage.chat,
+                    ),
+                  )}
                 </p>
               </div>
 
@@ -868,8 +1239,13 @@ export function StorageDashboard() {
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Summary
                 </p>
+
                 <p className="mt-1 text-sm font-extrabold text-slate-900 dark:text-white">
-                  {formatNumber(toSafeNumber(tokenUsage.summarize))}
+                  {formatNumber(
+                    toSafeNumber(
+                      tokenUsage.summarize,
+                    ),
+                  )}
                 </p>
               </div>
 
@@ -877,8 +1253,13 @@ export function StorageDashboard() {
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Quiz
                 </p>
+
                 <p className="mt-1 text-sm font-extrabold text-slate-900 dark:text-white">
-                  {formatNumber(toSafeNumber(tokenUsage.quiz))}
+                  {formatNumber(
+                    toSafeNumber(
+                      tokenUsage.quiz,
+                    ),
+                  )}
                 </p>
               </div>
             </div>
@@ -886,7 +1267,10 @@ export function StorageDashboard() {
         </motion.section>
       </div>
 
-      {/* Account information */}
+      {/* =====================================================
+          ACCOUNT USAGE
+      ===================================================== */}
+
       <section className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6 md:p-8">
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -895,26 +1279,36 @@ export function StorageDashboard() {
             </h2>
 
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Information returned by your
-              profile and subscription APIs.
+              {isAdmin
+                ? "Administrator usage information and unrestricted access."
+                : "Information returned by your profile and subscription APIs."}
             </p>
           </div>
 
+          {/* STATUS */}
+
           <span
             className={`px-4 py-2 rounded-xl text-xs font-extrabold ${
+              isAdmin ||
               subscription?.status
                 ?.toUpperCase() ===
-              "ACTIVE"
+                "ACTIVE"
                 ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
                 : "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-300"
             }`}
           >
-            {subscription?.status ||
-              "UNKNOWN"}
+            {isAdmin
+              ? "ADMIN ACCESS"
+              : subscription?.status ||
+                "UNKNOWN"}
           </span>
         </div>
 
+        {/* STATS */}
+
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          {/* DOCUMENTS */}
+
           <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
             <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
 
@@ -928,6 +1322,8 @@ export function StorageDashboard() {
               Documents
             </p>
           </div>
+
+          {/* CATEGORIES */}
 
           <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
             <FolderTree className="w-5 h-5 text-violet-600 dark:text-violet-400" />
@@ -943,13 +1339,17 @@ export function StorageDashboard() {
             </p>
           </div>
 
+          {/* STORAGE LIMIT */}
+
           <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
             <HardDrive className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
 
             <p className="mt-4 text-2xl font-extrabold text-slate-900 dark:text-white">
-              {formatStorageLimit(
-                storageLimitMb,
-              )}
+              {hasUnlimitedQuota
+                ? "Unlimited"
+                : formatStorageLimit(
+                    storageLimitMb,
+                  )}
             </p>
 
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -957,20 +1357,28 @@ export function StorageDashboard() {
             </p>
           </div>
 
+          {/* AI LIMIT */}
+
           <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
             <Bot className="w-5 h-5 text-amber-600 dark:text-amber-400" />
 
             <p className="mt-4 text-2xl font-extrabold text-slate-900 dark:text-white">
-              {formatNumber(
-                dailyTokenLimit,
-              )}
+              {hasUnlimitedQuota
+                ? "Unlimited"
+                : formatNumber(
+                    dailyTokenLimit,
+                  )}
             </p>
 
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              AI tokens/day
+              {hasUnlimitedQuota
+                ? "AI access"
+                : "AI tokens/day"}
             </p>
           </div>
         </div>
+
+        {/* PLAN INFORMATION */}
 
         <div className="mt-5 flex flex-wrap gap-x-8 gap-y-2 text-sm text-slate-500 dark:text-slate-400">
           <span>
@@ -980,48 +1388,78 @@ export function StorageDashboard() {
             </strong>
           </span>
 
-          <span>
-            Started:{" "}
-            <strong className="text-slate-800 dark:text-slate-200">
-              {formatDate(
-                subscription?.startDate,
-              )}
-            </strong>
-          </span>
+          {isAdmin ? (
+            <>
+              <span>
+                Access:{" "}
+                <strong className="text-emerald-600 dark:text-emerald-300">
+                  Unlimited
+                </strong>
+              </span>
 
-          <span>
-            Expires:{" "}
-            <strong className="text-slate-800 dark:text-slate-200">
-              {formatDate(
-                subscription?.endDate,
-              )}
-            </strong>
-          </span>
+              <span>
+                Expires:{" "}
+                <strong className="text-slate-800 dark:text-slate-200">
+                  No expiration
+                </strong>
+              </span>
+            </>
+          ) : (
+            <>
+              <span>
+                Started:{" "}
+                <strong className="text-slate-800 dark:text-slate-200">
+                  {formatDate(
+                    subscription?.startDate,
+                  )}
+                </strong>
+              </span>
+
+              <span>
+                Expires:{" "}
+                <strong className="text-slate-800 dark:text-slate-200">
+                  {formatDate(
+                    subscription?.endDate,
+                  )}
+                </strong>
+              </span>
+            </>
+          )}
         </div>
       </section>
+
+      {/* =====================================================
+          UPGRADE
+          Chỉ hiện cho user FREE.
+          Admin không hiện.
+      ===================================================== */}
 
       {!isPro && (
         <section className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[2rem] p-7 md:p-8 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl shadow-blue-500/15">
           <div>
             <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-white/75">
               <Zap className="w-5 h-5" />
+
               Upgrade available
             </div>
 
             <h3 className="mt-2 text-2xl font-extrabold">
-              Get more storage and AI
-              tokens
+              Get more storage
+              and AI tokens
             </h3>
 
             <div className="mt-3 flex flex-wrap gap-4 text-sm text-white/85">
               <span className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4" />
+
                 2 GB storage
               </span>
 
               <span className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4" />
-                3,000,000 AI tokens/day
+
+                3,000,000 AI
+                tokens/day
               </span>
             </div>
           </div>
