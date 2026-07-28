@@ -25,6 +25,8 @@ import {
 import { folderApi, type FolderResponse } from "../../services/folderApi";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { getCurrentUserId } from "../../services/apiClient";
+import { subscriptionApi } from "../../services/subscriptionApi";
+import { getStoredUser } from "../../utils/authStorage";
 import { PaginationControls } from "../../components/ui/PaginationControls";
 
 type ListResponse<T> = T[] | { content?: T[] };
@@ -39,14 +41,36 @@ type SubmissionStatusFilter =
   | "EXPIRED";
 
 const MIME_OPTIONS = [
-  ["PDF", "application/pdf"],
-  ["TXT", "text/plain"],
-  ["DOCX", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
-  ["PPTX", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
-  ["XLSX", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  { label: "PDF", mimeTypes: ["application/pdf"] },
+  { label: "TXT", mimeTypes: ["text/plain"] },
+  {
+    label: "DOCX",
+    mimeTypes: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  },
+  {
+    label: "PPTX",
+    mimeTypes: ["application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+  },
+  {
+    label: "XLSX",
+    mimeTypes: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  },
 ] as const;
 
-const VISIBILITY_OPTIONS = ["PRIVATE", "PUBLIC"] as const;
+const PRO_MIME_OPTIONS = [
+  {
+    label: "IMAGE",
+    mimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+  },
+  {
+    label: "VIDEO",
+    mimeTypes: ["video/mp4", "video/webm", "video/quicktime"],
+  },
+  {
+    label: "AUDIO",
+    mimeTypes: ["audio/mpeg", "audio/wav", "audio/mp4", "audio/x-m4a"],
+  },
+] as const;
 
 const normalizeList = <T,>(data: ListResponse<T> | null | undefined): T[] => {
   if (Array.isArray(data)) return data;
@@ -197,19 +221,30 @@ const isActiveShareLink = (status?: string | null) =>
 
 const getUsableShareUrl = (link: DocumentShareLinkResponse) => {
   const rawUrl = link.shareUrl?.trim();
+  let shareUrl = "";
 
   if (rawUrl) {
     try {
-      return new URL(rawUrl, window.location.origin).toString();
+      shareUrl = new URL(rawUrl, window.location.origin).toString();
     } catch {
       // Fall back to the public route generated from the token below.
     }
   }
 
-  const token = link.token?.trim();
-  return token
-    ? new URL(`/shared-upload/${encodeURIComponent(token)}`, window.location.origin).toString()
-    : "";
+  if (!shareUrl) {
+    const token = link.token?.trim();
+    shareUrl = token
+      ? new URL(`/shared-upload/${encodeURIComponent(token)}`, window.location.origin).toString()
+      : "";
+  }
+
+  if (shareUrl && link.allowedFileTypes?.trim()) {
+    const url = new URL(shareUrl);
+    url.searchParams.set("types", link.allowedFileTypes.trim());
+    return url.toString();
+  }
+
+  return shareUrl;
 };
 
 const getShareLinkId = (link: DocumentShareLinkResponse) => {
@@ -263,6 +298,15 @@ const getSubmittedDate = (submission: SharedDocumentSubmissionResponse) => {
 
 export function DocumentSharesPage() {
   const navigate = useNavigate();
+  const storedRole = (
+    localStorage.getItem("role") ||
+    getStoredUser()?.role ||
+    ""
+  )
+    .trim()
+    .toUpperCase()
+    .replace(/^ROLE_/, "");
+  const isAdmin = storedRole === "ADMIN" || storedRole === "ADMINISTRATOR";
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("links");
   const [linksPage, setLinksPage] = useState(1);
@@ -284,6 +328,7 @@ export function DocumentSharesPage() {
     useState<SharedDocumentSubmissionResponse | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isPro, setIsPro] = useState(isAdmin);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [disablingLinkId, setDisablingLinkId] = useState<number | null>(null);
@@ -313,6 +358,7 @@ export function DocumentSharesPage() {
     allowedFileTypes: ["application/pdf", "text/plain"] as string[],
     defaultFolderId: "",
   });
+  const [recipientEmailInput, setRecipientEmailInput] = useState("");
 
   const [createdShareUrl, setCreatedShareUrl] = useState("");
 
@@ -404,6 +450,75 @@ export function DocumentSharesPage() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    subscriptionApi
+      .getCurrentSubscription()
+      .then(({ data }) => {
+        const planCode = data.plan?.code?.trim().toUpperCase();
+        const status = data.status?.trim().toUpperCase();
+        const hasActiveProPlan =
+          planCode === "PRO" &&
+          (!status || status === "ACTIVE" || status === "VALID");
+
+        if (isMounted) {
+          setIsPro(isAdmin || data.adminAccess === true || hasActiveProPlan);
+        }
+      })
+      .catch((error) => {
+        console.warn("Cannot load the current subscription.", error);
+        if (isMounted) setIsPro(isAdmin);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isAdmin]);
+
+  const addRecipientEmails = (rawValue: string) => {
+    const newEmails = rawValue
+      .split(/[\s,;]+/)
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (!newEmails.length) return;
+
+    const invalidEmail = newEmails.find(
+      (email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+    );
+    if (invalidEmail) {
+      toast.error(`Invalid email: ${invalidEmail}`);
+      return;
+    }
+
+    setLinkForm((current) => {
+      const currentEmails = current.allowedUserEmails
+        .split(",")
+        .map((email) => email.trim())
+        .filter(Boolean);
+
+      return {
+        ...current,
+        allowedUserEmails: Array.from(
+          new Set([...currentEmails, ...newEmails]),
+        ).join(","),
+      };
+    });
+    setRecipientEmailInput("");
+  };
+
+  const removeRecipientEmail = (emailToRemove: string) => {
+    setLinkForm((current) => ({
+      ...current,
+      allowedUserEmails: current.allowedUserEmails
+        .split(",")
+        .map((email) => email.trim())
+        .filter((email) => email && email !== emailToRemove)
+        .join(","),
+    }));
+  };
+
   const handleCreateLink = async () => {
     const userId = getSafeUserId();
 
@@ -421,10 +536,18 @@ export function DocumentSharesPage() {
     const maxUploadsPerUser = Number(linkForm.maxUploadsPerUser);
     const maxFileSizeBytes = Number(linkForm.maxFileSizeMb) * 1024 * 1024;
     const maxTotalBytes = Number(linkForm.maxTotalSizeMb) * 1024 * 1024;
-    const allowedUserEmails = linkForm.allowedUserEmails
+    const allowedUserEmails = `${linkForm.allowedUserEmails},${recipientEmailInput}`
       .split(/[\n,;]+/)
       .map((email) => email.trim().toLowerCase())
       .filter((email, index, emails) => email && emails.indexOf(email) === index);
+
+    const invalidEmail = allowedUserEmails.find(
+      (email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+    );
+    if (invalidEmail) {
+      toast.error(`Invalid email: ${invalidEmail}`);
+      return;
+    }
 
     if (
       !Number.isInteger(maxUploads) ||
@@ -472,7 +595,14 @@ export function DocumentSharesPage() {
           : {}),
       });
 
-      setCreatedShareUrl(getUsableShareUrl(response.data));
+      setCreatedShareUrl(
+        getUsableShareUrl({
+          ...response.data,
+          allowedFileTypes:
+            response.data.allowedFileTypes ||
+            linkForm.allowedFileTypes.join(","),
+        }),
+      );
 
       toast.success("Shared upload link created. Copy it now.");
 
@@ -489,6 +619,7 @@ export function DocumentSharesPage() {
         allowedFileTypes: ["application/pdf", "text/plain"],
         defaultFolderId: "",
       });
+      setRecipientEmailInput("");
 
       await loadData();
     } catch (error: any) {
@@ -862,112 +993,81 @@ export function DocumentSharesPage() {
             </h2>
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <input
-                value={linkForm.title}
-                onChange={(event) =>
-                  setLinkForm((current) => ({
-                    ...current,
-                    title: event.target.value,
-                  }))
-                }
-                placeholder="Link title"
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
+              <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                Link title
+                <input
+                  value={linkForm.title}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({ ...current, title: event.target.value }))
+                  }
+                  placeholder="Enter link title"
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
 
-              <input
-                value={linkForm.maxUploads}
-                onChange={(event) =>
-                  setLinkForm((current) => ({
-                    ...current,
-                    maxUploads: event.target.value,
-                  }))
-                }
-                placeholder="Max uploads"
-                type="number"
-                min={1}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
+              <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                Maximum uploads
+                <input
+                  value={linkForm.maxUploads}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({ ...current, maxUploads: event.target.value }))
+                  }
+                  type="number"
+                  min={1}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
 
-              <input
-                value={linkForm.maxUploadsPerUser}
-                onChange={(event) =>
-                  setLinkForm((current) => ({
-                    ...current,
-                    maxUploadsPerUser: event.target.value,
-                  }))
-                }
-                placeholder="Max uploads per user"
-                type="number"
-                min={1}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
+              <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                Maximum uploads per user
+                <input
+                  value={linkForm.maxUploadsPerUser}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({ ...current, maxUploadsPerUser: event.target.value }))
+                  }
+                  type="number"
+                  min={1}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
 
-              <select
-                value={linkForm.accessPolicy}
-                onChange={(event) =>
-                  setLinkForm((current) => ({
-                    ...current,
-                    accessPolicy: event.target.value as typeof current.accessPolicy,
-                  }))
-                }
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              >
-                <option value="PRIVATE_ALLOWLIST">Private allowlist</option>
-                <option value="ANY_AUTHENTICATED_USER">Any authenticated user</option>
-              </select>
+              <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                Maximum file size (MB)
+                <input
+                  value={linkForm.maxFileSizeMb}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({ ...current, maxFileSizeMb: event.target.value }))
+                  }
+                  type="number"
+                  min={1}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
 
-              <input
-                value={linkForm.maxFileSizeMb}
-                onChange={(event) =>
-                  setLinkForm((current) => ({ ...current, maxFileSizeMb: event.target.value }))
-                }
-                placeholder="Max file size (MB)"
-                type="number"
-                min={1}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
+              <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                Maximum total size (MB)
+                <input
+                  value={linkForm.maxTotalSizeMb}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({ ...current, maxTotalSizeMb: event.target.value }))
+                  }
+                  type="number"
+                  min={1}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
 
-              <input
-                value={linkForm.maxTotalSizeMb}
-                onChange={(event) =>
-                  setLinkForm((current) => ({ ...current, maxTotalSizeMb: event.target.value }))
-                }
-                placeholder="Max total size (MB)"
-                type="number"
-                min={1}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
-
-              <input
-                value={linkForm.expiresAt}
-                onChange={(event) =>
-                  setLinkForm((current) => ({
-                    ...current,
-                    expiresAt: event.target.value,
-                  }))
-                }
-                type="datetime-local"
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
-
-              <select
-                value={linkForm.defaultFolderId}
-                onChange={(event) =>
-                  setLinkForm((current) => ({
-                    ...current,
-                    defaultFolderId: event.target.value,
-                  }))
-                }
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              >
-                <option value="">Default folder: Root</option>
-
-                {sortedFolders.map((folder) => (
-                  <option key={folder.id} value={folder.id}>
-                    {getFolderOptionLabel(folder)}
-                  </option>
-                ))}
-              </select>
+              <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                Expiration date
+                <input
+                  value={linkForm.expiresAt}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({ ...current, expiresAt: event.target.value }))
+                  }
+                  type="datetime-local"
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
 
               <textarea
                 value={linkForm.description}
@@ -983,18 +1083,73 @@ export function DocumentSharesPage() {
               />
 
               {linkForm.accessPolicy === "PRIVATE_ALLOWLIST" && (
-                <textarea
-                  value={linkForm.allowedUserEmails}
-                  onChange={(event) =>
-                    setLinkForm((current) => ({
-                      ...current,
-                      allowedUserEmails: event.target.value,
-                    }))
-                  }
-                  placeholder="Allowed emails (comma or one per line)"
-                  rows={3}
-                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none md:col-span-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                />
+                <label className="grid gap-2 text-sm font-bold text-slate-700 md:col-span-2 dark:text-slate-200">
+                  Recipient emails
+                  <div
+                    className="flex min-h-12 flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 dark:border-slate-700 dark:bg-slate-800"
+                  >
+                    {linkForm.allowedUserEmails
+                      .split(",")
+                      .map((email) => email.trim())
+                      .filter(Boolean)
+                      .map((email) => (
+                        <span
+                          key={email}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-200"
+                        >
+                          {email}
+                          <button
+                            type="button"
+                            onClick={() => removeRecipientEmail(email)}
+                            aria-label={`Remove ${email}`}
+                            className="text-base leading-none text-blue-500 hover:text-red-500"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    <input
+                      type="email"
+                      value={recipientEmailInput}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (/[,;\s]$/.test(value)) {
+                          addRecipientEmails(value);
+                        } else {
+                          setRecipientEmailInput(value);
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === "," || event.key === ";") {
+                          event.preventDefault();
+                          addRecipientEmails(recipientEmailInput);
+                        }
+                        if (
+                          event.key === "Backspace" &&
+                          !recipientEmailInput &&
+                          linkForm.allowedUserEmails
+                        ) {
+                          const emails = linkForm.allowedUserEmails.split(",");
+                          removeRecipientEmail(emails[emails.length - 1]);
+                        }
+                      }}
+                      onBlur={() => {
+                        if (recipientEmailInput.trim()) {
+                          addRecipientEmails(recipientEmailInput);
+                        }
+                      }}
+                      placeholder={
+                        linkForm.allowedUserEmails
+                          ? "Add another email"
+                          : "Enter an email and press Enter"
+                      }
+                      className="min-w-56 flex-1 bg-transparent px-1 py-1.5 font-normal outline-none dark:text-white"
+                    />
+                  </div>
+                  <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                    Press Enter, comma, or semicolon after each email.
+                  </span>
+                </label>
               )}
 
               <fieldset className="md:col-span-2">
@@ -1002,11 +1157,13 @@ export function DocumentSharesPage() {
                   Accepted file types
                 </legend>
                 <div className="flex flex-wrap gap-2">
-                  {MIME_OPTIONS.map(([label, mime]) => {
-                    const selected = linkForm.allowedFileTypes.includes(mime);
+                  {[...MIME_OPTIONS, ...(isPro ? PRO_MIME_OPTIONS : [])].map((option) => {
+                    const selected = option.mimeTypes.every((mime) =>
+                      linkForm.allowedFileTypes.includes(mime),
+                    );
                     return (
                       <label
-                        key={mime}
+                        key={option.label}
                         className={`cursor-pointer rounded-full border px-3 py-1.5 text-sm font-bold ${
                           selected
                             ? "border-blue-600 bg-blue-50 text-blue-700"
@@ -1020,13 +1177,17 @@ export function DocumentSharesPage() {
                             setLinkForm((current) => ({
                               ...current,
                               allowedFileTypes: selected
-                                ? current.allowedFileTypes.filter((value) => value !== mime)
-                                : [...current.allowedFileTypes, mime],
+                                ? current.allowedFileTypes.filter(
+                                    (value) => !option.mimeTypes.includes(value as never),
+                                  )
+                                : Array.from(
+                                    new Set([...current.allowedFileTypes, ...option.mimeTypes]),
+                                  ),
                             }))
                           }
                           className="sr-only"
                         />
-                        {label}
+                        {option.label}
                       </label>
                     );
                   })}
@@ -1569,23 +1730,6 @@ export function DocumentSharesPage() {
                   (detected from uploaded file)
                 </span>
               </div>
-
-              <select
-                value={approveForm.visibility}
-                onChange={(event) =>
-                  setApproveForm((current) => ({
-                    ...current,
-                    visibility: event.target.value,
-                  }))
-                }
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              >
-                {VISIBILITY_OPTIONS.map((visibility) => (
-                  <option key={visibility} value={visibility}>
-                    {visibility}
-                  </option>
-                ))}
-              </select>
 
               <textarea
                 value={approveForm.description}

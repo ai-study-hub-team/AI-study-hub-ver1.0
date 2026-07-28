@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { AlertTriangle, CheckCircle2, Loader2, UploadCloud } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -8,6 +8,19 @@ import {
   type PublicDocumentShareLinkResponse,
 } from "../../services/publicShareApi";
 import { getAuthToken } from "../../services/apiClient";
+
+const getAcceptedTypeLabel = (mimeType: string) => {
+  const value = mimeType.toLowerCase();
+  if (value === "application/pdf") return "PDF";
+  if (value === "text/plain") return "TXT";
+  if (value.includes("wordprocessingml")) return "DOCX";
+  if (value.includes("presentationml")) return "PPTX";
+  if (value.includes("spreadsheetml")) return "XLSX";
+  if (value.startsWith("image/")) return "IMAGE";
+  if (value.startsWith("video/")) return "VIDEO";
+  if (value.startsWith("audio/")) return "AUDIO";
+  return value.split("/").pop()?.toUpperCase() || "FILE";
+};
 
 const getUploadErrorMessage = (error: any) => {
   const rawMessage = String(
@@ -49,6 +62,41 @@ export function PublicSharedUploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const acceptedMimeTypes = (() => {
+    const value = linkData?.allowedFileTypes;
+    const urlTypes = new URLSearchParams(window.location.search).get("types");
+    const types = Array.isArray(value)
+      ? value
+      : typeof value === "string"
+        ? value.split(",")
+        : urlTypes
+          ? urlTypes.split(",")
+          : [];
+    return types.map((type) => type.trim()).filter(Boolean);
+  })();
+  const acceptedTypeLabels = Array.from(
+    new Set(acceptedMimeTypes.map(getAcceptedTypeLabel)),
+  );
+
+  const redirectToLogin = () => {
+    const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    sessionStorage.setItem("postLoginRedirect", returnTo);
+    navigate(`/login?redirect=${encodeURIComponent(returnTo)}`, {
+      state: { returnTo },
+    });
+  };
+
+  const handleBack = () => {
+    if (!getAuthToken()) {
+      navigate("/");
+      return;
+    }
+
+    const role = (localStorage.getItem("role") || "")
+      .toUpperCase()
+      .replace(/^ROLE_/, "");
+    navigate(role === "ADMIN" || role === "MANAGER" ? "/admin" : "/app/dashboard");
+  };
 
   useEffect(() => {
     if (!token) {
@@ -103,8 +151,7 @@ export function PublicSharedUploadPage() {
     }
 
     if (!getAuthToken()) {
-      sessionStorage.setItem("postLoginRedirect", window.location.pathname);
-      navigate(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
+      redirectToLogin();
       return;
     }
 
@@ -169,6 +216,15 @@ export function PublicSharedUploadPage() {
     <div className="min-h-screen bg-slate-50 px-6 py-10 text-slate-900">
       <main className="mx-auto max-w-2xl">
         <section className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="mb-5 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+
           <p className="text-sm font-bold uppercase tracking-widest text-blue-600">
             AI Study Hub Shared Upload
           </p>
@@ -198,11 +254,30 @@ export function PublicSharedUploadPage() {
           )}
 
           <div className="mt-6 space-y-4">
+            {acceptedTypeLabels.length > 0 && (
+              <div>
+                <p className="text-sm font-bold text-slate-700">
+                  Accepted file types
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {acceptedTypeLabels.map((label) => (
+                    <span
+                      key={label}
+                      className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-extrabold text-blue-700"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <label className="block space-y-1.5">
               <span className="text-sm font-bold text-slate-700">File *</span>
 
               <input
                 type="file"
+                accept={acceptedMimeTypes.length ? acceptedMimeTypes.join(",") : undefined}
                 disabled={isSubmitting}
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -238,10 +313,21 @@ export function PublicSharedUploadPage() {
               />
             </label>
 
-            <p className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-800">
-              You must sign in to upload. Your identity is taken securely from
-              your account. Storage is charged to the link owner.
-            </p>
+            {!getAuthToken() && (
+              <div className="flex flex-col gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-800 sm:flex-row sm:items-center sm:justify-between">
+                <p>
+                  You must sign in to upload. Your identity is taken securely
+                  from your account. Storage is charged to the link owner.
+                </p>
+                <button
+                  type="button"
+                  onClick={redirectToLogin}
+                  className="shrink-0 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white transition hover:bg-blue-700"
+                >
+                  Login to upload
+                </button>
+              </div>
+            )}
           </div>
 
           {isSubmitting && (

@@ -81,7 +81,11 @@ export function PlanManagement() {
     setLoading(true);
     try {
       const response = await adminPlanApi.getPlans();
-      setPlans(Array.isArray(response.data) ? response.data : []);
+      setPlans(
+        Array.isArray(response.data)
+          ? response.data.filter((plan) => plan.isActive)
+          : [],
+      );
     } catch (error) {
       toast.error(getErrorMessage(error, "Cannot load subscription plans."));
     } finally {
@@ -223,7 +227,7 @@ export function PlanManagement() {
     try {
       await adminPlanApi.deletePlan(plan.id);
       toast.success("Subscription plan deactivated successfully.");
-      await loadPlans();
+      setPlans((current) => current.filter((item) => item.id !== plan.id));
     } catch (error) {
       toast.error(getErrorMessage(error, "Cannot deactivate subscription plan."));
     } finally {
@@ -398,7 +402,30 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function NumberField({ label, value, disabled, onChange }: { label: string; value: number; disabled: boolean; onChange: (value: number) => void }) {
-  return <Field label={label}><input type="number" min={0} disabled={disabled} value={value} onChange={(e) => onChange(Number(e.target.value))} className="form-input" /></Field>;
+  return (
+    <Field label={label}>
+      <input
+        type="number"
+        min={0}
+        disabled={disabled}
+        value={value}
+        onChange={(event) => {
+          const normalizedText = event.currentTarget.value.replace(
+            /^0+(?=\d)/,
+            "",
+          );
+          event.currentTarget.value = normalizedText;
+          onChange(Number(normalizedText));
+        }}
+        onBlur={(event) => {
+          const normalizedValue = Math.max(0, Number(event.currentTarget.value) || 0);
+          event.currentTarget.value = String(normalizedValue);
+          onChange(normalizedValue);
+        }}
+        className="form-input"
+      />
+    </Field>
+  );
 }
 
 function PermissionToggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (value: boolean) => void }) {
