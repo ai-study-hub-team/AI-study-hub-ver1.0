@@ -23,6 +23,7 @@ const getAcceptedTypeLabel = (mimeType: string) => {
 };
 
 const getUploadErrorMessage = (error: any) => {
+  const status = Number(error?.response?.status);
   const rawMessage = String(
     error?.response?.data?.message ||
       error?.response?.data?.error ||
@@ -31,6 +32,21 @@ const getUploadErrorMessage = (error: any) => {
   );
 
   const normalizedMessage = rawMessage.toLowerCase();
+
+  if (
+    status === 403 ||
+    normalizedMessage.includes("allowlist") ||
+    normalizedMessage.includes("not allowed") ||
+    normalizedMessage.includes("not permitted") ||
+    normalizedMessage.includes("permission") ||
+    normalizedMessage.includes("access denied")
+  ) {
+    return "You are not allowed to upload through this link. Ask the owner to add your registered email to the allowlist.";
+  }
+
+  if (status === 401) {
+    return "Please sign in before uploading a document.";
+  }
 
   if (
     normalizedMessage.includes("limit") ||
@@ -62,6 +78,7 @@ export function PublicSharedUploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const isAuthenticated = Boolean(getAuthToken());
   const acceptedMimeTypes = (() => {
     const value = linkData?.allowedFileTypes;
     const urlTypes = new URLSearchParams(window.location.search).get("types");
@@ -115,7 +132,6 @@ export function PublicSharedUploadPage() {
         setIsLoading(true);
 
         const response = await publicShareApi.getPublicDocumentShareLink(token);
-
         setLinkData(response.data);
       } catch (error: any) {
         console.error(error);
@@ -150,8 +166,18 @@ export function PublicSharedUploadPage() {
       return;
     }
 
-    if (!getAuthToken()) {
+    if (!isAuthenticated) {
       redirectToLogin();
+      return;
+    }
+
+    if (
+      acceptedMimeTypes.length > 0 &&
+      !acceptedMimeTypes.includes(file.type)
+    ) {
+      toast.error(
+        `This file type is not accepted. Choose: ${acceptedTypeLabels.join(", ")}.`,
+      );
       return;
     }
 
@@ -278,7 +304,7 @@ export function PublicSharedUploadPage() {
               <input
                 type="file"
                 accept={acceptedMimeTypes.length ? acceptedMimeTypes.join(",") : undefined}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !isAuthenticated}
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
               />
@@ -291,7 +317,7 @@ export function PublicSharedUploadPage() {
 
               <input
                 value={title}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !isAuthenticated}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="Optional, for example: SWP391 - Lecture 1"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60"
@@ -305,7 +331,7 @@ export function PublicSharedUploadPage() {
 
               <textarea
                 value={description}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !isAuthenticated}
                 onChange={(event) => setDescription(event.target.value)}
                 rows={4}
                 placeholder="Optional note for the owner"
@@ -313,11 +339,12 @@ export function PublicSharedUploadPage() {
               />
             </label>
 
-            {!getAuthToken() && (
+            {!isAuthenticated && (
               <div className="flex flex-col gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-800 sm:flex-row sm:items-center sm:justify-between">
                 <p>
-                  You must sign in to upload. Your identity is taken securely
-                  from your account. Storage is charged to the link owner.
+                  Sign in before choosing a file. Your account identity is
+                  verified before upload and recorded so the owner can see who
+                  submitted each document.
                 </p>
                 <button
                   type="button"
@@ -347,7 +374,7 @@ export function PublicSharedUploadPage() {
 
           <button
             type="button"
-            onClick={handleSubmit}
+            onClick={isAuthenticated ? handleSubmit : redirectToLogin}
             disabled={isSubmitting}
             className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -357,7 +384,11 @@ export function PublicSharedUploadPage() {
               <UploadCloud className="h-4 w-4" />
             )}
 
-            {isSubmitting ? "Uploading..." : "Submit for Review"}
+            {isSubmitting
+              ? "Uploading..."
+              : isAuthenticated
+                ? "Submit for Review"
+                : "Login to Upload"}
           </button>
         </section>
       </main>

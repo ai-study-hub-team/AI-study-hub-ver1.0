@@ -10,6 +10,7 @@ import {
   Loader2,
   RefreshCcw,
   ShieldOff,
+  UserRoundCog,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -219,6 +220,23 @@ const getShareLinkStatus = (status?: string | null) =>
 const isActiveShareLink = (status?: string | null) =>
   getShareLinkStatus(status) === "ACTIVE";
 
+const isPrivateAllowlistLink = (link: DocumentShareLinkResponse) =>
+  String(link.accessPolicy ?? "").trim().toUpperCase() ===
+  "PRIVATE_ALLOWLIST";
+
+const parseEmailList = (value: string) =>
+  Array.from(
+    new Set(
+      value
+        .split(/[\s,;]+/)
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+
+const isValidEmail = (email: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 const getUsableShareUrl = (link: DocumentShareLinkResponse) => {
   const rawUrl = link.shareUrl?.trim();
   let shareUrl = "";
@@ -332,6 +350,13 @@ export function DocumentSharesPage() {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [disablingLinkId, setDisablingLinkId] = useState<number | null>(null);
+  const [allowlistLink, setAllowlistLink] =
+    useState<DocumentShareLinkResponse | null>(null);
+  const [allowlistForm, setAllowlistForm] = useState({
+    emailsToAdd: "",
+    emailsToRemove: "",
+  });
+  const [isUpdatingAllowlist, setIsUpdatingAllowlist] = useState(false);
 
   const [workingSubmissionId, setWorkingSubmissionId] = useState<number | null>(
     null,
@@ -706,6 +731,80 @@ export function DocumentSharesPage() {
     }
   };
 
+  const openAllowlistManager = (link: DocumentShareLinkResponse) => {
+    setAllowlistLink(link);
+    setAllowlistForm({ emailsToAdd: "", emailsToRemove: "" });
+  };
+
+  const closeAllowlistManager = () => {
+    if (isUpdatingAllowlist) return;
+    setAllowlistLink(null);
+    setAllowlistForm({ emailsToAdd: "", emailsToRemove: "" });
+  };
+
+  const handleUpdateAllowlist = async () => {
+    if (!allowlistLink) return;
+
+    const linkId = getShareLinkId(allowlistLink);
+    if (!linkId) {
+      toast.error("Cannot identify this shared upload link.");
+      return;
+    }
+
+    const userEmailsToAdd = parseEmailList(allowlistForm.emailsToAdd);
+    const userEmailsToRemove = parseEmailList(allowlistForm.emailsToRemove);
+    const invalidEmail = [...userEmailsToAdd, ...userEmailsToRemove].find(
+      (email) => !isValidEmail(email),
+    );
+
+    if (invalidEmail) {
+      toast.error(`Invalid email: ${invalidEmail}`);
+      return;
+    }
+
+    const duplicatedEmail = userEmailsToAdd.find((email) =>
+      userEmailsToRemove.includes(email),
+    );
+    if (duplicatedEmail) {
+      toast.error(
+        `${duplicatedEmail} cannot be added and removed at the same time.`,
+      );
+      return;
+    }
+
+    if (!userEmailsToAdd.length && !userEmailsToRemove.length) {
+      toast.error("Enter at least one email to add or remove.");
+      return;
+    }
+
+    try {
+      setIsUpdatingAllowlist(true);
+      const response =
+        await documentShareLinkApi.updateDocumentShareLinkAllowlist(linkId, {
+          userEmailsToAdd,
+          userEmailsToRemove,
+        });
+
+      setLinks((current) =>
+        current.map((link) =>
+          getShareLinkId(link) === linkId ? response.data : link,
+        ),
+      );
+      setAllowlistLink(null);
+      setAllowlistForm({ emailsToAdd: "", emailsToRemove: "" });
+      toast.success("Allowlist updated.");
+    } catch (error: any) {
+      console.error(error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot update allowlist.",
+      );
+    } finally {
+      setIsUpdatingAllowlist(false);
+    }
+  };
+
 
 
   const handlePreviewSubmissionFile = async (submission: SharedDocumentSubmissionResponse) => {
@@ -948,7 +1047,7 @@ export function DocumentSharesPage() {
           </h1>
 
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Create public upload links, then approve or reject uploaded
+            Create secure upload links, then approve or reject uploaded
             submissions.
           </p>
         </div>
@@ -980,7 +1079,7 @@ export function DocumentSharesPage() {
                 : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             }`}
           >
-            {tab === "links" ? "Share Links" : "Submissions"}
+            {tab === "links" ? "Share Links" : "Shared Document Submissions"}
           </button>
         ))}
       </div>
@@ -1081,6 +1180,77 @@ export function DocumentSharesPage() {
                 rows={3}
                 className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none md:col-span-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               />
+
+              <fieldset className="md:col-span-2">
+                <legend className="mb-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Link access
+                </legend>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label
+                    className={`cursor-pointer rounded-2xl border p-4 transition ${
+                      linkForm.accessPolicy === "PRIVATE_ALLOWLIST"
+                        ? "border-blue-500 bg-blue-50 ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/30"
+                        : "border-slate-200 hover:border-blue-300 dark:border-slate-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="share-link-access"
+                      value="PRIVATE_ALLOWLIST"
+                      checked={
+                        linkForm.accessPolicy === "PRIVATE_ALLOWLIST"
+                      }
+                      onChange={() =>
+                        setLinkForm((current) => ({
+                          ...current,
+                          accessPolicy: "PRIVATE_ALLOWLIST",
+                        }))
+                      }
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-extrabold text-slate-900 dark:text-white">
+                      Private
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      Only registered emails in the allowlist can upload. Users
+                      must still sign in.
+                    </span>
+                  </label>
+
+                  <label
+                    className={`cursor-pointer rounded-2xl border p-4 transition ${
+                      linkForm.accessPolicy === "ANY_AUTHENTICATED_USER"
+                        ? "border-blue-500 bg-blue-50 ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/30"
+                        : "border-slate-200 hover:border-blue-300 dark:border-slate-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="share-link-access"
+                      value="ANY_AUTHENTICATED_USER"
+                      checked={
+                        linkForm.accessPolicy === "ANY_AUTHENTICATED_USER"
+                      }
+                      onChange={() => {
+                        setLinkForm((current) => ({
+                          ...current,
+                          accessPolicy: "ANY_AUTHENTICATED_USER",
+                          allowedUserEmails: "",
+                        }));
+                        setRecipientEmailInput("");
+                      }}
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-extrabold text-slate-900 dark:text-white">
+                      Public
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      Anyone with the link can upload after signing in. The
+                      owner can see each uploader&apos;s name and email.
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
 
               {linkForm.accessPolicy === "PRIVATE_ALLOWLIST" && (
                 <label className="grid gap-2 text-sm font-bold text-slate-700 md:col-span-2 dark:text-slate-200">
@@ -1256,6 +1426,18 @@ export function DocumentSharesPage() {
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                             {statusLabel[getShareLinkStatus(link.status)] || link.status}
                           </span>
+
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                              isPrivateAllowlistLink(link)
+                                ? "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+                                : "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                            }`}
+                          >
+                            {isPrivateAllowlistLink(link)
+                              ? `Private · ${link.allowedUserIds?.length ?? 0} allowed`
+                              : "Public · Login required"}
+                          </span>
                         </div>
 
                         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -1292,6 +1474,18 @@ export function DocumentSharesPage() {
                           <ClipboardCopy className="h-4 w-4" />
                           Copy
                         </button>
+
+                        {isPrivateAllowlistLink(link) &&
+                          isActiveShareLink(link.status) && (
+                            <button
+                              type="button"
+                              onClick={() => openAllowlistManager(link)}
+                              className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-950/50"
+                            >
+                              <UserRoundCog className="h-4 w-4" />
+                              Manage access
+                            </button>
+                          )}
 
                         {isActiveShareLink(link.status) && (
                           <button
@@ -1492,6 +1686,98 @@ export function DocumentSharesPage() {
           </div>
           <div className="px-5 pb-5"><PaginationControls currentPage={submissionsPage} totalItems={submissions.length} pageSize={pageSize} onPageChange={setSubmissionsPage} /></div>
         </section>
+      )}
+
+      {allowlistLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+                  Manage link access
+                </h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {allowlistLink.title} currently allows{" "}
+                  {allowlistLink.allowedUserIds?.length ?? 0} registered user(s).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAllowlistManager}
+                disabled={isUpdatingAllowlist}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <label className="block space-y-2">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Add registered users
+                </span>
+                <textarea
+                  value={allowlistForm.emailsToAdd}
+                  onChange={(event) =>
+                    setAllowlistForm((current) => ({
+                      ...current,
+                      emailsToAdd: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  placeholder="student1@example.com, student2@example.com"
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Remove registered users
+                </span>
+                <textarea
+                  value={allowlistForm.emailsToRemove}
+                  onChange={(event) =>
+                    setAllowlistForm((current) => ({
+                      ...current,
+                      emailsToRemove: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  placeholder="student3@example.com"
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
+
+              <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                Separate multiple emails with commas, spaces, or new lines.
+                Emails must belong to registered users. The API returns user IDs
+                only, so enter an email above when removing access.
+              </p>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeAllowlistManager}
+                disabled={isUpdatingAllowlist}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleUpdateAllowlist}
+                disabled={isUpdatingAllowlist}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isUpdatingAllowlist && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {isUpdatingAllowlist ? "Updating..." : "Update allowlist"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {selectedSubmission && (

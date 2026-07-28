@@ -39,6 +39,11 @@ export interface CreateDocumentShareLinkRequest {
   defaultFolderId?: number | null;
 }
 
+export interface UpdateDocumentShareLinkAllowlistRequest {
+  userEmailsToAdd: string[];
+  userEmailsToRemove: string[];
+}
+
 export const documentShareLinkApi = {
   getDocumentShareLinks: () =>
     apiClient.get<DocumentShareLinkResponse[]>("/api/document-share-links"),
@@ -53,5 +58,14 @@ export const documentShareLinkApi = {
     apiClient.patch<DocumentShareLinkResponse>(
       `/api/document-share-links/${id}/disable`,
       null,
+    ),
+
+  updateDocumentShareLinkAllowlist: (
+    id: number,
+    data: UpdateDocumentShareLinkAllowlistRequest,
+  ) =>
+    apiClient.patch<DocumentShareLinkResponse>(
+      `/api/document-share-links/${id}/allowlist`,
+      data,
     ),
 };

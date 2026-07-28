@@ -6,7 +6,6 @@ import {
 } from "react-router";
 
 import {
-  Activity,
   CreditCard,
   FileSearch,
   FileText,
@@ -599,11 +598,6 @@ export function DashboardLayout({
           label: "User Management",
         },
         {
-          to: "/admin/activity-logs",
-          icon: Activity,
-          label: "Activity Logs",
-        },
-        {
           to: "/admin/documents",
           icon: FileText,
           label: "Documents",
@@ -877,7 +871,7 @@ export function DashboardLayout({
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-16 shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
-          <GlobalDocumentSearch />
+          {!isAdmin && <GlobalDocumentSearch />}
 
           <div className="ml-auto flex items-center gap-3">
             {!isCurrentAdmin &&

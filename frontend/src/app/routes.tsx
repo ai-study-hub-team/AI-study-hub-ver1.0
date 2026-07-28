@@ -70,7 +70,6 @@ import { TokenAnalyticsPage } from "./pages/admin/TokenAnalyticsPage";
 import { StorageAnalyticsPage } from "./pages/admin/StorageAnalyticsPage";
 import { PricingAnalyticsPage } from "./pages/admin/PricingAnalyticsPage";
 import { PlanManagement } from "./pages/admin/PlanManagement";
-import { ActivityLogs } from "./pages/admin/ActivityLogs";
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
   let role = localStorage.getItem("role") || "";
@@ -317,10 +316,6 @@ export const router = createBrowserRouter([
           {
             path: "users",
             element: <UserManagement />,
-          },
-          {
-            path: "activity-logs",
-            element: <ActivityLogs />,
           },
           {
             path: "documents",
