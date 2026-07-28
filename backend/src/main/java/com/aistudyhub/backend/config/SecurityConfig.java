@@ -75,6 +75,19 @@ public class SecurityConfig {
                         // Public plan listing
                         .requestMatchers(HttpMethod.GET, "/api/plans").permitAll()
 
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/public/avatars/*"
+
+                        ).permitAll()
+                        // Public document preview links
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/public/documents/*",
+                                "/api/public/documents/*/file",
+                                "/api/public/documents/*/download"
+                        ).permitAll()
+
                         // Public share-link information only
                         .requestMatchers(
                                 HttpMethod.GET,

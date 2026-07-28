@@ -41,7 +41,6 @@ import {
 import { motion } from "motion/react";
 
 import { useTheme } from "./ThemeProvider";
-import Chatbot3D from "../app/components/ui/Chatbot3D";
 import { GlobalDocumentSearch } from "../app/components/ui/GlobalDocumentSearch";
 import { NotificationBell } from "../app/components/notifications/NotificationBell";
 import { subscriptionApi } from "../app/services/subscriptionApi";
@@ -978,16 +977,6 @@ export function DashboardLayout({
           </div>
         </main>
       </div>
-
-      {!isAdmin && (
-        <div className="fixed bottom-6 right-6 z-[9999]">
-          <div className="relative h-[110px] w-[140px]">
-            <div className="absolute bottom-0 right-0 h-[85px] w-[85px]">
-              <Chatbot3D />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

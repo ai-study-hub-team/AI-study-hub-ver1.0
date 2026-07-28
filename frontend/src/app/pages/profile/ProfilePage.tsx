@@ -564,56 +564,6 @@ export function ProfilePage() {
 
             </div>
           </section>
-
-          <section className="grid grid-cols-3 gap-3 lg:grid-cols-1">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-              <div className="flex items-center gap-3">
-                <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 sm:flex dark:bg-blue-500/10 dark:text-blue-300">
-                  <FileText className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xl font-black text-slate-900 dark:text-white">
-                    {profile?.documentCount ?? 0}
-                  </p>
-                  <p className="truncate text-xs font-bold text-slate-500 dark:text-slate-400">
-                    Documents
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-              <div className="flex items-center gap-3">
-                <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600 sm:flex dark:bg-violet-500/10 dark:text-violet-300">
-                  <FolderOpen className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xl font-black text-slate-900 dark:text-white">
-                    {profile?.categoryCount ?? 0}
-                  </p>
-                  <p className="truncate text-xs font-bold text-slate-500 dark:text-slate-400">
-                    Categories
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-              <div className="flex items-center gap-3">
-                <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 sm:flex dark:bg-amber-500/10 dark:text-amber-300">
-                  <Database className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-lg font-black text-slate-900 dark:text-white">
-                    {formatBytes(profile?.totalStorageUsedBytes)}
-                  </p>
-                  <p className="truncate text-xs font-bold text-slate-500 dark:text-slate-400">
-                    Storage used
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
         </motion.aside>
 
         <motion.main
