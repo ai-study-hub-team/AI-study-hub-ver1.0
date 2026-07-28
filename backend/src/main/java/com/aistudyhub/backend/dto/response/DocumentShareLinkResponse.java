@@ -26,13 +26,24 @@ public class DocumentShareLinkResponse {
     private LocalDateTime expiresAt;
     private Integer maxUploads;
     private int currentUploads;
+    /** Null when maxUploads is unlimited. */
+    private Integer remainingUploads;
     private Integer maxUploadsPerUser;
     private Long maxFileSizeBytes;
     private Long maxTotalBytes;
+    /** Bytes occupied by submissions still awaiting review. */
+    private Long activeStoredBytes;
+    /** Null when maxTotalBytes is unlimited. */
+    private Long remainingTotalBytes;
     private String allowedFileTypes;
+    /** Parsed MIME types allowed by this link; empty means no link-specific type restriction. */
+    private List<String> allowedFileTypesList;
 
     /** IDs of users explicitly on the allowlist (for PRIVATE_ALLOWLIST policy). */
     private List<Long> allowedUserIds;
+
+    /** Registered email addresses explicitly on the allowlist (for owner display). */
+    private List<String> allowedUserEmails;
 
     /** ID of the default folder (if set). */
     private Long defaultFolderId;

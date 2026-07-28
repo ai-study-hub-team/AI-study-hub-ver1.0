@@ -24,6 +24,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -142,6 +143,15 @@ public class DocumentShareLinkService {
                 .stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public DocumentShareLinkResponse getLinkDetailsForCurrentUser(Long linkId) {
+        User owner = currentUserService.getCurrentUser();
+        DocumentShareLink link = shareLinkRepository.findByIdAndOwnerId(linkId, owner.getId())
+                .orElseThrow(() -> new NotFoundException(
+                        "Share link not found or does not belong to you: " + linkId));
+        return toResponse(link);
     }
 
     // ─── Disable ───────────────────────────────────────────────────────────────
@@ -318,6 +328,32 @@ public class DocumentShareLinkService {
                 .map(DocumentShareLinkAllowedUser::getAllowedUserId)
                 .collect(Collectors.toList());
 
+        java.util.Map<Long, String> allowedUserEmailsById = userRepository.findAllById(allowedUserIds)
+                .stream()
+                .collect(Collectors.toMap(User::getId, User::getEmail));
+
+        List<String> allowedUserEmails = allowedUserIds.stream()
+                .map(allowedUserEmailsById::get)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toList());
+
+        List<String> allowedFileTypesList = link.getAllowedFileTypes() == null
+                || link.getAllowedFileTypes().isBlank()
+                ? List.of()
+                : Arrays.stream(link.getAllowedFileTypes().split(","))
+                        .map(String::trim)
+                        .filter(type -> !type.isBlank())
+                        .distinct()
+                        .collect(Collectors.toList());
+
+        Integer remainingUploads = link.getMaxUploads() == null
+                ? null
+                : Math.max(0, link.getMaxUploads() - link.getCurrentUploads());
+
+        Long remainingTotalBytes = link.getMaxTotalBytes() == null
+                ? null
+                : Math.max(0L, link.getMaxTotalBytes() - link.getActiveStoredBytes());
+
         return DocumentShareLinkResponse.builder()
                 .id(link.getId())
                 .ownerUserId(link.getOwner() != null ? link.getOwner().getId() : null)
@@ -328,11 +364,16 @@ public class DocumentShareLinkService {
                 .expiresAt(link.getExpiresAt())
                 .maxUploads(link.getMaxUploads())
                 .currentUploads(link.getCurrentUploads())
+                .remainingUploads(remainingUploads)
                 .maxUploadsPerUser(link.getMaxUploadsPerUser())
                 .maxFileSizeBytes(link.getMaxFileSizeBytes())
                 .maxTotalBytes(link.getMaxTotalBytes())
+                .activeStoredBytes(link.getActiveStoredBytes())
+                .remainingTotalBytes(remainingTotalBytes)
                 .allowedFileTypes(link.getAllowedFileTypes())
+                .allowedFileTypesList(allowedFileTypesList)
                 .allowedUserIds(allowedUserIds)
+                .allowedUserEmails(allowedUserEmails)
                 .defaultFolderId(folderId)
                 .defaultFolderName(folderName)
                 .token(link.getPlainToken())

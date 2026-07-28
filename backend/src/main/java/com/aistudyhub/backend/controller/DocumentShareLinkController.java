@@ -18,6 +18,7 @@ import java.util.List;
  * <pre>
  * POST   /api/document-share-links                         Create a new share link
  * GET    /api/document-share-links                         List own links
+ * GET    /api/document-share-links/{id}                    Get one own link
  * PATCH  /api/document-share-links/{id}/disable            Disable a link
  * PATCH  /api/document-share-links/{id}/allowlist          Update allowlist
  * </pre>
@@ -41,6 +42,11 @@ public class DocumentShareLinkController {
     @GetMapping
     public ResponseEntity<List<DocumentShareLinkResponse>> getAllForCurrentUser() {
         return ResponseEntity.ok(shareLinkService.getLinksForCurrentUser());
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<DocumentShareLinkResponse> getDetails(@PathVariable Long id) {
+        return ResponseEntity.ok(shareLinkService.getLinkDetailsForCurrentUser(id));
     }
 
     @PatchMapping("/{id}/disable")
