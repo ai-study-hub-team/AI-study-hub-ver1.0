@@ -651,12 +651,20 @@ public class SharedDocumentSubmissionService {
                         uploader,
                         NotificationType.SHARED_UPLOAD_REJECTED,
                         "Uploaded document rejected",
-                        "Your uploaded document \"" + submission.getTitle() + "\" was rejected",
+                        buildRejectedMessage(submission),
                         "SHARED_UPLOAD",
                         submission.getId(),
                         "/app/upload"
                 )
         );
+    }
+
+    private String buildRejectedMessage(SharedDocumentSubmission submission) {
+        String message = "Your uploaded document \"" + submission.getTitle() + "\" was rejected";
+        if (submission.getRejectReason() == null || submission.getRejectReason().isBlank()) {
+            return message;
+        }
+        return message + ". Reason: " + submission.getRejectReason().trim();
     }
 
     private java.util.Optional<User> findUser(Long userId) {
