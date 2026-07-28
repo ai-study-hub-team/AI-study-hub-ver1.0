@@ -1,5 +1,6 @@
 import {
   NavLink,
+  useLocation,
   useNavigate,
 } from "react-router";
 
@@ -241,6 +242,7 @@ const isUnverifiedEmailError = (
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [
     showPassword,
@@ -266,13 +268,19 @@ export function LoginPage() {
   const navigateAfterLogin =
     useCallback(
       (role: string) => {
-        const queryRedirect = new URLSearchParams(window.location.search).get(
+        const queryRedirect = new URLSearchParams(location.search).get(
           "redirect",
         );
+        const stateRedirect = (
+          location.state as { returnTo?: string } | null
+        )?.returnTo;
         const storedRedirect = sessionStorage.getItem("postLoginRedirect");
-        const redirect = queryRedirect || storedRedirect;
+        const redirect = stateRedirect || queryRedirect || storedRedirect;
 
-        if (redirect?.startsWith("/shared-upload/")) {
+        if (
+          redirect?.startsWith("/shared-upload/") &&
+          !redirect.startsWith("//")
+        ) {
           sessionStorage.removeItem("postLoginRedirect");
           navigate(redirect, { replace: true });
           return;
@@ -296,7 +304,7 @@ export function LoginPage() {
           );
         }
       },
-      [navigate],
+      [location.search, location.state, navigate],
     );
 
   const handleLogin = async (

@@ -836,12 +836,14 @@ export function AdminAnalyticsContent({ view }: { view: "token" | "storage" }) {
     }
   }, [revenueDate, revenueFromDate, revenuePeriod, revenueToDate]);
 
-  const loadStorage = useCallback(async (): Promise<void> => {
+  const loadStorage = useCallback(async (
+    selectedUserId = storageUserId,
+  ): Promise<void> => {
     setStorageLoading(true);
     setStorageError("");
 
     try {
-      const userId = storageUserId ? Number(storageUserId) : undefined;
+      const userId = selectedUserId ? Number(selectedUserId) : undefined;
 
       if (userId !== undefined && (!Number.isInteger(userId) || userId <= 0)) {
         throw new Error("Invalid user ID.");
@@ -866,7 +868,9 @@ export function AdminAnalyticsContent({ view }: { view: "token" | "storage" }) {
     }
   }, [storageUserId]);
 
-  const loadTokenUsage = useCallback(async (): Promise<void> => {
+  const loadTokenUsage = useCallback(async (
+    selectedUserId = tokenUserId,
+  ): Promise<void> => {
     const validationMessage = validateDateRange(
       tokenPeriod,
       tokenDate,
@@ -893,7 +897,7 @@ export function AdminAnalyticsContent({ view }: { view: "token" | "storage" }) {
         tokenToDate,
       );
 
-      const parsedUserId = tokenUserId ? Number(tokenUserId) : undefined;
+      const parsedUserId = selectedUserId ? Number(selectedUserId) : undefined;
 
       if (
         parsedUserId !== undefined &&
@@ -1304,7 +1308,10 @@ export function AdminAnalyticsContent({ view }: { view: "token" | "storage" }) {
             <UserFilter
               users={users}
               value={storageUserId}
-              onChange={setStorageUserId}
+              onChange={(userId) => {
+                setStorageUserId(userId);
+                void loadStorage(userId);
+              }}
               label="User scope"
             />
 
@@ -1524,7 +1531,10 @@ export function AdminAnalyticsContent({ view }: { view: "token" | "storage" }) {
             <UserFilter
               users={users}
               value={tokenUserId}
-              onChange={setTokenUserId}
+              onChange={(userId) => {
+                setTokenUserId(userId);
+                void loadTokenUsage(userId);
+              }}
               label="User scope"
             />
 
