@@ -1,6 +1,5 @@
 package com.aistudyhub.backend.service;
 
-import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.UserSubscription;
 import com.aistudyhub.backend.exception.FileTooLargeException;
@@ -30,13 +29,13 @@ public class StorageQuotaService {
 
     @Transactional(readOnly = true)
     public long getPlanFileSizeLimitBytes(Long userId) {
-        SubscriptionPlan plan = getActivePlan(userId);
-        return plan.getMaxUploadSizePerFileMb() * 1024L * 1024L;
+        UserSubscription subscription = getActiveSubscription(userId);
+        return subscription.getEffectiveMaxUploadSizePerFileMb() * 1024L * 1024L;
     }
     @Transactional(readOnly = true)
     public long getPlanStorageLimitBytes(Long userId) {
-        SubscriptionPlan plan = getActivePlan(userId);
-        return plan.getStorageLimitMb() * 1024L * 1024L;
+        UserSubscription subscription = getActiveSubscription(userId);
+        return subscription.getEffectiveStorageLimitMb() * 1024L * 1024L;
     }
 
     // check dung lượng theo gói
@@ -100,15 +99,15 @@ public class StorageQuotaService {
             return;
         }
 
-        SubscriptionPlan plan = getActivePlan(userId);
+        UserSubscription subscription = getActiveSubscription(userId);
 
         long limitBytes =
-                plan.getMaxUploadSizePerFileMb() * 1024L * 1024L;
+                subscription.getEffectiveMaxUploadSizePerFileMb() * 1024L * 1024L;
 
         if (fileSizeBytes > limitBytes) {
             throw new QuotaExceededException(
                     "File size exceeds the maximum allowed size of "
-                            + plan.getMaxUploadSizePerFileMb()
+                            + subscription.getEffectiveMaxUploadSizePerFileMb()
                             + " MB for your plan."
             );
         }
@@ -124,22 +123,22 @@ public class StorageQuotaService {
             return;
         }
 
-        SubscriptionPlan plan = getActivePlan(userId);
+        UserSubscription subscription = getActiveSubscription(userId);
         String lc = mimeType.toLowerCase();
 
-        if (lc.startsWith("video/") && !plan.getAllowVideoUpload()) {
+        if (lc.startsWith("video/") && !subscription.getEffectiveAllowVideoUpload()) {
             throw new PlanRestrictionException(
                     "Video uploads are not allowed on your current plan."
             );
         }
 
-        if (lc.startsWith("audio/") && !plan.getAllowAudioUpload()) {
+        if (lc.startsWith("audio/") && !subscription.getEffectiveAllowAudioUpload()) {
             throw new PlanRestrictionException(
                     "Audio uploads are not allowed on your current plan."
             );
         }
 
-        if (lc.startsWith("image/") && !plan.getAllowImageUpload()) {
+        if (lc.startsWith("image/") && !subscription.getEffectiveAllowImageUpload()) {
             throw new PlanRestrictionException(
                     "Image uploads are not allowed on your current plan."
             );
@@ -154,7 +153,7 @@ public class StorageQuotaService {
                         || lc.equals("text/plain")
                         || lc.startsWith("application/vnd.ms-");
 
-        if (isDocument && !plan.getAllowDocumentUpload()) {
+        if (isDocument && !subscription.getEffectiveAllowDocumentUpload()) {
             throw new PlanRestrictionException(
                     "Document uploads are not allowed on your current plan."
             );
@@ -233,9 +232,8 @@ public class StorageQuotaService {
 
     // ─── Helper ────────────────────────────────────────────────────────────────
 
-    private SubscriptionPlan getActivePlan(Long userId) {
-        UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
-        return subscription.getPlan();
+    private UserSubscription getActiveSubscription(Long userId) {
+        return subscriptionService.getCurrentSubscription(userId);
     }
 
     private boolean hasManagementQuotaBypass(Long userId) {

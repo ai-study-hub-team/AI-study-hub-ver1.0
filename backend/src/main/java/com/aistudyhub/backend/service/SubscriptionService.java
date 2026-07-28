@@ -65,6 +65,7 @@ public class SubscriptionService {
                         .build());
 
         subscription.setPlan(plan);
+        subscription.snapshotPlanBenefits();
         subscription.setStatus(SubscriptionStatus.ACTIVE);
         subscription.setStartDate(LocalDateTime.now());
         subscription.setEndDate(null);
@@ -104,6 +105,7 @@ public class SubscriptionService {
                         .build());
 
         subscription.setPlan(plan);
+        subscription.snapshotPlanBenefits();
         subscription.setStatus(SubscriptionStatus.ACTIVE);
         subscription.setStartDate(LocalDateTime.now());
         subscription.setEndDate(null);
@@ -140,6 +142,9 @@ public class SubscriptionService {
             log.info("Upgraded to {} plan for user ID: {}. End date: {}", planCode, userId, subscription.getEndDate());
         }
 
+        // A successful purchase starts entitlement under the terms offered now.
+        subscription.setPlan(newPlan);
+        subscription.snapshotPlanBenefits();
         subscription.setExpiryReminder7DaysSentAt(null);
         subscription.setExpiredNotificationSentAt(null);
         userSubscriptionRepository.save(subscription);
@@ -161,6 +166,7 @@ public class SubscriptionService {
         for (UserSubscription sub : overdueSubscriptions) {
             log.info("Subscription expired for user ID: {}. Reverting to FREE plan.", sub.getUser().getId());
             sub.setPlan(freePlan);
+            sub.snapshotPlanBenefits();
             sub.setEndDate(null);
             sub.setStatus(SubscriptionStatus.ACTIVE);
             userSubscriptionRepository.save(sub);
@@ -265,6 +271,7 @@ public class SubscriptionService {
             log.info("Subscription expired for user ID: {}. Reverting to FREE plan.",
                     sub.getUser().getId());
             sub.setPlan(freePlan);
+            sub.snapshotPlanBenefits();
             sub.setEndDate(null);
             sub.setStatus(SubscriptionStatus.ACTIVE);
             userSubscriptionRepository.save(sub);
@@ -277,16 +284,16 @@ public class SubscriptionService {
                 .id(plan.getId())
                 .code(plan.getCode())
                 .name(plan.getName())
-                .storageLimitMb(plan.getStorageLimitMb())
-                .maxUploadSizePerFileMb(plan.getMaxUploadSizePerFileMb())
-                .dailyTokenLimit(plan.getDailyTokenLimit())
+                .storageLimitMb(subscription.getEffectiveStorageLimitMb())
+                .maxUploadSizePerFileMb(subscription.getEffectiveMaxUploadSizePerFileMb())
+                .dailyTokenLimit(subscription.getEffectiveDailyTokenLimit())
                 .price(plan.getPrice())
                 .durationDays(plan.getDurationDays())
                 .description(plan.getDescription())
-                .allowImageUpload(plan.getAllowImageUpload())
-                .allowDocumentUpload(plan.getAllowDocumentUpload())
-                .allowVideoUpload(plan.getAllowVideoUpload())
-                .allowAudioUpload(plan.getAllowAudioUpload())
+                .allowImageUpload(subscription.getEffectiveAllowImageUpload())
+                .allowDocumentUpload(subscription.getEffectiveAllowDocumentUpload())
+                .allowVideoUpload(subscription.getEffectiveAllowVideoUpload())
+                .allowAudioUpload(subscription.getEffectiveAllowAudioUpload())
                 .isActive(plan.getIsActive())
                 .build();
 
