@@ -11,12 +11,17 @@ export interface DocumentShareLinkResponse {
   expiresAt?: string | null;
   maxUploads?: number | null;
   currentUploads?: number | null;
+  remainingUploads?: number | null;
   maxUploadsPerUser?: number | null;
   maxFileSizeBytes?: number | null;
   maxTotalBytes?: number | null;
+  activeStoredBytes?: number | null;
+  remainingTotalBytes?: number | null;
   allowedFileTypes?: string | null;
+  allowedFileTypesList?: string[];
   accessPolicy?: "PRIVATE_ALLOWLIST" | "ANY_AUTHENTICATED_USER" | string;
   allowedUserIds?: number[];
+  allowedUserEmails?: string[];
   defaultFolderId?: number | null;
   defaultFolderName?: string | null;
   token?: string | null;

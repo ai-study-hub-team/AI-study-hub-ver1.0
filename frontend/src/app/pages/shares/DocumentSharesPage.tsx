@@ -329,7 +329,13 @@ export function DocumentSharesPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("links");
   const [linksPage, setLinksPage] = useState(1);
   const [submissionsPage, setSubmissionsPage] = useState(1);
-  const pageSize = 10;
+  const linksPageSize = 10;
+  const submissionGroupsPageSize = 5;
+  const initialSubmissionsPerGroup = 3;
+  const submissionsLoadMoreSize = 5;
+  const [visibleSubmissionsByGroup, setVisibleSubmissionsByGroup] = useState<
+    Record<string, number>
+  >({});
 
   const [links, setLinks] = useState<DocumentShareLinkResponse[]>([]);
   const [submissions, setSubmissions] = useState<
@@ -350,6 +356,8 @@ export function DocumentSharesPage() {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [disablingLinkId, setDisablingLinkId] = useState<number | null>(null);
+  const [disableConfirmLink, setDisableConfirmLink] =
+    useState<DocumentShareLinkResponse | null>(null);
   const [allowlistLink, setAllowlistLink] =
     useState<DocumentShareLinkResponse | null>(null);
   const [allowlistForm, setAllowlistForm] = useState({
@@ -408,6 +416,49 @@ export function DocumentSharesPage() {
         getFolderOptionLabel(left).localeCompare(getFolderOptionLabel(right)),
       ),
     [folders],
+  );
+
+  const submissionGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        key: string;
+        linkId: number | null;
+        title: string;
+        submissions: SharedDocumentSubmissionResponse[];
+      }
+    >();
+
+    submissions.forEach((submission) => {
+      const linkId = Number(submission.shareLinkId);
+      const validLinkId =
+        Number.isInteger(linkId) && linkId > 0 ? linkId : null;
+      const title = submission.shareLinkTitle?.trim() || "Unknown share link";
+      const key = validLinkId ? `link-${validLinkId}` : `title-${title}`;
+      const existing = groups.get(key);
+
+      if (existing) {
+        existing.submissions.push(submission);
+      } else {
+        groups.set(key, {
+          key,
+          linkId: validLinkId,
+          title,
+          submissions: [submission],
+        });
+      }
+    });
+
+    return Array.from(groups.values());
+  }, [submissions]);
+
+  const paginatedSubmissionGroups = useMemo(
+    () =>
+      submissionGroups.slice(
+        (submissionsPage - 1) * submissionGroupsPageSize,
+        submissionsPage * submissionGroupsPageSize,
+      ),
+    [submissionGroups, submissionsPage],
   );
 
   const loadData = useCallback(async () => {
@@ -474,6 +525,11 @@ export function DocumentSharesPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    setSubmissionsPage(1);
+    setVisibleSubmissionsByGroup({});
+  }, [submissionStatusFilter]);
 
   useEffect(() => {
     let isMounted = true;
@@ -717,6 +773,7 @@ export function DocumentSharesPage() {
       setLinks((current) =>
         current.filter((item) => getShareLinkId(item) !== linkId),
       );
+      setDisableConfirmLink(null);
       toast.success("Shared upload link disabled and removed from the list.");
     } catch (error: any) {
       console.error(error);
@@ -1414,7 +1471,7 @@ export function DocumentSharesPage() {
 
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {links.length > 0 ? (
-                links.slice((linksPage - 1) * pageSize, linksPage * pageSize).map((link) => (
+                links.slice((linksPage - 1) * linksPageSize, linksPage * linksPageSize).map((link) => (
                   <div key={getShareLinkId(link) ?? link.shareUrl ?? link.token ?? link.title} className="p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
@@ -1475,22 +1532,19 @@ export function DocumentSharesPage() {
                           Copy
                         </button>
 
-                        {isPrivateAllowlistLink(link) &&
-                          isActiveShareLink(link.status) && (
-                            <button
-                              type="button"
-                              onClick={() => openAllowlistManager(link)}
-                              className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-950/50"
-                            >
-                              <UserRoundCog className="h-4 w-4" />
-                              Manage access
-                            </button>
-                          )}
+                        <button
+                          type="button"
+                          onClick={() => openAllowlistManager(link)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-950/50"
+                        >
+                          <UserRoundCog className="h-4 w-4" />
+                          Manage
+                        </button>
 
                         {isActiveShareLink(link.status) && (
                           <button
                             type="button"
-                            onClick={() => handleDisable(link)}
+                            onClick={() => setDisableConfirmLink(link)}
                             disabled={disablingLinkId === getShareLinkId(link)}
                             className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
@@ -1515,7 +1569,7 @@ export function DocumentSharesPage() {
                 </div>
               )}
             </div>
-            <div className="px-5 pb-5"><PaginationControls currentPage={linksPage} totalItems={links.length} pageSize={pageSize} onPageChange={setLinksPage} /></div>
+            <div className="px-5 pb-5"><PaginationControls currentPage={linksPage} totalItems={links.length} pageSize={linksPageSize} onPageChange={setLinksPage} /></div>
           </section>
         </>
       )}
@@ -1553,9 +1607,60 @@ export function DocumentSharesPage() {
             </div>
           </div>
 
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {submissions.length > 0 ? (
-              submissions.slice((submissionsPage - 1) * pageSize, submissionsPage * pageSize).map((submission) => (
+          <div className="space-y-4 p-5">
+            {paginatedSubmissionGroups.length > 0 ? (
+              paginatedSubmissionGroups.map((group) => (
+                <section
+                  key={group.key}
+                  className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-700 dark:bg-slate-800/60">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-extrabold text-slate-950 dark:text-white">
+                          {group.title}
+                        </h3>
+                        <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+                          {group.submissions.length}{" "}
+                          {group.submissions.length === 1
+                            ? "document"
+                            : "documents"}
+                        </span>
+                      </div>
+                      {group.linkId && (
+                        <p className="mt-1 text-xs font-semibold text-slate-400">
+                          Share link ID: {group.linkId}
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleSubmissionsByGroup((current) => ({
+                          ...current,
+                          [group.key]:
+                            (current[group.key] ?? 0) > 0
+                              ? 0
+                              : initialSubmissionsPerGroup,
+                        }))
+                      }
+                      className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                    >
+                      {(visibleSubmissionsByGroup[group.key] ?? 0) > 0
+                        ? "Hide documents"
+                        : "Show documents"}
+                    </button>
+                  </div>
+
+                  {(visibleSubmissionsByGroup[group.key] ?? 0) > 0 && (
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {group.submissions
+                      .slice(
+                        0,
+                        visibleSubmissionsByGroup[group.key] ?? 0,
+                      )
+                      .map((submission) => (
                 <div key={submission.id} className="p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
@@ -1677,6 +1782,60 @@ export function DocumentSharesPage() {
                     </div>
                   </div>
                 </div>
+                    ))}
+                  </div>
+                  )}
+
+                  {(visibleSubmissionsByGroup[group.key] ?? 0) > 0 &&
+                    group.submissions.length > initialSubmissionsPerGroup && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3 dark:border-slate-700 dark:bg-slate-800/40">
+                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        Showing{" "}
+                        {Math.min(
+                          visibleSubmissionsByGroup[group.key] ?? 0,
+                          group.submissions.length,
+                        )}{" "}
+                        of {group.submissions.length} documents
+                      </p>
+
+                      <div className="flex gap-2">
+                        {(visibleSubmissionsByGroup[group.key] ?? 0) <
+                          group.submissions.length && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVisibleSubmissionsByGroup((current) => ({
+                                ...current,
+                                [group.key]:
+                                  (current[group.key] ?? 0) +
+                                  submissionsLoadMoreSize,
+                              }))
+                            }
+                            className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                          >
+                            Load more
+                          </button>
+                        )}
+
+                        {(visibleSubmissionsByGroup[group.key] ?? 0) >
+                          initialSubmissionsPerGroup && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVisibleSubmissionsByGroup((current) => ({
+                                ...current,
+                                [group.key]: initialSubmissionsPerGroup,
+                              }))
+                            }
+                            className="rounded-xl px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                          >
+                            Show less
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </section>
               ))
             ) : (
               <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">
@@ -1684,21 +1843,68 @@ export function DocumentSharesPage() {
               </div>
             )}
           </div>
-          <div className="px-5 pb-5"><PaginationControls currentPage={submissionsPage} totalItems={submissions.length} pageSize={pageSize} onPageChange={setSubmissionsPage} /></div>
+          <div className="px-5 pb-5">
+            <PaginationControls
+              currentPage={submissionsPage}
+              totalItems={submissionGroups.length}
+              pageSize={submissionGroupsPageSize}
+              onPageChange={setSubmissionsPage}
+            />
+          </div>
         </section>
       )}
 
-      {allowlistLink && (
+      {disableConfirmLink && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex items-start justify-between gap-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Disable Shared Upload Link
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Are you sure you want to disable{" "}
+              <strong>{disableConfirmLink.title}</strong>? The link will stop
+              accepting new uploads and this action cannot be undone.
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDisableConfirmLink(null)}
+                disabled={disablingLinkId !== null}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleDisable(disableConfirmLink)}
+                disabled={disablingLinkId !== null}
+                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {disablingLinkId !== null && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {disablingLinkId !== null ? "Disabling..." : "Disable"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {allowlistLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5 dark:border-slate-700">
               <div>
                 <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
-                  Manage link access
+                  Manage shared upload link
                 </h2>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  {allowlistLink.title} currently allows{" "}
-                  {allowlistLink.allowedUserIds?.length ?? 0} registered user(s).
+                  {isPrivateAllowlistLink(allowlistLink)
+                    ? "Review link details and manage who can upload."
+                    : "Review shared upload link details."}
                 </p>
               </div>
               <button
@@ -1711,70 +1917,220 @@ export function DocumentSharesPage() {
               </button>
             </div>
 
-            <div className="mt-5 space-y-4">
-              <label className="block space-y-2">
-                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                  Add registered users
-                </span>
-                <textarea
-                  value={allowlistForm.emailsToAdd}
-                  onChange={(event) =>
-                    setAllowlistForm((current) => ({
-                      ...current,
-                      emailsToAdd: event.target.value,
-                    }))
-                  }
-                  rows={3}
-                  placeholder="student1@example.com, student2@example.com"
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                />
-              </label>
+            <div className="overflow-y-auto px-6 py-5">
+              <section>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-extrabold text-slate-950 dark:text-white">
+                    {allowlistLink.title}
+                  </h3>
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    {statusLabel[getShareLinkStatus(allowlistLink.status)] ||
+                      allowlistLink.status}
+                  </span>
+                  <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+                    {isPrivateAllowlistLink(allowlistLink)
+                      ? "Private allowlist"
+                      : "Public · Login required"}
+                  </span>
+                </div>
 
-              <label className="block space-y-2">
-                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                  Remove registered users
-                </span>
-                <textarea
-                  value={allowlistForm.emailsToRemove}
-                  onChange={(event) =>
-                    setAllowlistForm((current) => ({
-                      ...current,
-                      emailsToRemove: event.target.value,
-                    }))
-                  }
-                  rows={3}
-                  placeholder="student3@example.com"
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                />
-              </label>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                  {allowlistLink.description || "No description"}
+                </p>
 
-              <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                Separate multiple emails with commas, spaces, or new lines.
-                Emails must belong to registered users. The API returns user IDs
-                only, so enter an email above when removing access.
-              </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {[
+                    {
+                      label: "Uploads",
+                      value: `${allowlistLink.currentUploads ?? 0}/${allowlistLink.maxUploads ?? "∞"}`,
+                    },
+                    {
+                      label: "Remaining uploads",
+                      value:
+                        allowlistLink.remainingUploads ??
+                        (allowlistLink.maxUploads == null
+                          ? "Unlimited"
+                          : Math.max(
+                              0,
+                              allowlistLink.maxUploads -
+                                (allowlistLink.currentUploads ?? 0),
+                            )),
+                    },
+                    {
+                      label: "Per-user limit",
+                      value: allowlistLink.maxUploadsPerUser ?? "No limit",
+                    },
+                    {
+                      label: "Expires",
+                      value: formatDateTime(allowlistLink.expiresAt),
+                    },
+                    {
+                      label: "Maximum file size",
+                      value: formatFileSize(allowlistLink.maxFileSizeBytes),
+                    },
+                    {
+                      label: "Maximum total size",
+                      value: formatFileSize(allowlistLink.maxTotalBytes),
+                    },
+                    {
+                      label: "Remaining storage",
+                      value: formatFileSize(allowlistLink.remainingTotalBytes),
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60"
+                    >
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                        {item.label}
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-slate-800 dark:text-slate-100">
+                        {item.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                    Accepted file types
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(allowlistLink.allowedFileTypesList?.length
+                      ? allowlistLink.allowedFileTypesList
+                      : (allowlistLink.allowedFileTypes || "").split(",")
+                    )
+                      .map((type) => type.trim())
+                      .filter(Boolean)
+                      .map((type) => (
+                        <span
+                          key={type}
+                          className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300"
+                        >
+                          {getFileTypeLabel(type)}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+
+                {getUsableShareUrl(allowlistLink) && (
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      readOnly
+                      value={getUsableShareUrl(allowlistLink)}
+                      className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCopy(getUsableShareUrl(allowlistLink))
+                      }
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      <ClipboardCopy className="h-4 w-4" />
+                      Copy link
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              {isPrivateAllowlistLink(allowlistLink) && (
+                <section className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-950 dark:text-white">
+                      Allowlist
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                      {allowlistLink.allowedUserEmails?.length ?? 0} registered
+                      user(s) can upload through this link.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+                  {allowlistLink.allowedUserEmails?.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {allowlistLink.allowedUserEmails.map((email) => (
+                        <span
+                          key={email}
+                          className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700"
+                        >
+                          {email}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      No users are currently in this allowlist.
+                    </p>
+                  )}
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <label className="block space-y-2">
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                      Add registered users
+                    </span>
+                    <textarea
+                      value={allowlistForm.emailsToAdd}
+                      onChange={(event) =>
+                        setAllowlistForm((current) => ({
+                          ...current,
+                          emailsToAdd: event.target.value,
+                        }))
+                      }
+                      rows={3}
+                      placeholder="student1@example.com"
+                      className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    />
+                  </label>
+
+                  <label className="block space-y-2">
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                      Remove registered users
+                    </span>
+                    <textarea
+                      value={allowlistForm.emailsToRemove}
+                      onChange={(event) =>
+                        setAllowlistForm((current) => ({
+                          ...current,
+                          emailsToRemove: event.target.value,
+                        }))
+                      }
+                      rows={3}
+                      placeholder="student2@example.com"
+                      className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    />
+                  </label>
+                </div>
+
+                </section>
+              )}
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4 dark:border-slate-700">
               <button
                 type="button"
                 onClick={closeAllowlistManager}
                 disabled={isUpdatingAllowlist}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                Cancel
+                {isPrivateAllowlistLink(allowlistLink) ? "Cancel" : "Close"}
               </button>
-              <button
-                type="button"
-                onClick={handleUpdateAllowlist}
-                disabled={isUpdatingAllowlist}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isUpdatingAllowlist && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
-                {isUpdatingAllowlist ? "Updating..." : "Update allowlist"}
-              </button>
+              {isPrivateAllowlistLink(allowlistLink) && (
+                <button
+                  type="button"
+                  onClick={handleUpdateAllowlist}
+                  disabled={isUpdatingAllowlist}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isUpdatingAllowlist && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  {isUpdatingAllowlist ? "Updating..." : "Save allowlist"}
+                </button>
+              )}
             </div>
           </div>
         </div>
