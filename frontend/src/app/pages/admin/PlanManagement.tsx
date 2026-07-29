@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Check,
+  CircleOff,
   Eye,
   Loader2,
   PackagePlus,
   Pencil,
   RefreshCcw,
   Search,
-  Trash2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +20,7 @@ import {
 import { PaginationControls } from "../../components/ui/PaginationControls";
 
 type DialogMode = "create" | "edit" | "view" | null;
+type PlanStatusTab = "active" | "inactive";
 
 const EMPTY_FORM: AdminPlanPayload = {
   code: "",
@@ -70,10 +71,15 @@ export function PlanManagement() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [reactivatingId, setReactivatingId] = useState<number | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<PlanResponse | null>(
     null,
   );
+  const [reactivateTarget, setReactivateTarget] = useState<PlanResponse | null>(
+    null,
+  );
   const [search, setSearch] = useState("");
+  const [statusTab, setStatusTab] = useState<PlanStatusTab>("active");
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState<AdminPlanPayload>(EMPTY_FORM);
@@ -84,11 +90,7 @@ export function PlanManagement() {
     setLoading(true);
     try {
       const response = await adminPlanApi.getPlans();
-      setPlans(
-        Array.isArray(response.data)
-          ? response.data.filter((plan) => plan.isActive)
-          : [],
-      );
+      setPlans(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       toast.error(getErrorMessage(error, "Cannot load subscription plans."));
     } finally {
@@ -102,21 +104,27 @@ export function PlanManagement() {
 
   const filteredPlans = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return plans;
-    return plans.filter(
+    const plansForTab = plans.filter((plan) =>
+      statusTab === "active" ? plan.isActive : !plan.isActive,
+    );
+    if (!keyword) return plansForTab;
+    return plansForTab.filter(
       (plan) =>
         plan.code.toLowerCase().includes(keyword) ||
         plan.name.toLowerCase().includes(keyword) ||
         plan.description?.toLowerCase().includes(keyword),
     );
-  }, [plans, search]);
+  }, [plans, search, statusTab]);
+
+  const activePlanCount = plans.filter((plan) => plan.isActive).length;
+  const inactivePlanCount = plans.length - activePlanCount;
 
   const paginatedPlans = filteredPlans.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize,
   );
 
-  useEffect(() => setCurrentPage(1), [search]);
+  useEffect(() => setCurrentPage(1), [search, statusTab]);
 
   const closeDialog = (force = false) => {
     if (saving && !force) return;
@@ -229,12 +237,36 @@ export function PlanManagement() {
     try {
       await adminPlanApi.deletePlan(plan.id);
       toast.success("Subscription plan deactivated successfully.");
-      setPlans((current) => current.filter((item) => item.id !== plan.id));
+      setPlans((current) =>
+        current.map((item) =>
+          item.id === plan.id ? { ...item, isActive: false } : item,
+        ),
+      );
       setDeactivateTarget(null);
     } catch (error) {
       toast.error(getErrorMessage(error, "Cannot deactivate subscription plan."));
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const reactivatePlan = async (plan: PlanResponse) => {
+    setReactivatingId(plan.id);
+    try {
+      const { id, ...currentPlan } = plan;
+      const response = await adminPlanApi.updatePlan(id, {
+        ...currentPlan,
+        isActive: true,
+      });
+      setPlans((current) =>
+        current.map((item) => (item.id === id ? response.data : item)),
+      );
+      setReactivateTarget(null);
+      toast.success("Subscription plan reactivated successfully.");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Cannot reactivate subscription plan."));
+    } finally {
+      setReactivatingId(null);
     }
   };
 
@@ -281,6 +313,30 @@ export function PlanManagement() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex gap-2 border-b border-slate-200 px-5 pt-4 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={() => setStatusTab("active")}
+            className={`border-b-2 px-3 pb-3 text-sm font-bold transition-colors ${
+              statusTab === "active"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+            }`}
+          >
+            Active Plans ({activePlanCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusTab("inactive")}
+            className={`border-b-2 px-3 pb-3 text-sm font-bold transition-colors ${
+              statusTab === "inactive"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+            }`}
+          >
+            Inactive Plans ({inactivePlanCount})
+          </button>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
             <thead className="bg-slate-50 dark:bg-slate-800/70">
@@ -298,7 +354,7 @@ export function PlanManagement() {
               {loading ? (
                 <tr><td colSpan={7} className="px-5 py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" /></td></tr>
               ) : filteredPlans.length === 0 ? (
-                <tr><td colSpan={7} className="px-5 py-16 text-center text-slate-500">No subscription plans found.</td></tr>
+                <tr><td colSpan={7} className="px-5 py-16 text-center text-slate-500">No {statusTab} subscription plans found.</td></tr>
               ) : (
                 paginatedPlans.map((plan) => (
                   <tr key={plan.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
@@ -318,10 +374,17 @@ export function PlanManagement() {
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1">
                         <button title="View" onClick={() => void openPlan(plan.id, "view")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button>
-                        <button title="Edit" onClick={() => void openPlan(plan.id, "edit")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-amber-600 dark:hover:bg-slate-800"><Pencil className="h-4 w-4" /></button>
                         {plan.isActive && (
-                          <button title="Deactivate" disabled={deletingId === plan.id} onClick={() => setDeactivateTarget(plan)} className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/40">
-                            {deletingId === plan.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          <button title="Edit" onClick={() => void openPlan(plan.id, "edit")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-amber-600 dark:hover:bg-slate-800"><Pencil className="h-4 w-4" /></button>
+                        )}
+                        {plan.isActive && plan.code.toUpperCase() !== "FREE" && (
+                          <button title="Deactivate plan" aria-label={`Deactivate ${plan.name} plan`} disabled={deletingId === plan.id} onClick={() => setDeactivateTarget(plan)} className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/40">
+                            {deletingId === plan.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CircleOff className="h-4 w-4" />}
+                          </button>
+                        )}
+                        {!plan.isActive && (
+                          <button title="Reactivate plan" aria-label={`Reactivate ${plan.name} plan`} disabled={reactivatingId === plan.id} onClick={() => setReactivateTarget(plan)} className="rounded-lg p-2 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-50 dark:hover:bg-emerald-950/40">
+                            {reactivatingId === plan.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
                           </button>
                         )}
                       </div>
@@ -355,7 +418,21 @@ export function PlanManagement() {
             ) : (
               <form onSubmit={submitPlan} className="space-y-6 p-6">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Plan code"><input disabled={dialogMode === "view"} value={form.code} onChange={(e) => updateField("code", e.target.value)} className="form-input" placeholder="PREMIUM" /></Field>
+                  <Field label="Plan code">
+                    <input
+                      disabled={dialogMode !== "create"}
+                      value={form.code}
+                      onChange={(e) => updateField("code", e.target.value)}
+                      className="form-input"
+                      placeholder="PREMIUM"
+                    />
+                    {dialogMode === "edit" && (
+                      <span className="mt-1.5 block text-xs text-slate-500 dark:text-slate-400">
+                        Plan codes cannot be changed after creation because
+                        subscriptions and pending payments reference them.
+                      </span>
+                    )}
+                  </Field>
                   <Field label="Plan name"><input disabled={dialogMode === "view"} value={form.name} onChange={(e) => updateField("name", e.target.value)} className="form-input" placeholder="Premium Plan" /></Field>
                   <NumberField label="Storage limit (MB)" value={form.storageLimitMb} disabled={dialogMode === "view"} onChange={(value) => updateField("storageLimitMb", value)} />
                   <NumberField label="Maximum upload per file (MB)" value={form.maxUploadSizePerFileMb} disabled={dialogMode === "view"} onChange={(value) => updateField("maxUploadSizePerFileMb", value)} />
@@ -363,13 +440,30 @@ export function PlanManagement() {
                   <NumberField label="Price (VND)" value={form.price} disabled={dialogMode === "view"} onChange={(value) => updateField("price", value)} />
                   <NumberField label="Duration (days)" value={form.durationDays ?? 0} disabled={dialogMode === "view"} onChange={(value) => updateField("durationDays", value)} />
                   <Field label="Status">
-                    <select disabled={dialogMode === "view"} value={form.isActive ? "active" : "inactive"} onChange={(e) => updateField("isActive", e.target.value === "active")} className="form-input">
-                      <option value="active">Active</option><option value="inactive">Inactive</option>
-                    </select>
+                    {dialogMode === "create" ? (
+                      <select value={form.isActive ? "active" : "inactive"} onChange={(e) => updateField("isActive", e.target.value === "active")} className="form-input">
+                        <option value="active">Active</option><option value="inactive">Inactive</option>
+                      </select>
+                    ) : (
+                      <div className="flex h-[42px] items-center rounded-xl border border-slate-200 bg-slate-50 px-3 dark:border-slate-700 dark:bg-slate-800">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${form.isActive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
+                          {form.isActive ? "Active" : "Inactive"}
+                        </span>
+                      </div>
+                    )}
                   </Field>
                 </div>
 
                 <Field label="Description"><textarea disabled={dialogMode === "view"} value={form.description ?? ""} onChange={(e) => updateField("description", e.target.value)} rows={3} className="form-input resize-none" /></Field>
+
+                {dialogMode === "edit" && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                    Changes to storage, token limits, upload size, and upload
+                    permissions apply to new purchases or renewals. Existing
+                    subscriptions keep their current snapshotted benefits until
+                    the user renews or changes plan.
+                  </div>
+                )}
 
                 <div>
                   <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Allowed uploads</p>
@@ -407,7 +501,9 @@ export function PlanManagement() {
               <span className="font-bold text-slate-700 dark:text-slate-200">
                 {deactivateTarget.name}
               </span>{" "}
-              plan?
+              plan? It will no longer be available for new purchases. Existing
+              subscribers will keep their current benefits until their
+              subscription expires.
             </p>
 
             <div className="mt-6 flex justify-end gap-3">
@@ -429,7 +525,52 @@ export function PlanManagement() {
                 {deletingId === deactivateTarget.id && (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
-                Deactivate
+                {deletingId === deactivateTarget.id
+                  ? "Deactivating..."
+                  : "Deactivate"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reactivateTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Reactivate Plan?
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Are you sure you want to reactivate the{" "}
+              <span className="font-bold text-slate-700 dark:text-slate-200">
+                {reactivateTarget.name}
+              </span>{" "}
+              plan? It will become available for new purchases again.
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={reactivatingId !== null}
+                onClick={() => setReactivateTarget(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={reactivatingId !== null}
+                onClick={() => void reactivatePlan(reactivateTarget)}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {reactivatingId === reactivateTarget.id && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {reactivatingId === reactivateTarget.id
+                  ? "Reactivating..."
+                  : "Reactivate"}
               </button>
             </div>
           </div>
