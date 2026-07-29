@@ -3,7 +3,9 @@ package com.aistudyhub.backend.service;
 import com.aistudyhub.backend.dto.request.AdminPlanRequest;
 import com.aistudyhub.backend.dto.response.PlanResponse;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
+import com.aistudyhub.backend.entity.UserSubscription;
 import com.aistudyhub.backend.repository.SubscriptionPlanRepository;
+import com.aistudyhub.backend.repository.UserSubscriptionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -19,6 +21,7 @@ import java.util.stream.Collectors;
 public class AdminPlanService {
 
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final UserSubscriptionRepository userSubscriptionRepository;
 
     @Transactional(readOnly = true)
     public List<PlanResponse> getAllPlans() {
@@ -82,6 +85,8 @@ public class AdminPlanService {
             throw new RuntimeException("Cannot disable the FREE plan");
         }
 
+        preserveExistingSubscriptionBenefits(plan);
+
         plan.setCode(request.getCode());
         plan.setName(request.getName());
         plan.setStorageLimitMb(request.getStorageLimitMb());
@@ -97,6 +102,19 @@ public class AdminPlanService {
         plan.setIsActive(request.getIsActive());
 
         return toResponse(subscriptionPlanRepository.save(plan));
+    }
+
+    private void preserveExistingSubscriptionBenefits(SubscriptionPlan plan) {
+        List<UserSubscription> subscriptions = userSubscriptionRepository.findAllByPlanId(plan.getId());
+        List<UserSubscription> backfilled = subscriptions.stream()
+                .filter(UserSubscription::snapshotPlanBenefitsIfMissing)
+                .toList();
+
+        if (!backfilled.isEmpty()) {
+            userSubscriptionRepository.saveAll(backfilled);
+            log.info("Backfilled benefit snapshots for {} subscriptions on plan id {}",
+                    backfilled.size(), plan.getId());
+        }
     }
 
     @Transactional
