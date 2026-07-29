@@ -70,6 +70,9 @@ export function PlanManagement() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<PlanResponse | null>(
+    null,
+  );
   const [search, setSearch] = useState("");
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -222,12 +225,12 @@ export function PlanManagement() {
   };
 
   const deactivatePlan = async (plan: PlanResponse) => {
-    if (!window.confirm(`Deactivate the ${plan.name} plan?`)) return;
     setDeletingId(plan.id);
     try {
       await adminPlanApi.deletePlan(plan.id);
       toast.success("Subscription plan deactivated successfully.");
       setPlans((current) => current.filter((item) => item.id !== plan.id));
+      setDeactivateTarget(null);
     } catch (error) {
       toast.error(getErrorMessage(error, "Cannot deactivate subscription plan."));
     } finally {
@@ -317,7 +320,7 @@ export function PlanManagement() {
                         <button title="View" onClick={() => void openPlan(plan.id, "view")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button>
                         <button title="Edit" onClick={() => void openPlan(plan.id, "edit")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-amber-600 dark:hover:bg-slate-800"><Pencil className="h-4 w-4" /></button>
                         {plan.isActive && (
-                          <button title="Deactivate" disabled={deletingId === plan.id} onClick={() => void deactivatePlan(plan)} className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/40">
+                          <button title="Deactivate" disabled={deletingId === plan.id} onClick={() => setDeactivateTarget(plan)} className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/40">
                             {deletingId === plan.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                           </button>
                         )}
@@ -388,6 +391,47 @@ export function PlanManagement() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {deactivateTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Deactivate Plan?
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Are you sure you want to deactivate the{" "}
+              <span className="font-bold text-slate-700 dark:text-slate-200">
+                {deactivateTarget.name}
+              </span>{" "}
+              plan?
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={deletingId !== null}
+                onClick={() => setDeactivateTarget(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={deletingId !== null}
+                onClick={() => void deactivatePlan(deactivateTarget)}
+                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingId === deactivateTarget.id && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                Deactivate
+              </button>
+            </div>
           </div>
         </div>
       )}
