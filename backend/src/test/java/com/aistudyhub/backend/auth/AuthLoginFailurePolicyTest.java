@@ -29,6 +29,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -102,13 +103,17 @@ class AuthLoginFailurePolicyTest {
     }
 
     @Test
-    void fifthWrongPasswordLocksAccountButThresholdRequestRemainsUnauthorized() {
+    void fifthWrongPasswordLocksAccountAndReturnsTooManyRequests() {
         when(passwordEncoder.matches(WRONG_PASSWORD, user.getPassword())).thenReturn(false);
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 4; i++) {
             assertThatThrownBy(() -> authService.login(loginRequest(WRONG_PASSWORD)))
                     .isInstanceOf(UnauthorizedException.class);
         }
+
+        assertThatThrownBy(() -> authService.login(loginRequest(WRONG_PASSWORD)))
+                .isInstanceOf(TooManyLoginAttemptsException.class)
+                .hasMessage("Có quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau.");
 
         assertThat(user.getFailedLoginAttempts()).isEqualTo(5);
         assertThat(user.getLockedUntil()).isAfter(LocalDateTime.now());
@@ -116,7 +121,7 @@ class AuthLoginFailurePolicyTest {
     }
 
     @Test
-    void loginWhileLockedReturnsTooManyRequestsWithoutIssuingToken() {
+    void loginWhileLockedReturnsTooManyRequestsWithoutCheckingPasswordOrIssuingToken() {
         user.setFailedLoginAttempts(5);
         user.setLastFailedLoginAt(LocalDateTime.now().minusMinutes(1));
         user.setLockedUntil(LocalDateTime.now().plusMinutes(10));
@@ -201,6 +206,18 @@ class AuthLoginFailurePolicyTest {
         assertThatThrownBy(() -> authService.login(loginRequest(WRONG_PASSWORD)))
                 .isInstanceOf(UnauthorizedException.class);
         verify(userRepository).findByEmailForLogin(EMAIL);
+    }
+
+    @Test
+    void loginDoesNotRollbackRecordedFailuresWhenRejectingCredentials() throws Exception {
+        Method method = AuthService.class.getMethod("login", LoginRequest.class);
+        Transactional transactional = method.getAnnotation(Transactional.class);
+
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.noRollbackFor()).contains(
+                UnauthorizedException.class,
+                TooManyLoginAttemptsException.class
+        );
     }
 
     @Test
