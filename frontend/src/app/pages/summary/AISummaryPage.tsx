@@ -24,42 +24,82 @@ import {
   getSummariesApi,
   type SummaryType,
 } from "../../services/aiApi";
+
 import { getCurrentUserId } from "../../services/apiClient";
 import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
 
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
 const DISPLAY_LIMIT = 6;
 
-const defaultSummary = {
-  title: "AI Summary",
-  documentTitle: "",
-  summaryText: "Click Generate Summary to create an AI summary for this document.",
-  keyTakeaways: [] as string[],
-  keyConcepts: [] as { term: string; definition: string }[],
-  insights: [] as string[],
+/* =========================================================
+   TYPES
+========================================================= */
+
+type DocumentItem = {
+  id: number;
+
+  name?: string;
+  title?: string;
+  fileName?: string;
+
+  processStatus?: string;
+  aiStatus?: string;
+
+  [key: string]: unknown;
 };
 
-export function AISummaryPage() {
-  const [view, setView] = useState<"summary" | "history">("summary");
-  const [documents, setDocuments] = useState<any[]>([]);
-  const [showAllDocuments, setShowAllDocuments] = useState(false);
+type KeyConcept = {
+  term: string;
+  definition: string;
+};
 
-  const [selectedDoc, setSelectedDoc] = useState<any>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showSummary, setShowSummary] = useState(false);
-  const [summaryData, setSummaryData] = useState<any>(defaultSummary);
-  const [summaryHistory, setSummaryHistory] = useState<any[]>([]);
+type SummaryData = {
+  summaryId?: number;
+  id?: number;
 
-  const [summaryType, setSummaryType] = useState<SummaryType>("SHORT");
-  const { createAndCopyPublicLink, loadingDocumentId } =
-    useCreatePublicLink();
+  documentId?: number;
+  documentTitle?: string;
 
-  const visibleDocuments = showAllDocuments
-    ? documents
-    : documents.slice(0, DISPLAY_LIMIT);
+  title?: string;
+  summaryType?: SummaryType;
 
-  const hiddenDocumentCount = Math.max(documents.length - DISPLAY_LIMIT, 0);
+  summaryText: string;
 
-const summaryTypeOptions: { value: SummaryType; label: string; desc: string }[] = [
+  keyTakeaways?: string[];
+  keyConcepts?: KeyConcept[];
+  insights?: string[];
+
+  createdAt?: string;
+};
+
+/* =========================================================
+   DEFAULT SUMMARY
+========================================================= */
+
+const defaultSummary: SummaryData = {
+  title: "AI Summary",
+  documentTitle: "",
+
+  summaryText:
+    "Click Generate Summary to create an AI summary for this document.",
+
+  keyTakeaways: [],
+  keyConcepts: [],
+  insights: [],
+};
+
+/* =========================================================
+   SUMMARY TYPE OPTIONS
+========================================================= */
+
+const summaryTypeOptions: {
+  value: SummaryType;
+  label: string;
+  desc: string;
+}[] = [
   {
     value: "SHORT",
     label: "Short",
@@ -77,9 +117,114 @@ const summaryTypeOptions: { value: SummaryType; label: string; desc: string }[] 
   },
 ];
 
+/* =========================================================
+   HELPERS
+========================================================= */
+
+const getDocumentName = (doc?: DocumentItem | null) => {
+  if (!doc) {
+    return "Untitled Document";
+  }
+
+  return (
+    doc.name ||
+    doc.title ||
+    doc.fileName ||
+    "Untitled Document"
+  );
+};
+
+const getErrorMessage = (
+  error: any,
+  fallback: string,
+) => {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallback
+  );
+};
+
+/* =========================================================
+   COMPONENT
+========================================================= */
+
+export function AISummaryPage() {
+  /* ---------------------------------------------------------
+     VIEW
+  --------------------------------------------------------- */
+
+  const [view, setView] =
+    useState<"summary" | "history">("summary");
+
+  /* ---------------------------------------------------------
+     DOCUMENTS
+  --------------------------------------------------------- */
+
+  const [documents, setDocuments] =
+    useState<DocumentItem[]>([]);
+
+  const [selectedDoc, setSelectedDoc] =
+    useState<DocumentItem | null>(null);
+
+  const [showAllDocuments, setShowAllDocuments] =
+    useState(false);
+
+  /* ---------------------------------------------------------
+     SUMMARY
+  --------------------------------------------------------- */
+
+  const [summaryType, setSummaryType] =
+    useState<SummaryType>("SHORT");
+
+  const [summaryData, setSummaryData] =
+    useState<SummaryData>(defaultSummary);
+
+  const [summaryHistory, setSummaryHistory] =
+    useState<SummaryData[]>([]);
+
+  const [showSummary, setShowSummary] =
+    useState(false);
+
+  const [isGenerating, setIsGenerating] =
+    useState(false);
+
+  const [isLoadingHistory, setIsLoadingHistory] =
+    useState(false);
+
+  const [isLoadingExistingSummary, setIsLoadingExistingSummary] =
+    useState(false);
+
+  /* ---------------------------------------------------------
+     SHARE DOCUMENT
+  --------------------------------------------------------- */
+
+  const {
+    createAndCopyPublicLink,
+    loadingDocumentId,
+  } = useCreatePublicLink();
+
+  /* ---------------------------------------------------------
+     VISIBLE DOCUMENTS
+  --------------------------------------------------------- */
+
+  const visibleDocuments = showAllDocuments
+    ? documents
+    : documents.slice(0, DISPLAY_LIMIT);
+
+  /* =========================================================
+     LOAD DOCUMENTS
+  ========================================================= */
+
   useEffect(() => {
     const fetchDocuments = async () => {
       try {
+        /*
+         * Document API hiện tại vẫn đang yêu cầu userId.
+         *
+         * Chỉ Summary / Quiz đã chuyển ownership sang JWT.
+         */
         const userId = getCurrentUserId();
 
         if (!userId) {
@@ -87,188 +232,432 @@ const summaryTypeOptions: { value: SummaryType; label: string; desc: string }[] 
           return;
         }
 
-        const data = await documentApi.getAiReadyDocumentsForSelect(userId);
-        setDocuments(data);
+        const data =
+          await documentApi.getAiReadyDocumentsForSelect(
+            userId,
+          );
 
-        if (data.length > 0) {
-          setSelectedDoc(data[0]);
+        const documentList = Array.isArray(data)
+          ? data
+          : [];
+
+        setDocuments(documentList);
+
+        if (documentList.length > 0) {
+          setSelectedDoc(documentList[0]);
         }
       } catch (error: any) {
-        console.error("Load documents failed:", error);
+        console.error(
+          "Load documents failed:",
+          error,
+        );
+
         toast.error(
-          error?.response?.data?.message ||
-            error?.response?.data?.error ||
+          getErrorMessage(
+            error,
             "Cannot load uploaded documents",
+          ),
         );
       }
     };
 
-    fetchDocuments();
+    void fetchDocuments();
   }, []);
 
-  const handleSelectDocument = async (doc: any) => {
-    const userId = getCurrentUserId();
+  /* =========================================================
+     SELECT DOCUMENT
+  ========================================================= */
 
-    if (!userId) {
-      toast.error("Please login again.");
-      return;
-    }
-
+  const handleSelectDocument = async (
+    doc: DocumentItem,
+  ) => {
     setSelectedDoc(doc);
-    setShowSummary(false);
-    setSummaryData(defaultSummary);
+
     setView("summary");
 
+    setShowSummary(false);
+    setSummaryData(defaultSummary);
+
+    setIsLoadingExistingSummary(true);
+
     try {
-      const res = await getSummaryByDocumentApi(doc.id, userId);
+      /*
+       * JWT ownership:
+       *
+       * Không còn:
+       * getSummaryByDocumentApi(doc.id, userId)
+       *
+       * Chỉ gửi documentId.
+       */
+      const response =
+        await getSummaryByDocumentApi(doc.id);
 
-      const summaries = Array.isArray(res.data)
-        ? res.data
-        : res.data
-          ? [res.data]
-          : [];
+      const data = response.data;
 
-      if (summaries.length > 0) {
-        setSummaryData(summaries[0]);
-        setShowSummary(true);
+      /*
+       * Backend có thể trả:
+       *
+       * Summary object
+       *
+       * hoặc
+       *
+       * Summary[]
+       *
+       * Xử lý cả hai để FE an toàn hơn.
+       */
+      const summaries: SummaryData[] =
+        Array.isArray(data)
+          ? data
+          : data
+            ? [data]
+            : [];
+
+      if (summaries.length === 0) {
+        return;
       }
-    } catch {
-      console.log("No summary found for this document");
+
+      const latestSummary = summaries[0];
+
+      setSummaryData({
+        ...defaultSummary,
+        ...latestSummary,
+      });
+
+      if (latestSummary.summaryType) {
+        setSummaryType(latestSummary.summaryType);
+      }
+
+      setShowSummary(true);
+    } catch (error: any) {
+      /*
+       * 404 có thể đơn giản là document
+       * chưa có summary.
+       */
+      if (error?.response?.status === 404) {
+        console.log(
+          "No summary found for document:",
+          doc.id,
+        );
+
+        return;
+      }
+
+      console.error(
+        "Load document summary failed:",
+        error,
+      );
+    } finally {
+      setIsLoadingExistingSummary(false);
     }
   };
+
+  /* =========================================================
+     SUMMARY HISTORY
+  ========================================================= */
 
   const fetchSummaryHistory = async () => {
-    const userId = getCurrentUserId();
-
-    if (!userId) {
-      toast.error("Please login again.");
-      return;
-    }
+    setIsLoadingHistory(true);
 
     try {
-      const res = await getSummariesApi(userId);
+      /*
+       * JWT ownership.
+       *
+       * Không còn:
+       * getSummariesApi(userId)
+       */
+      const response =
+        await getSummariesApi();
 
-      setSummaryHistory(res.data || []);
+      const history = Array.isArray(response.data)
+        ? response.data
+        : [];
+
+      setSummaryHistory(history);
       setView("history");
     } catch (error: any) {
-      console.error("Load summary history failed:", error);
-      toast.error(
-        error?.response?.data?.message ||
-          error?.response?.data?.error ||
-          "Cannot load summary history",
+      console.error(
+        "Load summary history failed:",
+        error,
       );
+
+      toast.error(
+        getErrorMessage(
+          error,
+          "Cannot load summary history",
+        ),
+      );
+    } finally {
+      setIsLoadingHistory(false);
     }
   };
 
+  /* =========================================================
+     GENERATE SUMMARY
+  ========================================================= */
+
   const handleGenerate = async () => {
-    const userId = getCurrentUserId();
-
-    if (!userId) {
-      toast.error("Please login again.");
-      return;
-    }
-
     if (!selectedDoc) {
-      toast.error("Please select a document first");
+      toast.error(
+        "Please select a document first",
+      );
+
       return;
     }
 
-    const processStatus = selectedDoc.processStatus || selectedDoc.aiStatus;
+    const processStatus =
+      selectedDoc.processStatus ||
+      selectedDoc.aiStatus;
 
-    if (processStatus && processStatus !== "PROCESSED") {
+    if (
+      processStatus &&
+      processStatus !== "PROCESSED"
+    ) {
       toast.error(
         "This document is not processed yet. Please wait until AI Status is PROCESSED.",
       );
+
       return;
     }
 
     setIsGenerating(true);
+
     setShowSummary(false);
     setView("summary");
 
     try {
-      const res = await generateSummaryApi(userId, selectedDoc.id, summaryType);
+      /*
+       * API MỚI:
+       *
+       * generateSummaryApi(
+       *   documentId,
+       *   summaryType,
+       * )
+       *
+       * Không gửi userId.
+       */
+      const response =
+        await generateSummaryApi(
+          selectedDoc.id,
+          summaryType,
+        );
 
-      setSummaryData(res.data);
+      const generatedSummary =
+        response.data as SummaryData;
+
+      setSummaryData({
+        ...defaultSummary,
+        ...generatedSummary,
+      });
+
       setShowSummary(true);
 
-      toast.success("Summary generated successfully!");
+      toast.success(
+        "Summary generated successfully!",
+      );
     } catch (error: any) {
-      console.error("Generate summary failed:", error);
+      console.error(
+        "Generate summary failed:",
+        error,
+      );
 
       toast.error(
-        error?.response?.data?.message ||
-          error?.response?.data?.error ||
+        getErrorMessage(
+          error,
           "Generate summary failed",
+        ),
       );
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleDownload = () => {
-    const text = summaryData?.summaryText || "";
-    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
+  /* =========================================================
+     DOWNLOAD SUMMARY
+  ========================================================= */
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${
-      summaryData?.documentTitle || selectedDoc?.name || "summary"
+  const handleDownload = () => {
+    const text =
+      summaryData.summaryText || "";
+
+    if (!text.trim()) {
+      toast.error(
+        "There is no summary to download.",
+      );
+
+      return;
+    }
+
+    const blob = new Blob(
+      [text],
+      {
+        type: "text/plain;charset=utf-8",
+      },
+    );
+
+    const url =
+      URL.createObjectURL(blob);
+
+    const anchor =
+      document.createElement("a");
+
+    anchor.href = url;
+
+    anchor.download = `${
+      summaryData.documentTitle ||
+      getDocumentName(selectedDoc) ||
+      "summary"
     }.txt`;
-    a.click();
+
+    document.body.appendChild(anchor);
+
+    anchor.click();
+    anchor.remove();
 
     URL.revokeObjectURL(url);
-    toast.success("Summary downloaded!");
+
+    toast.success(
+      "Summary downloaded!",
+    );
   };
 
-  const handleCopy = () => {
-    navigator.clipboard?.writeText(summaryData?.summaryText || "");
-    toast.success("Copied to clipboard!");
+  /* =========================================================
+     COPY SUMMARY
+  ========================================================= */
+
+  const handleCopy = async () => {
+    const text =
+      summaryData.summaryText || "";
+
+    if (!text.trim()) {
+      toast.error(
+        "There is no summary to copy.",
+      );
+
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        text,
+      );
+
+      toast.success(
+        "Copied to clipboard!",
+      );
+    } catch (error) {
+      console.error(
+        "Copy failed:",
+        error,
+      );
+
+      toast.error(
+        "Cannot copy summary.",
+      );
+    }
   };
 
-  const openHistoryItem = (summary: any) => {
-    setSummaryData(summary);
+  /* =========================================================
+     OPEN HISTORY ITEM
+  ========================================================= */
+
+  const openHistoryItem = (
+    summary: SummaryData,
+  ) => {
+    setSummaryData({
+      ...defaultSummary,
+      ...summary,
+    });
+
+    if (summary.summaryType) {
+      setSummaryType(
+        summary.summaryType,
+      );
+    }
+
+    /*
+     * Nếu tìm thấy document tương ứng
+     * thì cập nhật selectedDoc.
+     */
+    if (summary.documentId) {
+      const matchedDocument =
+        documents.find(
+          (doc) =>
+            doc.id ===
+            summary.documentId,
+        );
+
+      if (matchedDocument) {
+        setSelectedDoc(
+          matchedDocument,
+        );
+      }
+    }
+
     setShowSummary(true);
     setView("summary");
   };
 
+  /* =========================================================
+     RENDER
+  ========================================================= */
+
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
+
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
             AI Summary
           </h1>
+
           <p className="text-slate-500 dark:text-slate-400">
-            Generate intelligent summaries from your study materials
+            Generate intelligent summaries
+            from your study materials
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={fetchSummaryHistory}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold rounded-xl"
+            type="button"
+            onClick={() => {
+              void fetchSummaryHistory();
+            }}
+            disabled={isLoadingHistory}
+            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-900 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
           >
-            <History className="w-4 h-4" />
+            {isLoadingHistory ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <History className="h-4 w-4" />
+            )}
+
             History
           </button>
 
           {showSummary && (
             <>
               <button
+                type="button"
                 onClick={handleDownload}
-                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold rounded-xl"
+                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               >
-                <Download className="w-4 h-4" />
+                <Download className="h-4 w-4" />
+
                 Download
               </button>
 
               <button
-                onClick={handleCopy}
-                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-bold rounded-xl"
+                type="button"
+                onClick={() => {
+                  void handleCopy();
+                }}
+                className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 font-bold text-white hover:bg-blue-700"
               >
-                <Copy className="w-4 h-4" />
+                <Copy className="h-4 w-4" />
+
                 Copy
               </button>
             </>
@@ -276,96 +665,154 @@ const summaryTypeOptions: { value: SummaryType; label: string; desc: string }[] 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* =====================================================
+          MAIN GRID
+      ===================================================== */}
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* ===================================================
+            LEFT
+        =================================================== */}
+
         <div className="space-y-5">
-          <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-5">
-            <h2 className="text-sm font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-4">
+          {/* DOCUMENT SELECT */}
+
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="mb-4 text-sm font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300">
               Select Document
             </h2>
 
             <div className="space-y-2">
               {documents.length === 0 ? (
                 <p className="text-sm text-slate-500">
-                  No uploaded documents found.
+                  No uploaded documents
+                  found.
                 </p>
               ) : (
                 <>
-                  {visibleDocuments.map((doc) => {
-                    const docName =
-                      doc.name || doc.title || doc.fileName || "Untitled";
+                  {visibleDocuments.map(
+                    (doc) => {
+                      const docName =
+                        getDocumentName(
+                          doc,
+                        );
 
-                    const processStatus = doc.processStatus || doc.aiStatus;
-                    const isProcessed =
-                      !processStatus || processStatus === "PROCESSED";
+                      const processStatus =
+                        doc.processStatus ||
+                        doc.aiStatus;
 
-                    return (
-                      <div
-                        key={doc.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => handleSelectDocument(doc)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            handleSelectDocument(doc);
-                          }
-                        }}
-                        className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all ${
-                          selectedDoc?.id === doc.id
-                            ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
-                            : "border-transparent hover:border-slate-200 dark:hover:border-slate-700"
-                        }`}
-                      >
-                        <div className="w-9 h-9 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center">
-                          <FileText className="w-4 h-4 text-slate-500" />
-                        </div>
+                      const isProcessed =
+                        !processStatus ||
+                        processStatus ===
+                          "PROCESSED";
 
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                            {docName}
-                          </p>
+                      const isSelected =
+                        selectedDoc?.id ===
+                        doc.id;
 
-                          {processStatus && (
-                            <p
-                              className={`text-[11px] font-semibold ${
-                                isProcessed
-                                  ? "text-emerald-600"
-                                  : "text-amber-600"
-                              }`}
-                            >
-                              AI Status: {processStatus}
-                            </p>
-                          )}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            createAndCopyPublicLink(doc.id);
+                      return (
+                        <div
+                          key={doc.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            void handleSelectDocument(
+                              doc,
+                            );
                           }}
-                          disabled={loadingDocumentId === doc.id}
-                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-300"
-                          title="Share document"
-                          aria-label="Share document"
-                        >
-                          <Share2
-                            className={`h-4 w-4 ${
-                              loadingDocumentId === doc.id
-                                ? "animate-pulse"
-                                : ""
-                            }`}
-                          />
-                        </button>
-                      </div>
-                    );
-                  })}
+                          onKeyDown={(
+                            event,
+                          ) => {
+                            if (
+                              event.key ===
+                                "Enter" ||
+                              event.key ===
+                                " "
+                            ) {
+                              event.preventDefault();
 
-                  {documents.length > DISPLAY_LIMIT && (
+                              void handleSelectDocument(
+                                doc,
+                              );
+                            }
+                          }}
+                          className={`flex w-full cursor-pointer items-center gap-3 rounded-2xl border-2 p-3 text-left transition-all ${
+                            isSelected
+                              ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
+                              : "border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                          }`}
+                        >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-50 dark:bg-slate-800">
+                            <FileText className="h-4 w-4 text-slate-500" />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-bold text-slate-900 dark:text-white">
+                              {
+                                docName
+                              }
+                            </p>
+
+                            {processStatus && (
+                              <p
+                                className={`text-[11px] font-semibold ${
+                                  isProcessed
+                                    ? "text-emerald-600"
+                                    : "text-amber-600"
+                                }`}
+                              >
+                                AI Status:{" "}
+                                {
+                                  processStatus
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(
+                              event,
+                            ) => {
+                              event.stopPropagation();
+
+                              createAndCopyPublicLink(
+                                doc.id,
+                              );
+                            }}
+                            disabled={
+                              loadingDocumentId ===
+                              doc.id
+                            }
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-300"
+                            title="Share document"
+                            aria-label={`Share ${docName}`}
+                          >
+                            <Share2
+                              className={`h-4 w-4 ${
+                                loadingDocumentId ===
+                                doc.id
+                                  ? "animate-pulse"
+                                  : ""
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      );
+                    },
+                  )}
+
+                  {documents.length >
+                    DISPLAY_LIMIT && (
                     <button
                       type="button"
-                      onClick={() => setShowAllDocuments(!showAllDocuments)}
-                      className="w-full mt-3 py-3 rounded-2xl border border-dashed border-blue-300 text-blue-600 font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/30 transition"
+                      onClick={() =>
+                        setShowAllDocuments(
+                          (current) =>
+                            !current,
+                        )
+                      }
+                      className="mt-3 w-full rounded-2xl border border-dashed border-blue-300 py-3 font-semibold text-blue-600 transition hover:bg-blue-50 dark:hover:bg-blue-950/30"
                     >
                       {showAllDocuments
                         ? "Thu gọn"
@@ -377,182 +824,344 @@ const summaryTypeOptions: { value: SummaryType; label: string; desc: string }[] 
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-5">
-            <h2 className="text-sm font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-4">
+          {/* SUMMARY TYPE */}
+
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="mb-4 text-sm font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300">
               Summary Type
             </h2>
 
             <div className="space-y-2">
-              {summaryTypeOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setSummaryType(option.value)}
-                  className={`w-full p-3 rounded-2xl border-2 text-left transition-all ${
-                    summaryType === option.value
-                      ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
-                      : "border-transparent hover:border-slate-200 dark:hover:border-slate-700"
-                  }`}
-                >
-                  <p className="text-sm font-extrabold text-slate-900 dark:text-white">
-                    {option.label}
-                  </p>
-                  <p className="text-xs text-slate-500">{option.desc}</p>
-                </button>
-              ))}
+              {summaryTypeOptions.map(
+                (option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() =>
+                      setSummaryType(
+                        option.value,
+                      )
+                    }
+                    disabled={
+                      isGenerating
+                    }
+                    className={`w-full rounded-2xl border-2 p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+                      summaryType ===
+                      option.value
+                        ? "border-blue-500 bg-blue-50/30 dark:bg-blue-500/10"
+                        : "border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                    }`}
+                  >
+                    <p className="text-sm font-extrabold text-slate-900 dark:text-white">
+                      {
+                        option.label
+                      }
+                    </p>
+
+                    <p className="text-xs text-slate-500">
+                      {
+                        option.desc
+                      }
+                    </p>
+                  </button>
+                ),
+              )}
             </div>
           </div>
 
+          {/* GENERATE BUTTON */}
+
           <button
-            onClick={handleGenerate}
-            disabled={isGenerating || !selectedDoc}
-            className="w-full py-4 bg-blue-600 text-white font-extrabold rounded-2xl hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-70"
+            type="button"
+            onClick={() => {
+              void handleGenerate();
+            }}
+            disabled={
+              isGenerating ||
+              isLoadingExistingSummary ||
+              !selectedDoc
+            }
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 py-4 font-extrabold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isGenerating ? (
               <>
-                <RefreshCw className="w-5 h-5 animate-spin" />
+                <RefreshCw className="h-5 w-5 animate-spin" />
+
                 Generating...
               </>
             ) : (
               <>
-                <Sparkles className="w-5 h-5" />
+                <Sparkles className="h-5 w-5" />
+
                 Generate Summary
               </>
             )}
           </button>
         </div>
 
+        {/* ===================================================
+            RIGHT
+        =================================================== */}
+
         <div className="lg:col-span-2">
+          {/* =================================================
+              HISTORY
+          ================================================= */}
+
           {view === "history" ? (
             <div className="space-y-4">
-              {summaryHistory.length === 0 ? (
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 p-8 text-center">
-                  <p className="text-slate-500">No summary history found.</p>
+              {summaryHistory.length ===
+              0 ? (
+                <div className="rounded-[2rem] border border-slate-200 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900">
+                  <History className="mx-auto mb-4 h-10 w-10 text-slate-400" />
+
+                  <p className="text-slate-500">
+                    No summary history
+                    found.
+                  </p>
                 </div>
               ) : (
-                summaryHistory.map((s) => (
-                  <button
-                    key={s.summaryId || s.id}
-                    onClick={() => openHistoryItem(s)}
-                    className="w-full text-left bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-blue-500 transition-all"
-                  >
-                    <p className="font-bold text-slate-900 dark:text-white">
-                      {s.documentTitle || "Untitled Document"}
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      {s.summaryType} · {s.createdAt}
-                    </p>
-                  </button>
-                ))
+                summaryHistory.map(
+                  (summary, index) => (
+                    <button
+                      type="button"
+                      key={
+                        summary.summaryId ||
+                        summary.id ||
+                        `${summary.documentId}-${summary.createdAt}-${index}`
+                      }
+                      onClick={() =>
+                        openHistoryItem(
+                          summary,
+                        )
+                      }
+                      className="w-full rounded-2xl border border-slate-200 bg-white p-5 text-left transition-all hover:border-blue-500 dark:border-slate-700 dark:bg-slate-900"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="truncate font-bold text-slate-900 dark:text-white">
+                            {summary.documentTitle ||
+                              "Untitled Document"}
+                          </p>
+
+                          <p className="mt-1 text-sm text-slate-500">
+                            {summary.summaryType ||
+                              "Summary"}
+
+                            {summary.createdAt
+                              ? ` · ${new Date(
+                                  summary.createdAt,
+                                ).toLocaleString()}`
+                              : ""}
+                          </p>
+                        </div>
+
+                        <ChevronRight className="h-5 w-5 shrink-0 text-slate-400" />
+                      </div>
+                    </button>
+                  ),
+                )
               )}
             </div>
           ) : (
+            /* ===============================================
+               SUMMARY VIEW
+            =============================================== */
+
             <AnimatePresence mode="wait">
+              {/* LOADING GENERATION */}
+
               {isGenerating ? (
                 <motion.div
-                  key="loading"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-8 flex flex-col items-center justify-center min-h-[400px]"
+                  key="generating"
+                  initial={{
+                    opacity: 0,
+                  }}
+                  animate={{
+                    opacity: 1,
+                  }}
+                  exit={{
+                    opacity: 0,
+                  }}
+                  className="flex min-h-[400px] flex-col items-center justify-center rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900"
                 >
-                  <Sparkles className="w-8 h-8 text-blue-600 animate-pulse mb-5" />
-                  <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mb-2">
-                    Analyzing Document...
+                  <RefreshCw className="mb-5 h-8 w-8 animate-spin text-blue-600" />
+
+                  <h3 className="mb-2 text-xl font-extrabold text-slate-900 dark:text-white">
+                    Analyzing
+                    Document...
                   </h3>
-                  <p className="text-slate-500 dark:text-slate-400 text-sm">
-                    AI is reading and summarizing{" "}
-                    {selectedDoc?.name || selectedDoc?.title}
+
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    AI is reading and
+                    summarizing{" "}
+                    {getDocumentName(
+                      selectedDoc,
+                    )}
                   </p>
                 </motion.div>
-              ) : showSummary && selectedDoc ? (
+              ) : isLoadingExistingSummary ? (
+                /* LOAD EXISTING SUMMARY */
+
+                <motion.div
+                  key="loading-existing"
+                  initial={{
+                    opacity: 0,
+                  }}
+                  animate={{
+                    opacity: 1,
+                  }}
+                  exit={{
+                    opacity: 0,
+                  }}
+                  className="flex min-h-[400px] flex-col items-center justify-center rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+                >
+                  <RefreshCw className="mb-5 h-8 w-8 animate-spin text-blue-600" />
+
+                  <p className="text-sm text-slate-500">
+                    Loading existing
+                    summary...
+                  </p>
+                </motion.div>
+              ) : showSummary ? (
+                /* ===========================================
+                   SUMMARY RESULT
+                =========================================== */
+
                 <motion.div
                   key="summary"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={{
+                    opacity: 0,
+                    y: 10,
+                  }}
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                  }}
+                  exit={{
+                    opacity: 0,
+                    y: -10,
+                  }}
                   className="space-y-5"
                 >
-                  <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <Sparkles className="w-4 h-4 text-blue-600" />
-                          <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">
-                            {summaryData.summaryType || "AI Summary"}
+                  {/* SUMMARY TEXT */}
+
+                  <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                    <div className="mb-4 flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="mb-1 flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-blue-600" />
+
+                          <span className="text-xs font-bold uppercase tracking-wider text-blue-600">
+                            {summaryData.summaryType ||
+                              "AI Summary"}
                           </span>
                         </div>
 
                         <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
                           {summaryData.documentTitle ||
-                            selectedDoc.name ||
-                            selectedDoc.title}
+                            getDocumentName(
+                              selectedDoc,
+                            )}
                         </h2>
                       </div>
 
-                      <div className="px-3 py-1.5 bg-emerald-50 text-emerald-600 text-xs font-bold rounded-xl">
+                      <div className="shrink-0 rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:bg-emerald-500/10">
                         AI Generated
                       </div>
                     </div>
 
-                    <div className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                    <div className="leading-relaxed text-slate-700 dark:text-slate-300">
                       <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
+                        remarkPlugins={[
+                          remarkGfm,
+                        ]}
                         components={{
-                          p: ({ children }) => (
+                          p: ({
+                            children,
+                          }) => (
                             <p className="mb-3 text-slate-700 dark:text-slate-300">
                               {children}
                             </p>
                           ),
-                          strong: ({ children }) => (
+
+                          strong: ({
+                            children,
+                          }) => (
                             <strong className="font-extrabold text-slate-900 dark:text-white">
                               {children}
                             </strong>
                           ),
-                          ul: ({ children }) => (
-                            <ul className="list-disc pl-6 space-y-2 mb-4">
+
+                          ul: ({
+                            children,
+                          }) => (
+                            <ul className="mb-4 list-disc space-y-2 pl-6">
                               {children}
                             </ul>
                           ),
-                          ol: ({ children }) => (
-                            <ol className="list-decimal pl-6 space-y-2 mb-4">
+
+                          ol: ({
+                            children,
+                          }) => (
+                            <ol className="mb-4 list-decimal space-y-2 pl-6">
                               {children}
                             </ol>
                           ),
-                          li: ({ children }) => (
+
+                          li: ({
+                            children,
+                          }) => (
                             <li className="text-slate-700 dark:text-slate-300">
                               {children}
                             </li>
                           ),
-                          code: ({ children }) => (
-                            <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 text-sm">
+
+                          code: ({
+                            children,
+                          }) => (
+                            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-sm text-blue-600 dark:bg-slate-800 dark:text-blue-400">
                               {children}
                             </code>
                           ),
                         }}
                       >
-                        {summaryData.summaryText || ""}
+                        {summaryData.summaryText ||
+                          ""}
                       </ReactMarkdown>
                     </div>
                   </div>
 
-                  {summaryData.keyTakeaways?.length > 0 && (
-                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-                      <h3 className="text-lg font-extrabold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  {/* KEY TAKEAWAYS */}
+
+                  {!!summaryData
+                    .keyTakeaways
+                    ?.length && (
+                    <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                      <h3 className="mb-4 flex items-center gap-2 text-lg font-extrabold text-slate-900 dark:text-white">
+                        <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+
                         Key Takeaways
                       </h3>
 
                       {summaryData.keyTakeaways.map(
-                        (point: string, i: number) => (
+                        (
+                          point,
+                          index,
+                        ) => (
                           <div
-                            key={i}
-                            className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl mb-3"
+                            key={`${index}-${point}`}
+                            className="mb-3 flex items-start gap-3 rounded-2xl bg-slate-50 p-3 dark:bg-slate-800"
                           >
-                            <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 font-extrabold text-xs">
-                              {i + 1}
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-extrabold text-emerald-600 dark:bg-emerald-500/20">
+                              {index +
+                                1}
                             </div>
+
                             <p className="text-sm text-slate-700 dark:text-slate-300">
-                              {point}
+                              {
+                                point
+                              }
                             </p>
                           </div>
                         ),
@@ -560,26 +1169,41 @@ const summaryTypeOptions: { value: SummaryType; label: string; desc: string }[] 
                     </div>
                   )}
 
-                  {summaryData.keyConcepts?.length > 0 && (
-                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-                      <h3 className="text-lg font-extrabold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                        <Brain className="w-5 h-5 text-purple-500" />
-                        Key Concepts & Definitions
+                  {/* KEY CONCEPTS */}
+
+                  {!!summaryData
+                    .keyConcepts
+                    ?.length && (
+                    <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                      <h3 className="mb-4 flex items-center gap-2 text-lg font-extrabold text-slate-900 dark:text-white">
+                        <Brain className="h-5 w-5 text-purple-500" />
+
+                        Key Concepts &
+                        Definitions
                       </h3>
 
                       {summaryData.keyConcepts.map(
-                        (concept: any, i: number) => (
+                        (
+                          concept,
+                          index,
+                        ) => (
                           <div
-                            key={i}
-                            className="flex gap-3 p-3 border border-slate-200 dark:border-slate-700 rounded-2xl mb-3"
+                            key={`${concept.term}-${index}`}
+                            className="mb-3 flex gap-3 rounded-2xl border border-slate-200 p-3 dark:border-slate-700"
                           >
-                            <Tag className="w-4 h-4 text-purple-500 mt-0.5" />
+                            <Tag className="mt-0.5 h-4 w-4 shrink-0 text-purple-500" />
+
                             <div>
-                              <p className="font-extrabold text-slate-900 dark:text-white text-sm">
-                                {concept.term}
+                              <p className="text-sm font-extrabold text-slate-900 dark:text-white">
+                                {
+                                  concept.term
+                                }
                               </p>
+
                               <p className="text-sm text-slate-500">
-                                {concept.definition}
+                                {
+                                  concept.definition
+                                }
                               </p>
                             </div>
                           </div>
@@ -588,23 +1212,36 @@ const summaryTypeOptions: { value: SummaryType; label: string; desc: string }[] 
                     </div>
                   )}
 
-                  {summaryData.insights?.length > 0 && (
-                    <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] p-6 text-white">
-                      <div className="flex items-center gap-2 mb-4">
-                        <Sparkles className="w-5 h-5" />
+                  {/* INSIGHTS */}
+
+                  {!!summaryData.insights
+                    ?.length && (
+                    <div className="rounded-[2rem] bg-gradient-to-br from-blue-600 to-indigo-700 p-6 text-white">
+                      <div className="mb-4 flex items-center gap-2">
+                        <Sparkles className="h-5 w-5" />
+
                         <h3 className="text-lg font-extrabold">
-                          AI Study Insights
+                          AI Study
+                          Insights
                         </h3>
                       </div>
 
                       {summaryData.insights.map(
-                        (insight: string, i: number) => (
+                        (
+                          insight,
+                          index,
+                        ) => (
                           <div
-                            key={i}
-                            className="flex items-start gap-3 p-3 bg-white/10 rounded-2xl mb-3"
+                            key={`${index}-${insight}`}
+                            className="mb-3 flex items-start gap-3 rounded-2xl bg-white/10 p-3"
                           >
-                            <ChevronRight className="w-4 h-4 mt-0.5" />
-                            <p className="text-sm">{insight}</p>
+                            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0" />
+
+                            <p className="text-sm">
+                              {
+                                insight
+                              }
+                            </p>
                           </div>
                         ),
                       )}
@@ -612,16 +1249,34 @@ const summaryTypeOptions: { value: SummaryType; label: string; desc: string }[] 
                   )}
                 </motion.div>
               ) : (
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm p-8 flex flex-col items-center justify-center min-h-[400px] text-center">
-                  <Sparkles className="w-10 h-10 text-blue-600 mb-4" />
-                  <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mb-2">
-                    Ready to generate summary
+                /* ===========================================
+                   EMPTY
+                =========================================== */
+
+                <motion.div
+                  key="empty"
+                  initial={{
+                    opacity: 0,
+                  }}
+                  animate={{
+                    opacity: 1,
+                  }}
+                  className="flex min-h-[400px] flex-col items-center justify-center rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900"
+                >
+                  <Sparkles className="mb-4 h-10 w-10 text-blue-600" />
+
+                  <h3 className="mb-2 text-xl font-extrabold text-slate-900 dark:text-white">
+                    Ready to generate
+                    summary
                   </h3>
-                  <p className="text-slate-500 dark:text-slate-400 text-sm">
-                    Select a document, choose summary type, and click Generate
+
+                  <p className="max-w-md text-sm text-slate-500 dark:text-slate-400">
+                    Select a document,
+                    choose summary type,
+                    and click Generate
                     Summary.
                   </p>
-                </div>
+                </motion.div>
               )}
             </AnimatePresence>
           )}

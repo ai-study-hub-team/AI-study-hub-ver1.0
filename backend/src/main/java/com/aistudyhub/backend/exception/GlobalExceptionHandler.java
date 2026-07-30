@@ -5,6 +5,7 @@ import com.aistudyhub.backend.exception.PolicyNotSupportedException;
 import com.aistudyhub.backend.exception.StorageCapacityException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -159,6 +160,23 @@ public class GlobalExceptionHandler {
         body.put("message", ex.getMessage());
         body.put("path", request.getRequestURI());
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+    }
+
+    @ExceptionHandler(TooManyLoginAttemptsException.class)
+    public ResponseEntity<Map<String, Object>>
+    handleTooManyLoginAttemptsException(TooManyLoginAttemptsException ex, HttpServletRequest request) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now().toString());
+        body.put("status", HttpStatus.TOO_MANY_REQUESTS.value());
+        body.put("error", "Too Many Requests");
+        body.put("message", ex.getMessage());
+        body.put("retryAfterSeconds", ex.getRetryAfterSeconds());
+        body.put("path", request.getRequestURI());
+
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()))
+                .body(body);
     }
 
     /**

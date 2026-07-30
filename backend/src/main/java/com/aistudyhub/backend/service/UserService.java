@@ -182,6 +182,9 @@ public class UserService {
         user.setPassword(
                 passwordEncoder.encode(request.getNewPassword())
         );
+        user.setFailedLoginAttempts(0);
+        user.setLastFailedLoginAt(null);
+        user.setLockedUntil(null);
         user.setUpdatedAt(LocalDateTime.now());
         User saved = userRepository.save(user);
         return toResponse(saved);
