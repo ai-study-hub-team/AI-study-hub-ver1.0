@@ -1669,10 +1669,6 @@ export function AIChatPage() {
                       Upload New Material
                     </p>
 
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      PDF, DOCX, PPTX up
-                      to 50MB
-                    </p>
                   </div>
                 </button>
 
