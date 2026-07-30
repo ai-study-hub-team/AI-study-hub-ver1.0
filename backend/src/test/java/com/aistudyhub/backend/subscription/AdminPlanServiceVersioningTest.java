@@ -2,38 +2,33 @@ package com.aistudyhub.backend.subscription;
 
 import com.aistudyhub.backend.dto.request.AdminPlanRequest;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
-import com.aistudyhub.backend.entity.UserSubscription;
 import com.aistudyhub.backend.repository.SubscriptionPlanRepository;
-import com.aistudyhub.backend.repository.UserSubscriptionRepository;
 import com.aistudyhub.backend.service.AdminPlanService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InOrder;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class AdminPlanServiceSnapshotTest {
+class AdminPlanServiceVersioningTest {
 
     @Mock
     SubscriptionPlanRepository planRepository;
 
-    @Mock
-    UserSubscriptionRepository subscriptionRepository;
-
     @Test
-    void updatePlanBackfillsOldSubscriptionsBeforeChangingCatalogBenefits() {
-        SubscriptionPlan plan = SubscriptionPlan.builder()
+    void updatePaidPlanSupersedesOldVersionAndPublishesNewVersion() {
+        SubscriptionPlan oldVersion = SubscriptionPlan.builder()
                 .id(2L)
                 .code("PRO")
+                .version(1)
                 .name("Pro")
                 .storageLimitMb(2_048L)
                 .maxUploadSizePerFileMb(100L)
@@ -46,26 +41,33 @@ class AdminPlanServiceSnapshotTest {
                 .allowAudioUpload(false)
                 .isActive(true)
                 .build();
-        UserSubscription oldSubscription = UserSubscription.builder()
-                .plan(plan)
-                .build();
-        AdminPlanRequest request = updateRequest();
 
-        when(planRepository.findById(2L)).thenReturn(Optional.of(plan));
-        when(subscriptionRepository.findAllByPlanId(2L)).thenReturn(List.of(oldSubscription));
-        when(planRepository.save(plan)).thenReturn(plan);
+        when(planRepository.findById(2L)).thenReturn(Optional.of(oldVersion));
+        when(planRepository.saveAndFlush(oldVersion)).thenReturn(oldVersion);
+        when(planRepository.save(org.mockito.ArgumentMatchers.any(SubscriptionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
-        AdminPlanService service = new AdminPlanService(planRepository, subscriptionRepository);
-        service.updatePlan(2L, request);
+        AdminPlanService service = new AdminPlanService(planRepository);
+        service.updatePlan(2L, updateRequest());
 
-        assertThat(oldSubscription.getEffectiveStorageLimitMb()).isEqualTo(2_048L);
-        assertThat(oldSubscription.getEffectiveDailyTokenLimit()).isEqualTo(1_000_000L);
-        assertThat(plan.getStorageLimitMb()).isEqualTo(5_120L);
-        assertThat(plan.getDailyTokenLimit()).isEqualTo(2_000_000L);
+        assertThat(oldVersion.getIsActive()).isFalse();
+        assertThat(oldVersion.getStorageLimitMb()).isEqualTo(2_048L);
+        assertThat(oldVersion.getDailyTokenLimit()).isEqualTo(1_000_000L);
+        assertThat(oldVersion.getSupersededAt()).isNotNull();
 
-        InOrder writes = inOrder(subscriptionRepository, planRepository);
-        writes.verify(subscriptionRepository).saveAll(List.of(oldSubscription));
-        writes.verify(planRepository).save(plan);
+        verify(planRepository).saveAndFlush(oldVersion);
+
+        ArgumentCaptor<SubscriptionPlan> savedPlan =
+                ArgumentCaptor.forClass(SubscriptionPlan.class);
+        verify(planRepository).save(savedPlan.capture());
+
+        SubscriptionPlan newVersion = savedPlan.getValue();
+        assertThat(newVersion.getCode()).isEqualTo("PRO");
+        assertThat(newVersion.getVersion()).isEqualTo(2);
+        assertThat(newVersion.getPreviousVersion()).isSameAs(oldVersion);
+        assertThat(newVersion.getStorageLimitMb()).isEqualTo(5_120L);
+        assertThat(newVersion.getDailyTokenLimit()).isEqualTo(2_000_000L);
+        assertThat(newVersion.getIsActive()).isTrue();
     }
 
     private AdminPlanRequest updateRequest() {

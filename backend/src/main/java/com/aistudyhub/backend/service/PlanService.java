@@ -27,6 +27,7 @@ public class PlanService {
         return PlanResponse.builder()
                 .id(plan.getId())
                 .code(plan.getCode())
+                .version(plan.getVersion())
                 .name(plan.getName())
                 .storageLimitMb(plan.getStorageLimitMb())
                 .maxUploadSizePerFileMb(plan.getMaxUploadSizePerFileMb())

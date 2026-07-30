@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 public class PlanResponse {
     private Long id;
     private String code;
+    private Integer version;
     private String name;
     private Long storageLimitMb;
     private Long maxUploadSizePerFileMb;

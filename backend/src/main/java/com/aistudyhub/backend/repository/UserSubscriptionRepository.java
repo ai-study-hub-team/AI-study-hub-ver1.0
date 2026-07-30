@@ -22,6 +22,4 @@ public interface UserSubscriptionRepository extends JpaRepository<UserSubscripti
             LocalDateTime from,
             LocalDateTime to
     );
-    List<UserSubscription> findAllByPlanId(Long planId);
-
 }
