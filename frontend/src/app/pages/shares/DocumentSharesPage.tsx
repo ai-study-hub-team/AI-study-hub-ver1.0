@@ -10,6 +10,7 @@ import {
   Loader2,
   RefreshCcw,
   ShieldOff,
+  UserRoundCog,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -25,6 +26,8 @@ import {
 import { folderApi, type FolderResponse } from "../../services/folderApi";
 import { categoryApi, type CategoryResponse } from "../../services/categoryApi";
 import { getCurrentUserId } from "../../services/apiClient";
+import { subscriptionApi } from "../../services/subscriptionApi";
+import { getStoredUser } from "../../utils/authStorage";
 import { PaginationControls } from "../../components/ui/PaginationControls";
 
 type ListResponse<T> = T[] | { content?: T[] };
@@ -39,14 +42,38 @@ type SubmissionStatusFilter =
   | "EXPIRED";
 
 const MIME_OPTIONS = [
-  ["PDF", "application/pdf"],
-  ["TXT", "text/plain"],
-  ["DOCX", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
-  ["PPTX", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
-  ["XLSX", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  { label: "PDF", mimeTypes: ["application/pdf"] },
+  { label: "TXT", mimeTypes: ["text/plain"] },
+  {
+    label: "DOCX",
+    mimeTypes: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  },
+  {
+    label: "PPTX",
+    mimeTypes: ["application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+  },
+  {
+    label: "XLSX",
+    mimeTypes: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  },
 ] as const;
 
-const VISIBILITY_OPTIONS = ["PRIVATE", "PUBLIC"] as const;
+const PRO_MIME_OPTIONS = [
+  {
+    label: "IMAGE",
+    mimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+  },
+  {
+    label: "VIDEO",
+    mimeTypes: ["video/mp4", "video/webm", "video/quicktime"],
+  },
+  {
+    label: "AUDIO",
+    mimeTypes: ["audio/mpeg", "audio/wav", "audio/mp4", "audio/x-m4a"],
+  },
+] as const;
+
+const SHARE_LINK_MAX_VALIDITY_MS = 7 * 24 * 60 * 60 * 1000;
 
 const normalizeList = <T,>(data: ListResponse<T> | null | undefined): T[] => {
   if (Array.isArray(data)) return data;
@@ -195,21 +222,49 @@ const getShareLinkStatus = (status?: string | null) =>
 const isActiveShareLink = (status?: string | null) =>
   getShareLinkStatus(status) === "ACTIVE";
 
+const isPrivateAllowlistLink = (link: DocumentShareLinkResponse) =>
+  String(link.accessPolicy ?? "").trim().toUpperCase() ===
+  "PRIVATE_ALLOWLIST";
+
+const parseEmailList = (value: string) =>
+  Array.from(
+    new Set(
+      value
+        .split(/[\s,;]+/)
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+
+const isValidEmail = (email: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 const getUsableShareUrl = (link: DocumentShareLinkResponse) => {
   const rawUrl = link.shareUrl?.trim();
+  let shareUrl = "";
 
   if (rawUrl) {
     try {
-      return new URL(rawUrl, window.location.origin).toString();
+      shareUrl = new URL(rawUrl, window.location.origin).toString();
     } catch {
       // Fall back to the public route generated from the token below.
     }
   }
 
-  const token = link.token?.trim();
-  return token
-    ? new URL(`/shared-upload/${encodeURIComponent(token)}`, window.location.origin).toString()
-    : "";
+  if (!shareUrl) {
+    const token = link.token?.trim();
+    shareUrl = token
+      ? new URL(`/shared-upload/${encodeURIComponent(token)}`, window.location.origin).toString()
+      : "";
+  }
+
+  if (shareUrl && link.allowedFileTypes?.trim()) {
+    const url = new URL(shareUrl);
+    url.searchParams.set("types", link.allowedFileTypes.trim());
+    return url.toString();
+  }
+
+  return shareUrl;
 };
 
 const getShareLinkId = (link: DocumentShareLinkResponse) => {
@@ -263,11 +318,26 @@ const getSubmittedDate = (submission: SharedDocumentSubmissionResponse) => {
 
 export function DocumentSharesPage() {
   const navigate = useNavigate();
+  const storedRole = (
+    localStorage.getItem("role") ||
+    getStoredUser()?.role ||
+    ""
+  )
+    .trim()
+    .toUpperCase()
+    .replace(/^ROLE_/, "");
+  const isAdmin = storedRole === "ADMIN" || storedRole === "ADMINISTRATOR";
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("links");
   const [linksPage, setLinksPage] = useState(1);
   const [submissionsPage, setSubmissionsPage] = useState(1);
-  const pageSize = 10;
+  const linksPageSize = 10;
+  const submissionGroupsPageSize = 5;
+  const initialSubmissionsPerGroup = 3;
+  const submissionsLoadMoreSize = 5;
+  const [visibleSubmissionsByGroup, setVisibleSubmissionsByGroup] = useState<
+    Record<string, number>
+  >({});
 
   const [links, setLinks] = useState<DocumentShareLinkResponse[]>([]);
   const [submissions, setSubmissions] = useState<
@@ -284,19 +354,32 @@ export function DocumentSharesPage() {
     useState<SharedDocumentSubmissionResponse | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isPro, setIsPro] = useState(isAdmin);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [disablingLinkId, setDisablingLinkId] = useState<number | null>(null);
+  const [disableConfirmLink, setDisableConfirmLink] =
+    useState<DocumentShareLinkResponse | null>(null);
+  const [allowlistLink, setAllowlistLink] =
+    useState<DocumentShareLinkResponse | null>(null);
+  const [allowlistForm, setAllowlistForm] = useState({
+    emailsToAdd: "",
+    emailsToRemove: "",
+  });
+  const [isUpdatingAllowlist, setIsUpdatingAllowlist] = useState(false);
 
   const [workingSubmissionId, setWorkingSubmissionId] = useState<number | null>(
     null,
   );
 
   const defaultExpiry = useMemo(() => {
-    const date = new Date();
-    date.setDate(date.getDate() + 7);
+    const date = new Date(Date.now() + SHARE_LINK_MAX_VALIDITY_MS);
     return toDatetimeLocalValue(date);
   }, []);
+  const expirationMin = toDatetimeLocalValue(new Date());
+  const expirationMax = toDatetimeLocalValue(
+    new Date(Date.now() + SHARE_LINK_MAX_VALIDITY_MS),
+  );
 
   const [linkForm, setLinkForm] = useState({
     title: "",
@@ -313,6 +396,7 @@ export function DocumentSharesPage() {
     allowedFileTypes: ["application/pdf", "text/plain"] as string[],
     defaultFolderId: "",
   });
+  const [recipientEmailInput, setRecipientEmailInput] = useState("");
 
   const [createdShareUrl, setCreatedShareUrl] = useState("");
 
@@ -337,6 +421,49 @@ export function DocumentSharesPage() {
         getFolderOptionLabel(left).localeCompare(getFolderOptionLabel(right)),
       ),
     [folders],
+  );
+
+  const submissionGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        key: string;
+        linkId: number | null;
+        title: string;
+        submissions: SharedDocumentSubmissionResponse[];
+      }
+    >();
+
+    submissions.forEach((submission) => {
+      const linkId = Number(submission.shareLinkId);
+      const validLinkId =
+        Number.isInteger(linkId) && linkId > 0 ? linkId : null;
+      const title = submission.shareLinkTitle?.trim() || "Unknown share link";
+      const key = validLinkId ? `link-${validLinkId}` : `title-${title}`;
+      const existing = groups.get(key);
+
+      if (existing) {
+        existing.submissions.push(submission);
+      } else {
+        groups.set(key, {
+          key,
+          linkId: validLinkId,
+          title,
+          submissions: [submission],
+        });
+      }
+    });
+
+    return Array.from(groups.values());
+  }, [submissions]);
+
+  const paginatedSubmissionGroups = useMemo(
+    () =>
+      submissionGroups.slice(
+        (submissionsPage - 1) * submissionGroupsPageSize,
+        submissionsPage * submissionGroupsPageSize,
+      ),
+    [submissionGroups, submissionsPage],
   );
 
   const loadData = useCallback(async () => {
@@ -404,6 +531,80 @@ export function DocumentSharesPage() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    setSubmissionsPage(1);
+    setVisibleSubmissionsByGroup({});
+  }, [submissionStatusFilter]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    subscriptionApi
+      .getCurrentSubscription()
+      .then(({ data }) => {
+        const planCode = data.plan?.code?.trim().toUpperCase();
+        const status = data.status?.trim().toUpperCase();
+        const hasActiveProPlan =
+          planCode === "PRO" &&
+          (!status || status === "ACTIVE" || status === "VALID");
+
+        if (isMounted) {
+          setIsPro(isAdmin || data.adminAccess === true || hasActiveProPlan);
+        }
+      })
+      .catch((error) => {
+        console.warn("Cannot load the current subscription.", error);
+        if (isMounted) setIsPro(isAdmin);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isAdmin]);
+
+  const addRecipientEmails = (rawValue: string) => {
+    const newEmails = rawValue
+      .split(/[\s,;]+/)
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (!newEmails.length) return;
+
+    const invalidEmail = newEmails.find(
+      (email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+    );
+    if (invalidEmail) {
+      toast.error(`Invalid email: ${invalidEmail}`);
+      return;
+    }
+
+    setLinkForm((current) => {
+      const currentEmails = current.allowedUserEmails
+        .split(",")
+        .map((email) => email.trim())
+        .filter(Boolean);
+
+      return {
+        ...current,
+        allowedUserEmails: Array.from(
+          new Set([...currentEmails, ...newEmails]),
+        ).join(","),
+      };
+    });
+    setRecipientEmailInput("");
+  };
+
+  const removeRecipientEmail = (emailToRemove: string) => {
+    setLinkForm((current) => ({
+      ...current,
+      allowedUserEmails: current.allowedUserEmails
+        .split(",")
+        .map((email) => email.trim())
+        .filter((email) => email && email !== emailToRemove)
+        .join(","),
+    }));
+  };
+
   const handleCreateLink = async () => {
     const userId = getSafeUserId();
 
@@ -417,14 +618,40 @@ export function DocumentSharesPage() {
       return;
     }
 
+    const expiresAt = new Date(linkForm.expiresAt);
+    const now = Date.now();
+
+    if (!linkForm.expiresAt || Number.isNaN(expiresAt.getTime())) {
+      toast.error("Please choose an expiration date.");
+      return;
+    }
+
+    if (expiresAt.getTime() <= now) {
+      toast.error("Expiration date must be in the future.");
+      return;
+    }
+
+    if (expiresAt.getTime() > now + SHARE_LINK_MAX_VALIDITY_MS) {
+      toast.error("Share links cannot be valid for more than 7 days.");
+      return;
+    }
+
     const maxUploads = Number(linkForm.maxUploads);
     const maxUploadsPerUser = Number(linkForm.maxUploadsPerUser);
     const maxFileSizeBytes = Number(linkForm.maxFileSizeMb) * 1024 * 1024;
     const maxTotalBytes = Number(linkForm.maxTotalSizeMb) * 1024 * 1024;
-    const allowedUserEmails = linkForm.allowedUserEmails
+    const allowedUserEmails = `${linkForm.allowedUserEmails},${recipientEmailInput}`
       .split(/[\n,;]+/)
       .map((email) => email.trim().toLowerCase())
       .filter((email, index, emails) => email && emails.indexOf(email) === index);
+
+    const invalidEmail = allowedUserEmails.find(
+      (email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+    );
+    if (invalidEmail) {
+      toast.error(`Invalid email: ${invalidEmail}`);
+      return;
+    }
 
     if (
       !Number.isInteger(maxUploads) ||
@@ -472,7 +699,14 @@ export function DocumentSharesPage() {
           : {}),
       });
 
-      setCreatedShareUrl(getUsableShareUrl(response.data));
+      setCreatedShareUrl(
+        getUsableShareUrl({
+          ...response.data,
+          allowedFileTypes:
+            response.data.allowedFileTypes ||
+            linkForm.allowedFileTypes.join(","),
+        }),
+      );
 
       toast.success("Shared upload link created. Copy it now.");
 
@@ -489,6 +723,7 @@ export function DocumentSharesPage() {
         allowedFileTypes: ["application/pdf", "text/plain"],
         defaultFolderId: "",
       });
+      setRecipientEmailInput("");
 
       await loadData();
     } catch (error: any) {
@@ -561,6 +796,7 @@ export function DocumentSharesPage() {
       setLinks((current) =>
         current.filter((item) => getShareLinkId(item) !== linkId),
       );
+      setDisableConfirmLink(null);
       toast.success("Shared upload link disabled and removed from the list.");
     } catch (error: any) {
       console.error(error);
@@ -572,6 +808,80 @@ export function DocumentSharesPage() {
       );
     } finally {
       setDisablingLinkId(null);
+    }
+  };
+
+  const openAllowlistManager = (link: DocumentShareLinkResponse) => {
+    setAllowlistLink(link);
+    setAllowlistForm({ emailsToAdd: "", emailsToRemove: "" });
+  };
+
+  const closeAllowlistManager = () => {
+    if (isUpdatingAllowlist) return;
+    setAllowlistLink(null);
+    setAllowlistForm({ emailsToAdd: "", emailsToRemove: "" });
+  };
+
+  const handleUpdateAllowlist = async () => {
+    if (!allowlistLink) return;
+
+    const linkId = getShareLinkId(allowlistLink);
+    if (!linkId) {
+      toast.error("Cannot identify this shared upload link.");
+      return;
+    }
+
+    const userEmailsToAdd = parseEmailList(allowlistForm.emailsToAdd);
+    const userEmailsToRemove = parseEmailList(allowlistForm.emailsToRemove);
+    const invalidEmail = [...userEmailsToAdd, ...userEmailsToRemove].find(
+      (email) => !isValidEmail(email),
+    );
+
+    if (invalidEmail) {
+      toast.error(`Invalid email: ${invalidEmail}`);
+      return;
+    }
+
+    const duplicatedEmail = userEmailsToAdd.find((email) =>
+      userEmailsToRemove.includes(email),
+    );
+    if (duplicatedEmail) {
+      toast.error(
+        `${duplicatedEmail} cannot be added and removed at the same time.`,
+      );
+      return;
+    }
+
+    if (!userEmailsToAdd.length && !userEmailsToRemove.length) {
+      toast.error("Enter at least one email to add or remove.");
+      return;
+    }
+
+    try {
+      setIsUpdatingAllowlist(true);
+      const response =
+        await documentShareLinkApi.updateDocumentShareLinkAllowlist(linkId, {
+          userEmailsToAdd,
+          userEmailsToRemove,
+        });
+
+      setLinks((current) =>
+        current.map((link) =>
+          getShareLinkId(link) === linkId ? response.data : link,
+        ),
+      );
+      setAllowlistLink(null);
+      setAllowlistForm({ emailsToAdd: "", emailsToRemove: "" });
+      toast.success("Allowlist updated.");
+    } catch (error: any) {
+      console.error(error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Cannot update allowlist.",
+      );
+    } finally {
+      setIsUpdatingAllowlist(false);
     }
   };
 
@@ -817,7 +1127,7 @@ export function DocumentSharesPage() {
           </h1>
 
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Create public upload links, then approve or reject uploaded
+            Create secure upload links, then approve or reject uploaded
             submissions.
           </p>
         </div>
@@ -849,7 +1159,7 @@ export function DocumentSharesPage() {
                 : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             }`}
           >
-            {tab === "links" ? "Share Links" : "Submissions"}
+            {tab === "links" ? "Share Links" : "Shared Document Submissions"}
           </button>
         ))}
       </div>
@@ -862,112 +1172,87 @@ export function DocumentSharesPage() {
             </h2>
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <input
-                value={linkForm.title}
-                onChange={(event) =>
-                  setLinkForm((current) => ({
-                    ...current,
-                    title: event.target.value,
-                  }))
-                }
-                placeholder="Link title"
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
+              <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                Link title
+                <input
+                  value={linkForm.title}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({ ...current, title: event.target.value }))
+                  }
+                  placeholder="Enter link title"
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
 
-              <input
-                value={linkForm.maxUploads}
-                onChange={(event) =>
-                  setLinkForm((current) => ({
-                    ...current,
-                    maxUploads: event.target.value,
-                  }))
-                }
-                placeholder="Max uploads"
-                type="number"
-                min={1}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
+              <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                Maximum uploads
+                <input
+                  value={linkForm.maxUploads}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({ ...current, maxUploads: event.target.value }))
+                  }
+                  type="number"
+                  min={1}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
 
-              <input
-                value={linkForm.maxUploadsPerUser}
-                onChange={(event) =>
-                  setLinkForm((current) => ({
-                    ...current,
-                    maxUploadsPerUser: event.target.value,
-                  }))
-                }
-                placeholder="Max uploads per user"
-                type="number"
-                min={1}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
+              <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                Maximum uploads per user
+                <input
+                  value={linkForm.maxUploadsPerUser}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({ ...current, maxUploadsPerUser: event.target.value }))
+                  }
+                  type="number"
+                  min={1}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
 
-              <select
-                value={linkForm.accessPolicy}
-                onChange={(event) =>
-                  setLinkForm((current) => ({
-                    ...current,
-                    accessPolicy: event.target.value as typeof current.accessPolicy,
-                  }))
-                }
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              >
-                <option value="PRIVATE_ALLOWLIST">Private allowlist</option>
-                <option value="ANY_AUTHENTICATED_USER">Any authenticated user</option>
-              </select>
+              <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                Maximum file size (MB)
+                <input
+                  value={linkForm.maxFileSizeMb}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({ ...current, maxFileSizeMb: event.target.value }))
+                  }
+                  type="number"
+                  min={1}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
 
-              <input
-                value={linkForm.maxFileSizeMb}
-                onChange={(event) =>
-                  setLinkForm((current) => ({ ...current, maxFileSizeMb: event.target.value }))
-                }
-                placeholder="Max file size (MB)"
-                type="number"
-                min={1}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
+              <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                Maximum total size (MB)
+                <input
+                  value={linkForm.maxTotalSizeMb}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({ ...current, maxTotalSizeMb: event.target.value }))
+                  }
+                  type="number"
+                  min={1}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
 
-              <input
-                value={linkForm.maxTotalSizeMb}
-                onChange={(event) =>
-                  setLinkForm((current) => ({ ...current, maxTotalSizeMb: event.target.value }))
-                }
-                placeholder="Max total size (MB)"
-                type="number"
-                min={1}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
-
-              <input
-                value={linkForm.expiresAt}
-                onChange={(event) =>
-                  setLinkForm((current) => ({
-                    ...current,
-                    expiresAt: event.target.value,
-                  }))
-                }
-                type="datetime-local"
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
-
-              <select
-                value={linkForm.defaultFolderId}
-                onChange={(event) =>
-                  setLinkForm((current) => ({
-                    ...current,
-                    defaultFolderId: event.target.value,
-                  }))
-                }
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              >
-                <option value="">Default folder: Root</option>
-
-                {sortedFolders.map((folder) => (
-                  <option key={folder.id} value={folder.id}>
-                    {getFolderOptionLabel(folder)}
-                  </option>
-                ))}
-              </select>
+              <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                Expiration date
+                <input
+                  value={linkForm.expiresAt}
+                  onChange={(event) =>
+                    setLinkForm((current) => ({ ...current, expiresAt: event.target.value }))
+                  }
+                  type="datetime-local"
+                  min={expirationMin}
+                  max={expirationMax}
+                  required
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                  The link can be valid for up to 7 days.
+                </span>
+              </label>
 
               <textarea
                 value={linkForm.description}
@@ -982,19 +1267,145 @@ export function DocumentSharesPage() {
                 className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none md:col-span-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               />
 
+              <fieldset className="md:col-span-2">
+                <legend className="mb-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Link access
+                </legend>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label
+                    className={`cursor-pointer rounded-2xl border p-4 transition ${
+                      linkForm.accessPolicy === "PRIVATE_ALLOWLIST"
+                        ? "border-blue-500 bg-blue-50 ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/30"
+                        : "border-slate-200 hover:border-blue-300 dark:border-slate-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="share-link-access"
+                      value="PRIVATE_ALLOWLIST"
+                      checked={
+                        linkForm.accessPolicy === "PRIVATE_ALLOWLIST"
+                      }
+                      onChange={() =>
+                        setLinkForm((current) => ({
+                          ...current,
+                          accessPolicy: "PRIVATE_ALLOWLIST",
+                        }))
+                      }
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-extrabold text-slate-900 dark:text-white">
+                      Private
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      Only registered emails in the allowlist can upload. Users
+                      must still sign in.
+                    </span>
+                  </label>
+
+                  <label
+                    className={`cursor-pointer rounded-2xl border p-4 transition ${
+                      linkForm.accessPolicy === "ANY_AUTHENTICATED_USER"
+                        ? "border-blue-500 bg-blue-50 ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/30"
+                        : "border-slate-200 hover:border-blue-300 dark:border-slate-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="share-link-access"
+                      value="ANY_AUTHENTICATED_USER"
+                      checked={
+                        linkForm.accessPolicy === "ANY_AUTHENTICATED_USER"
+                      }
+                      onChange={() => {
+                        setLinkForm((current) => ({
+                          ...current,
+                          accessPolicy: "ANY_AUTHENTICATED_USER",
+                          allowedUserEmails: "",
+                        }));
+                        setRecipientEmailInput("");
+                      }}
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-extrabold text-slate-900 dark:text-white">
+                      Public
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      Anyone with the link can upload after signing in. The
+                      owner can see each uploader&apos;s name and email.
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+
               {linkForm.accessPolicy === "PRIVATE_ALLOWLIST" && (
-                <textarea
-                  value={linkForm.allowedUserEmails}
-                  onChange={(event) =>
-                    setLinkForm((current) => ({
-                      ...current,
-                      allowedUserEmails: event.target.value,
-                    }))
-                  }
-                  placeholder="Allowed emails (comma or one per line)"
-                  rows={3}
-                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none md:col-span-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                />
+                <label className="grid gap-2 text-sm font-bold text-slate-700 md:col-span-2 dark:text-slate-200">
+                  Recipient emails
+                  <div
+                    className="flex min-h-12 flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 dark:border-slate-700 dark:bg-slate-800"
+                  >
+                    {linkForm.allowedUserEmails
+                      .split(",")
+                      .map((email) => email.trim())
+                      .filter(Boolean)
+                      .map((email) => (
+                        <span
+                          key={email}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-200"
+                        >
+                          {email}
+                          <button
+                            type="button"
+                            onClick={() => removeRecipientEmail(email)}
+                            aria-label={`Remove ${email}`}
+                            className="text-base leading-none text-blue-500 hover:text-red-500"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    <input
+                      type="email"
+                      value={recipientEmailInput}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (/[,;\s]$/.test(value)) {
+                          addRecipientEmails(value);
+                        } else {
+                          setRecipientEmailInput(value);
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === "," || event.key === ";") {
+                          event.preventDefault();
+                          addRecipientEmails(recipientEmailInput);
+                        }
+                        if (
+                          event.key === "Backspace" &&
+                          !recipientEmailInput &&
+                          linkForm.allowedUserEmails
+                        ) {
+                          const emails = linkForm.allowedUserEmails.split(",");
+                          removeRecipientEmail(emails[emails.length - 1]);
+                        }
+                      }}
+                      onBlur={() => {
+                        if (recipientEmailInput.trim()) {
+                          addRecipientEmails(recipientEmailInput);
+                        }
+                      }}
+                      placeholder={
+                        linkForm.allowedUserEmails
+                          ? "Add another email"
+                          : "Enter an email and press Enter"
+                      }
+                      className="min-w-56 flex-1 bg-transparent px-1 py-1.5 font-normal outline-none dark:text-white"
+                    />
+                  </div>
+                  <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                    Press Enter, comma, or semicolon after each email.
+                  </span>
+                </label>
               )}
 
               <fieldset className="md:col-span-2">
@@ -1002,11 +1413,13 @@ export function DocumentSharesPage() {
                   Accepted file types
                 </legend>
                 <div className="flex flex-wrap gap-2">
-                  {MIME_OPTIONS.map(([label, mime]) => {
-                    const selected = linkForm.allowedFileTypes.includes(mime);
+                  {[...MIME_OPTIONS, ...(isPro ? PRO_MIME_OPTIONS : [])].map((option) => {
+                    const selected = option.mimeTypes.every((mime) =>
+                      linkForm.allowedFileTypes.includes(mime),
+                    );
                     return (
                       <label
-                        key={mime}
+                        key={option.label}
                         className={`cursor-pointer rounded-full border px-3 py-1.5 text-sm font-bold ${
                           selected
                             ? "border-blue-600 bg-blue-50 text-blue-700"
@@ -1020,13 +1433,17 @@ export function DocumentSharesPage() {
                             setLinkForm((current) => ({
                               ...current,
                               allowedFileTypes: selected
-                                ? current.allowedFileTypes.filter((value) => value !== mime)
-                                : [...current.allowedFileTypes, mime],
+                                ? current.allowedFileTypes.filter(
+                                    (value) => !option.mimeTypes.includes(value as never),
+                                  )
+                                : Array.from(
+                                    new Set([...current.allowedFileTypes, ...option.mimeTypes]),
+                                  ),
                             }))
                           }
                           className="sr-only"
                         />
-                        {label}
+                        {option.label}
                       </label>
                     );
                   })}
@@ -1083,7 +1500,7 @@ export function DocumentSharesPage() {
 
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {links.length > 0 ? (
-                links.slice((linksPage - 1) * pageSize, linksPage * pageSize).map((link) => (
+                links.slice((linksPage - 1) * linksPageSize, linksPage * linksPageSize).map((link) => (
                   <div key={getShareLinkId(link) ?? link.shareUrl ?? link.token ?? link.title} className="p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
@@ -1094,6 +1511,18 @@ export function DocumentSharesPage() {
 
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                             {statusLabel[getShareLinkStatus(link.status)] || link.status}
+                          </span>
+
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                              isPrivateAllowlistLink(link)
+                                ? "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+                                : "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                            }`}
+                          >
+                            {isPrivateAllowlistLink(link)
+                              ? `Private · ${link.allowedUserIds?.length ?? 0} allowed`
+                              : "Public · Login required"}
                           </span>
                         </div>
 
@@ -1132,10 +1561,19 @@ export function DocumentSharesPage() {
                           Copy
                         </button>
 
+                        <button
+                          type="button"
+                          onClick={() => openAllowlistManager(link)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-950/50"
+                        >
+                          <UserRoundCog className="h-4 w-4" />
+                          Manage
+                        </button>
+
                         {isActiveShareLink(link.status) && (
                           <button
                             type="button"
-                            onClick={() => handleDisable(link)}
+                            onClick={() => setDisableConfirmLink(link)}
                             disabled={disablingLinkId === getShareLinkId(link)}
                             className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
@@ -1160,7 +1598,7 @@ export function DocumentSharesPage() {
                 </div>
               )}
             </div>
-            <div className="px-5 pb-5"><PaginationControls currentPage={linksPage} totalItems={links.length} pageSize={pageSize} onPageChange={setLinksPage} /></div>
+            <div className="px-5 pb-5"><PaginationControls currentPage={linksPage} totalItems={links.length} pageSize={linksPageSize} onPageChange={setLinksPage} /></div>
           </section>
         </>
       )}
@@ -1198,9 +1636,60 @@ export function DocumentSharesPage() {
             </div>
           </div>
 
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {submissions.length > 0 ? (
-              submissions.slice((submissionsPage - 1) * pageSize, submissionsPage * pageSize).map((submission) => (
+          <div className="space-y-4 p-5">
+            {paginatedSubmissionGroups.length > 0 ? (
+              paginatedSubmissionGroups.map((group) => (
+                <section
+                  key={group.key}
+                  className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-700 dark:bg-slate-800/60">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-extrabold text-slate-950 dark:text-white">
+                          {group.title}
+                        </h3>
+                        <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+                          {group.submissions.length}{" "}
+                          {group.submissions.length === 1
+                            ? "document"
+                            : "documents"}
+                        </span>
+                      </div>
+                      {group.linkId && (
+                        <p className="mt-1 text-xs font-semibold text-slate-400">
+                          Share link ID: {group.linkId}
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleSubmissionsByGroup((current) => ({
+                          ...current,
+                          [group.key]:
+                            (current[group.key] ?? 0) > 0
+                              ? 0
+                              : initialSubmissionsPerGroup,
+                        }))
+                      }
+                      className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                    >
+                      {(visibleSubmissionsByGroup[group.key] ?? 0) > 0
+                        ? "Hide documents"
+                        : "Show documents"}
+                    </button>
+                  </div>
+
+                  {(visibleSubmissionsByGroup[group.key] ?? 0) > 0 && (
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {group.submissions
+                      .slice(
+                        0,
+                        visibleSubmissionsByGroup[group.key] ?? 0,
+                      )
+                      .map((submission) => (
                 <div key={submission.id} className="p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
@@ -1322,6 +1811,60 @@ export function DocumentSharesPage() {
                     </div>
                   </div>
                 </div>
+                    ))}
+                  </div>
+                  )}
+
+                  {(visibleSubmissionsByGroup[group.key] ?? 0) > 0 &&
+                    group.submissions.length > initialSubmissionsPerGroup && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3 dark:border-slate-700 dark:bg-slate-800/40">
+                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        Showing{" "}
+                        {Math.min(
+                          visibleSubmissionsByGroup[group.key] ?? 0,
+                          group.submissions.length,
+                        )}{" "}
+                        of {group.submissions.length} documents
+                      </p>
+
+                      <div className="flex gap-2">
+                        {(visibleSubmissionsByGroup[group.key] ?? 0) <
+                          group.submissions.length && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVisibleSubmissionsByGroup((current) => ({
+                                ...current,
+                                [group.key]:
+                                  (current[group.key] ?? 0) +
+                                  submissionsLoadMoreSize,
+                              }))
+                            }
+                            className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                          >
+                            Load more
+                          </button>
+                        )}
+
+                        {(visibleSubmissionsByGroup[group.key] ?? 0) >
+                          initialSubmissionsPerGroup && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVisibleSubmissionsByGroup((current) => ({
+                                ...current,
+                                [group.key]: initialSubmissionsPerGroup,
+                              }))
+                            }
+                            className="rounded-xl px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                          >
+                            Show less
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </section>
               ))
             ) : (
               <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">
@@ -1329,8 +1872,297 @@ export function DocumentSharesPage() {
               </div>
             )}
           </div>
-          <div className="px-5 pb-5"><PaginationControls currentPage={submissionsPage} totalItems={submissions.length} pageSize={pageSize} onPageChange={setSubmissionsPage} /></div>
+          <div className="px-5 pb-5">
+            <PaginationControls
+              currentPage={submissionsPage}
+              totalItems={submissionGroups.length}
+              pageSize={submissionGroupsPageSize}
+              onPageChange={setSubmissionsPage}
+            />
+          </div>
         </section>
+      )}
+
+      {disableConfirmLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Disable Shared Upload Link
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Are you sure you want to disable{" "}
+              <strong>{disableConfirmLink.title}</strong>? The link will stop
+              accepting new uploads and this action cannot be undone.
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDisableConfirmLink(null)}
+                disabled={disablingLinkId !== null}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleDisable(disableConfirmLink)}
+                disabled={disablingLinkId !== null}
+                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {disablingLinkId !== null && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {disablingLinkId !== null ? "Disabling..." : "Disable"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {allowlistLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5 dark:border-slate-700">
+              <div>
+                <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+                  Manage shared upload link
+                </h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {isPrivateAllowlistLink(allowlistLink)
+                    ? "Review link details and manage who can upload."
+                    : "Review shared upload link details."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAllowlistManager}
+                disabled={isUpdatingAllowlist}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-6 py-5">
+              <section>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-extrabold text-slate-950 dark:text-white">
+                    {allowlistLink.title}
+                  </h3>
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    {statusLabel[getShareLinkStatus(allowlistLink.status)] ||
+                      allowlistLink.status}
+                  </span>
+                  <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+                    {isPrivateAllowlistLink(allowlistLink)
+                      ? "Private allowlist"
+                      : "Public · Login required"}
+                  </span>
+                </div>
+
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                  {allowlistLink.description || "No description"}
+                </p>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {[
+                    {
+                      label: "Uploads",
+                      value: `${allowlistLink.currentUploads ?? 0}/${allowlistLink.maxUploads ?? "∞"}`,
+                    },
+                    {
+                      label: "Remaining uploads",
+                      value:
+                        allowlistLink.remainingUploads ??
+                        (allowlistLink.maxUploads == null
+                          ? "Unlimited"
+                          : Math.max(
+                              0,
+                              allowlistLink.maxUploads -
+                                (allowlistLink.currentUploads ?? 0),
+                            )),
+                    },
+                    {
+                      label: "Per-user limit",
+                      value: allowlistLink.maxUploadsPerUser ?? "No limit",
+                    },
+                    {
+                      label: "Expires",
+                      value: formatDateTime(allowlistLink.expiresAt),
+                    },
+                    {
+                      label: "Maximum file size",
+                      value: formatFileSize(allowlistLink.maxFileSizeBytes),
+                    },
+                    {
+                      label: "Maximum total size",
+                      value: formatFileSize(allowlistLink.maxTotalBytes),
+                    },
+                    {
+                      label: "Remaining storage",
+                      value: formatFileSize(allowlistLink.remainingTotalBytes),
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60"
+                    >
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                        {item.label}
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-slate-800 dark:text-slate-100">
+                        {item.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                    Accepted file types
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(allowlistLink.allowedFileTypesList?.length
+                      ? allowlistLink.allowedFileTypesList
+                      : (allowlistLink.allowedFileTypes || "").split(",")
+                    )
+                      .map((type) => type.trim())
+                      .filter(Boolean)
+                      .map((type) => (
+                        <span
+                          key={type}
+                          className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300"
+                        >
+                          {getFileTypeLabel(type)}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+
+                {getUsableShareUrl(allowlistLink) && (
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      readOnly
+                      value={getUsableShareUrl(allowlistLink)}
+                      className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCopy(getUsableShareUrl(allowlistLink))
+                      }
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      <ClipboardCopy className="h-4 w-4" />
+                      Copy link
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              {isPrivateAllowlistLink(allowlistLink) && (
+                <section className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-950 dark:text-white">
+                      Allowlist
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                      {allowlistLink.allowedUserEmails?.length ?? 0} registered
+                      user(s) can upload through this link.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+                  {allowlistLink.allowedUserEmails?.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {allowlistLink.allowedUserEmails.map((email) => (
+                        <span
+                          key={email}
+                          className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700"
+                        >
+                          {email}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      No users are currently in this allowlist.
+                    </p>
+                  )}
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <label className="block space-y-2">
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                      Add registered users
+                    </span>
+                    <textarea
+                      value={allowlistForm.emailsToAdd}
+                      onChange={(event) =>
+                        setAllowlistForm((current) => ({
+                          ...current,
+                          emailsToAdd: event.target.value,
+                        }))
+                      }
+                      rows={3}
+                      placeholder="student1@example.com"
+                      className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    />
+                  </label>
+
+                  <label className="block space-y-2">
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                      Remove registered users
+                    </span>
+                    <textarea
+                      value={allowlistForm.emailsToRemove}
+                      onChange={(event) =>
+                        setAllowlistForm((current) => ({
+                          ...current,
+                          emailsToRemove: event.target.value,
+                        }))
+                      }
+                      rows={3}
+                      placeholder="student2@example.com"
+                      className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    />
+                  </label>
+                </div>
+
+                </section>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={closeAllowlistManager}
+                disabled={isUpdatingAllowlist}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                {isPrivateAllowlistLink(allowlistLink) ? "Cancel" : "Close"}
+              </button>
+              {isPrivateAllowlistLink(allowlistLink) && (
+                <button
+                  type="button"
+                  onClick={handleUpdateAllowlist}
+                  disabled={isUpdatingAllowlist}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isUpdatingAllowlist && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  {isUpdatingAllowlist ? "Updating..." : "Save allowlist"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {selectedSubmission && (
@@ -1569,23 +2401,6 @@ export function DocumentSharesPage() {
                   (detected from uploaded file)
                 </span>
               </div>
-
-              <select
-                value={approveForm.visibility}
-                onChange={(event) =>
-                  setApproveForm((current) => ({
-                    ...current,
-                    visibility: event.target.value,
-                  }))
-                }
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              >
-                {VISIBILITY_OPTIONS.map((visibility) => (
-                  <option key={visibility} value={visibility}>
-                    {visibility}
-                  </option>
-                ))}
-              </select>
 
               <textarea
                 value={approveForm.description}

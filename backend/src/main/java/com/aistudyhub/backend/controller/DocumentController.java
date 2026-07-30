@@ -185,10 +185,6 @@ public class DocumentController {
 
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
-        } catch (IllegalArgumentException e) {
-            // Unsupported file type — return 400 Bad Request
-            return ResponseEntity.badRequest().build();
-
         } catch (IOException e) {
             // Disk / IO error — return 500 Internal Server Error
             return ResponseEntity.internalServerError().build();

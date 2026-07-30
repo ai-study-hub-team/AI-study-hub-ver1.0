@@ -11,12 +11,17 @@ export interface DocumentShareLinkResponse {
   expiresAt?: string | null;
   maxUploads?: number | null;
   currentUploads?: number | null;
+  remainingUploads?: number | null;
   maxUploadsPerUser?: number | null;
   maxFileSizeBytes?: number | null;
   maxTotalBytes?: number | null;
+  activeStoredBytes?: number | null;
+  remainingTotalBytes?: number | null;
   allowedFileTypes?: string | null;
+  allowedFileTypesList?: string[];
   accessPolicy?: "PRIVATE_ALLOWLIST" | "ANY_AUTHENTICATED_USER" | string;
   allowedUserIds?: number[];
+  allowedUserEmails?: string[];
   defaultFolderId?: number | null;
   defaultFolderName?: string | null;
   token?: string | null;
@@ -39,6 +44,11 @@ export interface CreateDocumentShareLinkRequest {
   defaultFolderId?: number | null;
 }
 
+export interface UpdateDocumentShareLinkAllowlistRequest {
+  userEmailsToAdd: string[];
+  userEmailsToRemove: string[];
+}
+
 export const documentShareLinkApi = {
   getDocumentShareLinks: () =>
     apiClient.get<DocumentShareLinkResponse[]>("/api/document-share-links"),
@@ -53,5 +63,14 @@ export const documentShareLinkApi = {
     apiClient.patch<DocumentShareLinkResponse>(
       `/api/document-share-links/${id}/disable`,
       null,
+    ),
+
+  updateDocumentShareLinkAllowlist: (
+    id: number,
+    data: UpdateDocumentShareLinkAllowlistRequest,
+  ) =>
+    apiClient.patch<DocumentShareLinkResponse>(
+      `/api/document-share-links/${id}/allowlist`,
+      data,
     ),
 };

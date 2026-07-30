@@ -2,14 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import {
   CheckCircle2,
-  ChevronRight,
   FileAudio,
   FileQuestion,
   FileText,
   FileVideo,
   Folder,
   Presentation,
-  Youtube,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -21,7 +19,6 @@ import { getCurrentUserId } from "../../services/apiClient";
 import { filterMyDocuments } from "../../utils/documentOwnership";
 import { CollaborationCard } from "./components/CollaborationCard";
 import { RecentUploadsCard } from "./components/RecentUploadsCard";
-import { StudyMaterialsCard } from "./components/StudyMaterialsCard";
 import { UploadDropzone } from "./components/UploadDropzone";
 import { UploadFileList } from "./components/UploadFileList";
 import { UploadStepper } from "./components/UploadStepper";
@@ -39,7 +36,6 @@ const uploadTypes: UploadType[] = [
   { label: "Audio Files", icon: FileAudio },
   { label: "Video Files", icon: FileVideo },
   { label: "Import Quizlet", icon: FileQuestion },
-  { label: "Youtube Video", icon: Youtube },
 ];
 
 type ListResponse<T> = T[] | { content?: T[] };
@@ -346,11 +342,6 @@ export function UploadDocumentsPage() {
                   ))}
                 </div>
 
-                <button className="inline-flex items-center gap-1 text-sm font-bold text-blue-600 hover:text-blue-700">
-                  View more upload types
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-
                 <UploadFileList files={files} onRemove={removeFile} />
               </div>
             )}
@@ -596,8 +587,6 @@ export function UploadDocumentsPage() {
         </div>
 
         <aside className="space-y-5">
-          <StudyMaterialsCard />
-
           <RecentUploadsCard
             uploads={filteredUploads}
             activeFilter={activeFilter}

@@ -6,7 +6,13 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "subscription_plans")
+@Table(
+        name = "subscription_plans",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uq_subscription_plan_code_version",
+                columnNames = {"code", "version"}
+        )
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -18,8 +24,12 @@ public class SubscriptionPlan {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 50)
+    @Column(nullable = false, length = 50)
     private String code;
+
+    @Column(nullable = false, columnDefinition = "integer default 1")
+    @Builder.Default
+    private Integer version = 1;
 
     @Column(nullable = false, length = 100)
     private String name;
@@ -62,6 +72,19 @@ public class SubscriptionPlan {
     @Builder.Default
     private Boolean isActive = true;
 
+    @Column(
+            nullable = false,
+            updatable = false,
+            columnDefinition = "timestamp default CURRENT_TIMESTAMP"
+    )
+    private LocalDateTime effectiveFrom;
+
+    private LocalDateTime supersededAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "previous_version_id")
+    private SubscriptionPlan previousVersion;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -73,6 +96,9 @@ public class SubscriptionPlan {
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) {
             createdAt = now;
+        }
+        if (effectiveFrom == null) {
+            effectiveFrom = now;
         }
         updatedAt = now;
     }

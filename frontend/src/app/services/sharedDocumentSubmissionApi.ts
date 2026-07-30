@@ -9,6 +9,8 @@ export type SharedDocumentSubmissionStatus =
 
 export interface SharedDocumentSubmissionResponse {
   id: number;
+  shareLinkId?: number | null;
+  shareLinkTitle?: string | null;
   title?: string | null;
   description?: string | null;
   status: SharedDocumentSubmissionStatus;

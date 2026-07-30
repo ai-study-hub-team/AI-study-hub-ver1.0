@@ -19,6 +19,11 @@ public interface FolderShareRepository extends JpaRepository<FolderShare, Long> 
 
     List<FolderShare> findByFolderIdAndStatus(Long folderId, FolderShareStatus status);
 
+    List<FolderShare> findByStatusAndExpiresAtBefore(
+            FolderShareStatus status,
+            LocalDateTime now
+    );
+
 
     @Query("""
             select fs

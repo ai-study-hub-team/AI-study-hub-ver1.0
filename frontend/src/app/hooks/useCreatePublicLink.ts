@@ -28,12 +28,19 @@ export function useCreatePublicLink() {
           expiresAt: new Date(Date.now() + PUBLIC_LINK_TTL_MS).toISOString(),
         },
       );
+      const token = response.data.token?.trim();
+      const publicUrl = token
+        ? new URL(
+            `/public/documents/${encodeURIComponent(token)}`,
+            window.location.origin,
+          ).toString()
+        : response.data.publicUrl;
 
       try {
-        await navigator.clipboard.writeText(response.data.publicUrl);
+        await navigator.clipboard.writeText(publicUrl);
         toast.success("Public link created and copied to clipboard");
       } catch (clipboardError) {
-        console.log("Public link:", response.data.publicUrl, clipboardError);
+        console.log("Public link:", publicUrl, clipboardError);
         toast.success("Public link created");
       }
     } catch (error) {

@@ -52,7 +52,8 @@ public class SubscriptionService {
     }
 
     private void assignPlan(User user, String planCode) {
-        SubscriptionPlan plan = subscriptionPlanRepository.findByCode(planCode)
+        SubscriptionPlan plan = subscriptionPlanRepository
+                .findFirstByCodeAndIsActiveTrueOrderByVersionDesc(planCode)
                 .orElseThrow(() -> new RuntimeException("Critical: " + planCode + " plan not found in database"));
 
         if (!Boolean.TRUE.equals(plan.getIsActive())) {
@@ -91,7 +92,8 @@ public class SubscriptionService {
 
         rolePolicyService.requireUserSubscriptionTarget(user);
 
-        SubscriptionPlan plan = subscriptionPlanRepository.findByCode(normalizedPlanCode)
+        SubscriptionPlan plan = subscriptionPlanRepository
+                .findFirstByCodeAndIsActiveTrueOrderByVersionDesc(normalizedPlanCode)
                 .orElseThrow(() -> new RuntimeException("Plan not found: " + normalizedPlanCode));
 
         if (!Boolean.TRUE.equals(plan.getIsActive())) {
@@ -116,30 +118,37 @@ public class SubscriptionService {
 
     @Transactional
     //mua proplan
-    public void processSuccessfulPayment(Long userId, String planCode, Integer purchasedDays) {
+    public void processSuccessfulPayment(Long userId, Long planId, Integer purchasedDays) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
 
         rolePolicyService.requireUserSubscriptionTarget(user);
 
-        SubscriptionPlan newPlan = subscriptionPlanRepository.findByCode(planCode)
-                .orElseThrow(() -> new RuntimeException("Plan not found: " + planCode));
+        SubscriptionPlan purchasedPlan = subscriptionPlanRepository.findById(planId)
+                .orElseThrow(() -> new RuntimeException("Purchased plan version not found: " + planId));
 
         UserSubscription subscription = getCurrentSubscription(userId);
 
-        if (subscription.getPlan().getCode().equals(planCode) && subscription.getStatus() == SubscriptionStatus.ACTIVE && subscription.getEndDate() != null) {
-            // Extend existing PRO plan
+        LocalDateTime now = LocalDateTime.now();
+        if (subscription.getPlan().getCode().equals(purchasedPlan.getCode())
+                && subscription.getStatus() == SubscriptionStatus.ACTIVE
+                && subscription.getEndDate() != null
+                && subscription.getEndDate().isAfter(now)) {
+            // A renewal extends the remaining period but moves entitlement to
+            // the exact version whose price and terms were paid for.
             subscription.setEndDate(subscription.getEndDate().plusDays(purchasedDays));
-            log.info("Extended {} plan for user ID: {}. New end date: {}", planCode, userId, subscription.getEndDate());
+            log.info("Extended {} v{} for user ID {}. New end date: {}",
+                    purchasedPlan.getCode(), purchasedPlan.getVersion(), userId, subscription.getEndDate());
         } else {
             // Upgrade or change plan
-            subscription.setPlan(newPlan);
             subscription.setStatus(SubscriptionStatus.ACTIVE);
-            subscription.setStartDate(LocalDateTime.now());
-            subscription.setEndDate(LocalDateTime.now().plusDays(purchasedDays));
-            log.info("Upgraded to {} plan for user ID: {}. End date: {}", planCode, userId, subscription.getEndDate());
+            subscription.setStartDate(now);
+            subscription.setEndDate(now.plusDays(purchasedDays));
+            log.info("Upgraded to {} v{} for user ID {}. End date: {}",
+                    purchasedPlan.getCode(), purchasedPlan.getVersion(), userId, subscription.getEndDate());
         }
 
+        subscription.setPlan(purchasedPlan);
         subscription.setExpiryReminder7DaysSentAt(null);
         subscription.setExpiredNotificationSentAt(null);
         userSubscriptionRepository.save(subscription);
@@ -155,7 +164,8 @@ public class SubscriptionService {
             return;
         }
 
-        SubscriptionPlan freePlan = subscriptionPlanRepository.findByCode("FREE")
+        SubscriptionPlan freePlan = subscriptionPlanRepository
+                .findFirstByCodeAndIsActiveTrueOrderByVersionDesc("FREE")
                 .orElseThrow(() -> new RuntimeException("Critical: FREE plan not found in database"));
 
         for (UserSubscription sub : overdueSubscriptions) {
@@ -228,7 +238,8 @@ public class SubscriptionService {
             return;
         }
 
-        SubscriptionPlan freePlan = subscriptionPlanRepository.findByCode("FREE")
+        SubscriptionPlan freePlan = subscriptionPlanRepository
+                .findFirstByCodeAndIsActiveTrueOrderByVersionDesc("FREE")
                 .orElseThrow(() -> new RuntimeException("Critical: FREE plan not found in database"));
 
         for (UserSubscription sub : overdueSubscriptions) {
@@ -276,6 +287,7 @@ public class SubscriptionService {
         PlanResponse planResponse = PlanResponse.builder()
                 .id(plan.getId())
                 .code(plan.getCode())
+                .version(plan.getVersion())
                 .name(plan.getName())
                 .storageLimitMb(plan.getStorageLimitMb())
                 .maxUploadSizePerFileMb(plan.getMaxUploadSizePerFileMb())

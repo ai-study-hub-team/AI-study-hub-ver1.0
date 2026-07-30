@@ -64,4 +64,5 @@ public class UserSubscription {
     void preUpdate() {
         updatedAt = LocalDateTime.now();
     }
+
 }

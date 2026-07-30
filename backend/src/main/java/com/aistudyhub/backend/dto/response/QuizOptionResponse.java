@@ -9,6 +9,5 @@ import lombok.*;
 public class QuizOptionResponse {
     private Long optionId;
     private String optionText;
-    private Boolean isCorrect;
     private Integer optionOrder;
 }

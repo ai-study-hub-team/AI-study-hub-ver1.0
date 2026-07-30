@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -38,12 +39,14 @@ public class AdminPlanService {
     public PlanResponse createPlan(AdminPlanRequest request) {
         validateDuration(request);
 
-        if (subscriptionPlanRepository.findByCode(request.getCode()).isPresent()) {
-            throw new RuntimeException("Plan with code " + request.getCode() + " already exists");
+        String code = normalizeCode(request.getCode());
+        if (subscriptionPlanRepository.existsByCodeAndIsActiveTrue(code)) {
+            throw new RuntimeException("An active plan with code " + code + " already exists");
         }
 
         SubscriptionPlan plan = SubscriptionPlan.builder()
-                .code(request.getCode())
+                .code(code)
+                .version(nextVersion(code))
                 .name(request.getName())
                 .storageLimitMb(request.getStorageLimitMb())
                 .maxUploadSizePerFileMb(request.getMaxUploadSizePerFileMb())
@@ -68,35 +71,58 @@ public class AdminPlanService {
         SubscriptionPlan plan = subscriptionPlanRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Plan not found with id: " + id));
 
-        if (!plan.getCode().equals(request.getCode()) && subscriptionPlanRepository.findByCode(request.getCode()).isPresent()) {
-            throw new RuntimeException("Plan with code " + request.getCode() + " already exists");
+        String requestedCode = normalizeCode(request.getCode());
+        if (!plan.getCode().equals(requestedCode)) {
+            throw new RuntimeException("Cannot change a plan code when publishing a new version");
         }
 
         // FREE plan code cannot be changed
-        if (plan.getCode().equals("FREE") && !request.getCode().equals("FREE")) {
-            throw new RuntimeException("Cannot change the code of the FREE plan");
-        }
-        
         // FREE plan must remain active
         if (plan.getCode().equals("FREE") && !request.getIsActive()) {
             throw new RuntimeException("Cannot disable the FREE plan");
         }
 
-        plan.setCode(request.getCode());
-        plan.setName(request.getName());
-        plan.setStorageLimitMb(request.getStorageLimitMb());
-        plan.setMaxUploadSizePerFileMb(request.getMaxUploadSizePerFileMb());
-        plan.setDailyTokenLimit(request.getDailyTokenLimit());
-        plan.setPrice(request.getPrice());
-        plan.setDurationDays(request.getDurationDays());
-        plan.setDescription(request.getDescription());
-        plan.setAllowImageUpload(request.getAllowImageUpload());
-        plan.setAllowDocumentUpload(request.getAllowDocumentUpload());
-        plan.setAllowVideoUpload(request.getAllowVideoUpload());
-        plan.setAllowAudioUpload(request.getAllowAudioUpload());
-        plan.setIsActive(request.getIsActive());
+        // FREE is the baseline entitlement rather than a purchased product.
+        // Keep its stable row so expired subscriptions can always return to it.
+        if (plan.getCode().equals("FREE")) {
+            applyRequest(plan, request);
+            return toResponse(subscriptionPlanRepository.save(plan));
+        }
 
-        return toResponse(subscriptionPlanRepository.save(plan));
+        if (!Boolean.TRUE.equals(plan.getIsActive())) {
+            throw new RuntimeException("Only the currently active plan version can be revised");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        plan.setIsActive(false);
+        plan.setSupersededAt(now);
+        // Flush the retirement before inserting the replacement so the
+        // database invariant of one active version per code is never violated.
+        subscriptionPlanRepository.saveAndFlush(plan);
+
+        SubscriptionPlan newVersion = SubscriptionPlan.builder()
+                .code(plan.getCode())
+                .version(plan.getVersion() + 1)
+                .name(request.getName())
+                .storageLimitMb(request.getStorageLimitMb())
+                .maxUploadSizePerFileMb(request.getMaxUploadSizePerFileMb())
+                .dailyTokenLimit(request.getDailyTokenLimit())
+                .price(request.getPrice())
+                .durationDays(request.getDurationDays())
+                .description(request.getDescription())
+                .allowImageUpload(request.getAllowImageUpload())
+                .allowDocumentUpload(request.getAllowDocumentUpload())
+                .allowVideoUpload(request.getAllowVideoUpload())
+                .allowAudioUpload(request.getAllowAudioUpload())
+                .isActive(request.getIsActive())
+                .effectiveFrom(now)
+                .previousVersion(plan)
+                .build();
+
+        SubscriptionPlan saved = subscriptionPlanRepository.save(newVersion);
+        log.info("Published plan {} version {} from version {}", saved.getCode(),
+                saved.getVersion(), plan.getVersion());
+        return toResponse(saved);
     }
 
     @Transactional
@@ -124,10 +150,36 @@ public class AdminPlanService {
         }
     }
 
+    private int nextVersion(String code) {
+        return subscriptionPlanRepository.findFirstByCodeOrderByVersionDesc(code)
+                .map(plan -> plan.getVersion() + 1)
+                .orElse(1);
+    }
+
+    private String normalizeCode(String code) {
+        return code.trim().toUpperCase();
+    }
+
+    private void applyRequest(SubscriptionPlan plan, AdminPlanRequest request) {
+        plan.setName(request.getName());
+        plan.setStorageLimitMb(request.getStorageLimitMb());
+        plan.setMaxUploadSizePerFileMb(request.getMaxUploadSizePerFileMb());
+        plan.setDailyTokenLimit(request.getDailyTokenLimit());
+        plan.setPrice(request.getPrice());
+        plan.setDurationDays(request.getDurationDays());
+        plan.setDescription(request.getDescription());
+        plan.setAllowImageUpload(request.getAllowImageUpload());
+        plan.setAllowDocumentUpload(request.getAllowDocumentUpload());
+        plan.setAllowVideoUpload(request.getAllowVideoUpload());
+        plan.setAllowAudioUpload(request.getAllowAudioUpload());
+        plan.setIsActive(request.getIsActive());
+    }
+
     private PlanResponse toResponse(SubscriptionPlan plan) {
         return PlanResponse.builder()
                 .id(plan.getId())
                 .code(plan.getCode())
+                .version(plan.getVersion())
                 .name(plan.getName())
                 .storageLimitMb(plan.getStorageLimitMb())
                 .maxUploadSizePerFileMb(plan.getMaxUploadSizePerFileMb())

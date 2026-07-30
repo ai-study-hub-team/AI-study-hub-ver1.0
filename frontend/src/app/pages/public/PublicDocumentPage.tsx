@@ -213,8 +213,12 @@ export function PublicDocumentPage() {
         const fileResponse = await publicShareApi.getPublicDocumentFile(token);
 
         const responseBlob = fileResponse.data as Blob;
+        const responseContentType = responseBlob.type?.toLowerCase();
         const contentType =
-          responseBlob.type || data.contentType || getContentTypeFromBlob(responseBlob);
+          responseContentType &&
+          responseContentType !== "application/octet-stream"
+            ? responseContentType
+            : data.contentType || getContentTypeFromBlob(responseBlob);
 
         const blob = new Blob([responseBlob], {
           type: contentType,

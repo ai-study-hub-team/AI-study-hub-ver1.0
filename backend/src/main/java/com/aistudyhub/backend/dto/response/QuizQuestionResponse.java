@@ -12,6 +12,5 @@ public class QuizQuestionResponse {
     private Long questionId;
     private String questionText;
     private Integer questionOrder;
-    private String explanation;
     private List<QuizOptionResponse> options;
 }

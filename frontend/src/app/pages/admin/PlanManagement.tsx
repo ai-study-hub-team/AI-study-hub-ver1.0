@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Check,
+  CircleOff,
   Eye,
   Loader2,
   PackagePlus,
   Pencil,
   RefreshCcw,
   Search,
-  Trash2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +20,7 @@ import {
 import { PaginationControls } from "../../components/ui/PaginationControls";
 
 type DialogMode = "create" | "edit" | "view" | null;
+type PlanStatusTab = "active" | "inactive";
 
 const EMPTY_FORM: AdminPlanPayload = {
   code: "",
@@ -70,7 +71,11 @@ export function PlanManagement() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<PlanResponse | null>(
+    null,
+  );
   const [search, setSearch] = useState("");
+  const [statusTab, setStatusTab] = useState<PlanStatusTab>("active");
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState<AdminPlanPayload>(EMPTY_FORM);
@@ -95,21 +100,31 @@ export function PlanManagement() {
 
   const filteredPlans = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return plans;
-    return plans.filter(
+    const plansForTab = plans.filter((plan) =>
+      statusTab === "active" ? plan.isActive : !plan.isActive,
+    );
+    const matchingPlans = !keyword ? plansForTab : plansForTab.filter(
       (plan) =>
         plan.code.toLowerCase().includes(keyword) ||
         plan.name.toLowerCase().includes(keyword) ||
         plan.description?.toLowerCase().includes(keyword),
     );
-  }, [plans, search]);
+    return [...matchingPlans].sort(
+      (firstPlan, secondPlan) =>
+        firstPlan.code.localeCompare(secondPlan.code) ||
+        secondPlan.version - firstPlan.version,
+    );
+  }, [plans, search, statusTab]);
+
+  const activePlanCount = plans.filter((plan) => plan.isActive).length;
+  const inactivePlanCount = plans.length - activePlanCount;
 
   const paginatedPlans = filteredPlans.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize,
   );
 
-  useEffect(() => setCurrentPage(1), [search]);
+  useEffect(() => setCurrentPage(1), [search, statusTab]);
 
   const closeDialog = (force = false) => {
     if (saving && !force) return;
@@ -218,11 +233,11 @@ export function PlanManagement() {
   };
 
   const deactivatePlan = async (plan: PlanResponse) => {
-    if (!window.confirm(`Deactivate the ${plan.name} plan?`)) return;
     setDeletingId(plan.id);
     try {
       await adminPlanApi.deletePlan(plan.id);
       toast.success("Subscription plan deactivated successfully.");
+      setDeactivateTarget(null);
       await loadPlans();
     } catch (error) {
       toast.error(getErrorMessage(error, "Cannot deactivate subscription plan."));
@@ -274,11 +289,36 @@ export function PlanManagement() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex gap-2 border-b border-slate-200 px-5 pt-4 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={() => setStatusTab("active")}
+            className={`border-b-2 px-3 pb-3 text-sm font-bold transition-colors ${
+              statusTab === "active"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+            }`}
+          >
+            Active Plans ({activePlanCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusTab("inactive")}
+            className={`border-b-2 px-3 pb-3 text-sm font-bold transition-colors ${
+              statusTab === "inactive"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+            }`}
+          >
+            Inactive Plans ({inactivePlanCount})
+          </button>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
             <thead className="bg-slate-50 dark:bg-slate-800/70">
               <tr className="text-left text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 <th className="px-5 py-4">Plan</th>
+                <th className="px-5 py-4">Version</th>
                 <th className="px-5 py-4">Price</th>
                 <th className="px-5 py-4">Storage</th>
                 <th className="px-5 py-4">Daily tokens</th>
@@ -289,9 +329,9 @@ export function PlanManagement() {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading ? (
-                <tr><td colSpan={7} className="px-5 py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" /></td></tr>
+                <tr><td colSpan={8} className="px-5 py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" /></td></tr>
               ) : filteredPlans.length === 0 ? (
-                <tr><td colSpan={7} className="px-5 py-16 text-center text-slate-500">No subscription plans found.</td></tr>
+                <tr><td colSpan={8} className="px-5 py-16 text-center text-slate-500">No {statusTab} subscription plans found.</td></tr>
               ) : (
                 paginatedPlans.map((plan) => (
                   <tr key={plan.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
@@ -299,22 +339,27 @@ export function PlanManagement() {
                       <p className="font-bold text-slate-900 dark:text-white">{plan.name}</p>
                       <p className="text-xs font-semibold text-blue-600">{plan.code}</p>
                     </td>
+                    <td className="px-5 py-4 font-semibold text-slate-600 dark:text-slate-300">
+                      Version {plan.version}
+                    </td>
                     <td className="px-5 py-4 font-semibold text-slate-700 dark:text-slate-200">{formatPrice(plan.price)}</td>
                     <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{formatNumber(plan.storageLimitMb)} MB</td>
                     <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{formatNumber(plan.dailyTokenLimit)}</td>
                     <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{plan.durationDays ? `${plan.durationDays} days` : "Unlimited"}</td>
                     <td className="px-5 py-4">
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${plan.isActive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
-                        {plan.isActive ? "Active" : "Inactive"}
+                        {plan.isActive ? "On sale" : "Previous version"}
                       </span>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1">
                         <button title="View" onClick={() => void openPlan(plan.id, "view")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button>
-                        <button title="Edit" onClick={() => void openPlan(plan.id, "edit")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-amber-600 dark:hover:bg-slate-800"><Pencil className="h-4 w-4" /></button>
                         {plan.isActive && (
-                          <button title="Deactivate" disabled={deletingId === plan.id} onClick={() => void deactivatePlan(plan)} className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/40">
-                            {deletingId === plan.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          <button title="Edit" onClick={() => void openPlan(plan.id, "edit")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-amber-600 dark:hover:bg-slate-800"><Pencil className="h-4 w-4" /></button>
+                        )}
+                        {plan.isActive && plan.code.toUpperCase() !== "FREE" && (
+                          <button title="Deactivate plan" aria-label={`Deactivate ${plan.name} plan`} disabled={deletingId === plan.id} onClick={() => setDeactivateTarget(plan)} className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/40">
+                            {deletingId === plan.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CircleOff className="h-4 w-4" />}
                           </button>
                         )}
                       </div>
@@ -340,7 +385,7 @@ export function PlanManagement() {
                 </h2>
                 <p className="text-sm text-slate-500">{dialogMode === "view" ? "Information returned by GET /api/admin/plans/{id}." : "Configure plan limits and upload permissions."}</p>
               </div>
-              <button type="button" onClick={closeDialog} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-5 w-5" /></button>
+              <button type="button" onClick={() => closeDialog()} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-5 w-5" /></button>
             </div>
 
             {saving && dialogMode === "view" ? (
@@ -348,7 +393,21 @@ export function PlanManagement() {
             ) : (
               <form onSubmit={submitPlan} className="space-y-6 p-6">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Plan code"><input disabled={dialogMode === "view"} value={form.code} onChange={(e) => updateField("code", e.target.value)} className="form-input" placeholder="PREMIUM" /></Field>
+                  <Field label="Plan code">
+                    <input
+                      disabled={dialogMode !== "create"}
+                      value={form.code}
+                      onChange={(e) => updateField("code", e.target.value)}
+                      className="form-input"
+                      placeholder="PREMIUM"
+                    />
+                    {dialogMode === "edit" && (
+                      <span className="mt-1.5 block text-xs text-slate-500 dark:text-slate-400">
+                        Plan codes cannot be changed after creation because
+                        subscriptions and pending payments reference them.
+                      </span>
+                    )}
+                  </Field>
                   <Field label="Plan name"><input disabled={dialogMode === "view"} value={form.name} onChange={(e) => updateField("name", e.target.value)} className="form-input" placeholder="Premium Plan" /></Field>
                   <NumberField label="Storage limit (MB)" value={form.storageLimitMb} disabled={dialogMode === "view"} onChange={(value) => updateField("storageLimitMb", value)} />
                   <NumberField label="Maximum upload per file (MB)" value={form.maxUploadSizePerFileMb} disabled={dialogMode === "view"} onChange={(value) => updateField("maxUploadSizePerFileMb", value)} />
@@ -356,13 +415,30 @@ export function PlanManagement() {
                   <NumberField label="Price (VND)" value={form.price} disabled={dialogMode === "view"} onChange={(value) => updateField("price", value)} />
                   <NumberField label="Duration (days)" value={form.durationDays ?? 0} disabled={dialogMode === "view"} onChange={(value) => updateField("durationDays", value)} />
                   <Field label="Status">
-                    <select disabled={dialogMode === "view"} value={form.isActive ? "active" : "inactive"} onChange={(e) => updateField("isActive", e.target.value === "active")} className="form-input">
-                      <option value="active">Active</option><option value="inactive">Inactive</option>
-                    </select>
+                    {dialogMode === "create" ? (
+                      <select value={form.isActive ? "active" : "inactive"} onChange={(e) => updateField("isActive", e.target.value === "active")} className="form-input">
+                        <option value="active">Active</option><option value="inactive">Inactive</option>
+                      </select>
+                    ) : (
+                      <div className="flex h-[42px] items-center rounded-xl border border-slate-200 bg-slate-50 px-3 dark:border-slate-700 dark:bg-slate-800">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${form.isActive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
+                          {form.isActive ? "Active" : "Inactive"}
+                        </span>
+                      </div>
+                    )}
                   </Field>
                 </div>
 
                 <Field label="Description"><textarea disabled={dialogMode === "view"} value={form.description ?? ""} onChange={(e) => updateField("description", e.target.value)} rows={3} className="form-input resize-none" /></Field>
+
+                {dialogMode === "edit" && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                    Changes to storage, token limits, upload size, and upload
+                    permissions apply to new purchases or renewals. Existing
+                    subscriptions keep their current snapshotted benefits until
+                    the user renews or changes plan.
+                  </div>
+                )}
 
                 <div>
                   <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Allowed uploads</p>
@@ -375,7 +451,7 @@ export function PlanManagement() {
                 </div>
 
                 <div className="flex justify-end gap-3 border-t border-slate-200 pt-5 dark:border-slate-700">
-                  <button type="button" onClick={closeDialog} className="rounded-xl border border-slate-200 px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">{dialogMode === "view" ? "Close" : "Cancel"}</button>
+                  <button type="button" onClick={() => closeDialog()} className="rounded-xl border border-slate-200 px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">{dialogMode === "view" ? "Close" : "Cancel"}</button>
                   {dialogMode !== "view" && (
                     <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
                       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {dialogMode === "create" ? "Create plan" : "Save changes"}
@@ -384,6 +460,51 @@ export function PlanManagement() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {deactivateTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
+              Deactivate Plan?
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Are you sure you want to deactivate the{" "}
+              <span className="font-bold text-slate-700 dark:text-slate-200">
+                {deactivateTarget.name}
+              </span>{" "}
+              plan? It will no longer be available for new purchases. Existing
+              subscribers will keep their current benefits until their
+              subscription expires.
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={deletingId !== null}
+                onClick={() => setDeactivateTarget(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={deletingId !== null}
+                onClick={() => void deactivatePlan(deactivateTarget)}
+                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingId === deactivateTarget.id && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {deletingId === deactivateTarget.id
+                  ? "Deactivating..."
+                  : "Deactivate"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -398,7 +519,30 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function NumberField({ label, value, disabled, onChange }: { label: string; value: number; disabled: boolean; onChange: (value: number) => void }) {
-  return <Field label={label}><input type="number" min={0} disabled={disabled} value={value} onChange={(e) => onChange(Number(e.target.value))} className="form-input" /></Field>;
+  return (
+    <Field label={label}>
+      <input
+        type="number"
+        min={0}
+        disabled={disabled}
+        value={value}
+        onChange={(event) => {
+          const normalizedText = event.currentTarget.value.replace(
+            /^0+(?=\d)/,
+            "",
+          );
+          event.currentTarget.value = normalizedText;
+          onChange(Number(normalizedText));
+        }}
+        onBlur={(event) => {
+          const normalizedValue = Math.max(0, Number(event.currentTarget.value) || 0);
+          event.currentTarget.value = String(normalizedValue);
+          onChange(normalizedValue);
+        }}
+        className="form-input"
+      />
+    </Field>
+  );
 }
 
 function PermissionToggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (value: boolean) => void }) {

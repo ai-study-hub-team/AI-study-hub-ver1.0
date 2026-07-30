@@ -24,6 +24,8 @@ import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 
@@ -31,6 +33,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class DocumentService {
+
+    /** File extensions accepted by the document upload system. */
+    private static final Set<String> SUPPORTED_UPLOAD_EXTENSIONS = Set.of(
+            "pdf", "docx", "xls", "xlsx", "txt", "ppt", "pptx",
+            "png", "jpg", "jpeg", "webp", "gif",
+            "mp4", "mov", "avi", "mkv",
+            "mp3", "wav", "m4a", "ogg"
+    );
 
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
@@ -136,17 +146,20 @@ public class DocumentService {
                     .orElseThrow(() -> new NotFoundException("Folder not found"));
         }
 
-        // 3. Validate quotas
+        // 3. Reject only file formats that the upload system does not support.
+        validateSupportedUploadFileType(file);
+
+        // 4. Keep the existing plan and quota restrictions.
         String mimeType = fileStorageService.detectMimeType(file);
         storageQuotaService.validateFileRestrictions(userId, mimeType);
         storageQuotaService.validateFileSize(userId, file.getSize());
         storageQuotaService.validateStorageLimit(userId, file.getSize());
 
-        // 4. Upload the file to Cloudinary. The AI service will later download this
+        // 5. Upload the file to Cloudinary. The AI service will later download this
         // URL to a temporary local file for extraction.
         CloudinaryStorageService.UploadResult uploadResult = cloudinaryStorageService.upload(file);
 
-        // 5. Build CloudFile record
+        // 6. Build CloudFile record
         CloudFile cloudFile = CloudFile.builder()
                 .fileName(uploadResult.getPublicId()) // Cloudinary public_id
                 .originalName(file.getOriginalFilename()) // name from user's computer
@@ -157,11 +170,11 @@ public class DocumentService {
                 .uploadedAt(LocalDateTime.now())
                 .build();
 
-        // 6. Combine documentType and visibility into tags field (simple approach for
+        // 7. Combine documentType and visibility into tags field (simple approach for
         // now)
         String tags = buildTags(documentType, visibility);
 
-        // 7. Build Document record with PROCESSING status (ready for background AI
+        // 8. Build Document record with PROCESSING status (ready for background AI
         // work)
         Document document = Document.builder()
                 .title(title)
@@ -184,7 +197,7 @@ public class DocumentService {
         storageQuotaService.addStorageUsage(userId, file.getSize());
         log.info("Storage usage increased for userId={} by {} bytes", userId, file.getSize());
 
-        // 8. Fire-and-forget: AI processing runs in a background thread.
+        // 9. Fire-and-forget: AI processing runs in a background thread.
         // The upload response is returned immediately to the frontend.
         documentProcessingAsyncService.processDocumentAsync(saved.getId());
         log.info("Background processing dispatched for document ID: {}", saved.getId());
@@ -696,6 +709,26 @@ public class DocumentService {
             sb.append(visibility.toUpperCase());
         }
         return sb.isEmpty() ? null : sb.toString();
+    }
+
+    private void validateSupportedUploadFileType(MultipartFile file) {
+        String originalFilename = file.getOriginalFilename();
+        if (originalFilename == null || originalFilename.isBlank()) {
+            throw new IllegalArgumentException("File name must not be empty.");
+        }
+
+        int lastDot = originalFilename.lastIndexOf('.');
+        String extension = lastDot >= 0 && lastDot < originalFilename.length() - 1
+                ? originalFilename.substring(lastDot + 1).toLowerCase(Locale.ROOT)
+                : "";
+
+        if (!SUPPORTED_UPLOAD_EXTENSIONS.contains(extension)) {
+            throw new IllegalArgumentException(
+                    "This file format is not supported by the system. "
+                            + "Supported formats: documents (PDF, DOCX, XLS, XLSX, TXT, PPT, PPTX), "
+                            + "images (PNG, JPG, JPEG, WEBP, GIF), videos (MP4, MOV, AVI, MKV), "
+                            + "and audio (MP3, WAV, M4A, OGG).");
+        }
     }
 
     private boolean isRemoteUrl(String value) {

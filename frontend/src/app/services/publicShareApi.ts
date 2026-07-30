@@ -19,6 +19,7 @@ export interface PublicDocumentShareLinkResponse {
   allowUpload: boolean;
   reason: string | null;
   expiresAt?: string;
+  allowedFileTypes?: string | string[] | null;
 }
 
 export interface SubmitPublicDocumentParams {

@@ -12,9 +12,7 @@ import {
   HelpCircle,
   History,
   Info,
-  Lightbulb,
   MessageSquare,
-  MicOff,
   Plus,
   RefreshCw,
   Search,
@@ -358,11 +356,6 @@ export function AIChatPage() {
   const [
     isOpenMaterials,
     setIsOpenMaterials,
-  ] = useState(false);
-
-  const [
-    isOpenAttach,
-    setIsOpenAttach,
   ] = useState(false);
 
   const [
@@ -726,7 +719,6 @@ export function AIChatPage() {
       setMessage("");
       setSelectedDocumentIds([]);
       setIsOpenHistory(false);
-      setIsOpenAttach(false);
       setIsOpenMaterials(false);
       setShowAllMaterials(false);
 
@@ -1416,12 +1408,6 @@ export function AIChatPage() {
                   isSending={
                     isSending
                   }
-                  isOpenAttach={
-                    isOpenAttach
-                  }
-                  setIsOpenAttach={
-                    setIsOpenAttach
-                  }
                   selectedCount={
                     selectedDocumentIds.length
                   }
@@ -1551,12 +1537,6 @@ export function AIChatPage() {
                   }
                   isSending={
                     isSending
-                  }
-                  isOpenAttach={
-                    isOpenAttach
-                  }
-                  setIsOpenAttach={
-                    setIsOpenAttach
                   }
                   selectedCount={
                     selectedDocumentIds.length
@@ -1922,8 +1902,6 @@ function ChatInput({
   setMessage,
   onSend,
   isSending,
-  isOpenAttach,
-  setIsOpenAttach,
   selectedCount,
   onOpenMaterials,
 }: {
@@ -1931,10 +1909,6 @@ function ChatInput({
   setMessage: (value: string) => void;
   onSend: () => void;
   isSending: boolean;
-  isOpenAttach: boolean;
-  setIsOpenAttach: (
-    value: boolean,
-  ) => void;
   selectedCount: number;
   onOpenMaterials: () => void;
 }) {
@@ -1984,46 +1958,6 @@ function ChatInput({
         </div>
       )}
 
-      {isOpenAttach && (
-        <div className="absolute bottom-[calc(100%+8px)] left-0 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-2 z-50">
-          {[
-            {
-              icon: (
-                <FileText className="w-4 h-4" />
-              ),
-              label: "Materials",
-              action:
-                onOpenMaterials,
-            },
-            {
-              icon: (
-                <Lightbulb className="w-4 h-4" />
-              ),
-              label:
-                "Prompt Suggestions",
-            },
-          ].map(
-            (item, index) => (
-              <button
-                type="button"
-                key={index}
-                onClick={() => {
-                  setIsOpenAttach(
-                    false,
-                  );
-
-                  item.action?.();
-                }}
-                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-              >
-                {item.icon}
-                {item.label}
-              </button>
-            ),
-          )}
-        </div>
-      )}
-
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm px-4 py-3 flex flex-col gap-2 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40 transition">
         <textarea
           value={message}
@@ -2054,13 +1988,9 @@ function ChatInput({
           <div className="flex items-center gap-2.5 text-slate-400 dark:text-slate-500">
             <button
               type="button"
-              onClick={() =>
-                setIsOpenAttach(
-                  !isOpenAttach,
-                )
-              }
+              onClick={onOpenMaterials}
               className="hover:text-slate-600 dark:hover:text-slate-200 transition"
-              aria-label="Open attachments"
+              aria-label="Open materials"
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -2078,14 +2008,6 @@ function ChatInput({
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              className="text-slate-400"
-              aria-label="Voice input unavailable"
-            >
-              <MicOff className="w-4 h-4" />
-            </button>
-
             <button
               type="button"
               onClick={

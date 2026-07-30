@@ -11,10 +11,10 @@ import com.aistudyhub.backend.entity.DocumentProcessStatus;
 import com.aistudyhub.backend.entity.DocumentSummary;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.enums.SummaryType;
+import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.DocumentSummaryRepository;
-import com.aistudyhub.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,12 +34,12 @@ import java.util.stream.Collectors;
 @Slf4j
 public class SummaryService {
 
-    private final UserRepository userRepository;
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentSummaryRepository documentSummaryRepository;
     private final TokenUsageService tokenUsageService;
     private final TokenPricingService tokenPricingService;
+    private final CurrentUserService currentUserService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
@@ -47,19 +47,17 @@ public class SummaryService {
 
     @Transactional
     public SummaryGenerateResponse generateSummary(SummaryGenerateRequest request) {
-        log.info("Generating summary for documentId: {}, userId: {}", request.getDocumentId(), request.getUserId());
+        User user = currentUserService.getCurrentUser();
+        log.info("Generating summary for documentId: {}, userId: {}", request.getDocumentId(), user.getId());
 
-        // 1. Validate User
-        User user = userRepository.findById(request.getUserId())
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + request.getUserId()));
-
-        // 2. Validate Document
+        // 1. Validate Document
         Document document = documentRepository.findById(request.getDocumentId())
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + request.getDocumentId()));
+                .orElseThrow(() -> new NotFoundException(
+                        "Document not found with id: " + request.getDocumentId()));
 
-        // 3. Verify Ownership
+        // 2. Verify ownership against the authenticated JWT user.
         if (!document.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("User does not have permission to access this document");
+            throw new NotFoundException("Document not found with id: " + request.getDocumentId());
         }
 
         // 4. Verify Document Status
@@ -155,18 +153,23 @@ public class SummaryService {
         return mapToResponse(documentSummary);
     }
 
-    public List<SummaryGenerateResponse> getSummariesByUserId(Long userId) {
-        List<DocumentSummary> summaries = documentSummaryRepository.findByUser_IdOrderByCreatedAtDesc(userId);
+    @Transactional(readOnly = true)
+    public List<SummaryGenerateResponse> getCurrentUserSummaries() {
+        User currentUser = currentUserService.getCurrentUser();
+        List<DocumentSummary> summaries = documentSummaryRepository
+                .findByUser_IdOrderByCreatedAtDesc(currentUser.getId());
         return summaries.stream().map(this::mapToResponse).collect(Collectors.toList());
     }
 
-    public List<SummaryGenerateResponse> getSummariesByDocumentId(Long documentId, Long userId) {
+    @Transactional(readOnly = true)
+    public List<SummaryGenerateResponse> getSummariesByDocumentId(Long documentId) {
+        User currentUser = currentUserService.getCurrentUser();
         // Validate Document Ownership
         Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + documentId));
+                .orElseThrow(() -> new NotFoundException("Document not found with id: " + documentId));
 
-        if (!document.getUser().getId().equals(userId)) {
-            throw new RuntimeException("User does not have permission to access this document");
+        if (!document.getUser().getId().equals(currentUser.getId())) {
+            throw new NotFoundException("Document not found with id: " + documentId);
         }
 
         List<DocumentSummary> summaries = documentSummaryRepository.findByDocument_IdOrderByCreatedAtDesc(documentId);

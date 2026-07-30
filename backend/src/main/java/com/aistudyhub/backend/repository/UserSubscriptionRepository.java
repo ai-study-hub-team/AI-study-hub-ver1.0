@@ -22,5 +22,4 @@ public interface UserSubscriptionRepository extends JpaRepository<UserSubscripti
             LocalDateTime from,
             LocalDateTime to
     );
-
 }

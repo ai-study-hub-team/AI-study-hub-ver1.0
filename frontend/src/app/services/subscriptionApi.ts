@@ -3,6 +3,7 @@ import { apiClient } from "./apiClient";
 export type PlanResponse = {
   id: number;
   code: string;
+  version: number;
   name: string;
   storageLimitMb?: number;
   maxUploadSizePerFileMb?: number;
