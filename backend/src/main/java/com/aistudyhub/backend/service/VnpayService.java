@@ -78,7 +78,8 @@ public class VnpayService {
             throw new ForbiddenException("Only regular users can purchase subscription plans");
         }
 
-        SubscriptionPlan plan = subscriptionPlanRepository.findByCode(planCode)
+        SubscriptionPlan plan = subscriptionPlanRepository
+                .findFirstByCodeAndIsActiveTrueOrderByVersionDesc(planCode)
                 .orElseThrow(() -> new RuntimeException("Plan not found: " + planCode));
 
         if (!plan.getIsActive()) {
@@ -266,7 +267,7 @@ public class VnpayService {
             // Grant subscription — preserves existing business logic
             subscriptionService.processSuccessfulPayment(
                     transaction.getUser().getId(),
-                    transaction.getPlanCode(),
+                    transaction.getPlan().getId(),
                     transaction.getPurchasedDays()
             );
 

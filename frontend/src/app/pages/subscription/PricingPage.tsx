@@ -222,8 +222,7 @@ export function PricingPage() {
         await subscriptionApi.getActivePlans();
 
       const activePlans = Array.isArray(plansResponse.data)
-        ? plansResponse.data
-            .filter((plan) => plan.isActive !== false)
+        ? [...plansResponse.data]
             .sort(
               (firstPlan, secondPlan) =>
                 toSafeNumber(firstPlan.price) -

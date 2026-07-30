@@ -30,12 +30,12 @@ public class StorageQuotaService {
     @Transactional(readOnly = true)
     public long getPlanFileSizeLimitBytes(Long userId) {
         UserSubscription subscription = getActiveSubscription(userId);
-        return subscription.getEffectiveMaxUploadSizePerFileMb() * 1024L * 1024L;
+        return subscription.getPlan().getMaxUploadSizePerFileMb() * 1024L * 1024L;
     }
     @Transactional(readOnly = true)
     public long getPlanStorageLimitBytes(Long userId) {
         UserSubscription subscription = getActiveSubscription(userId);
-        return subscription.getEffectiveStorageLimitMb() * 1024L * 1024L;
+        return subscription.getPlan().getStorageLimitMb() * 1024L * 1024L;
     }
 
     // check dung lượng theo gói
@@ -102,12 +102,12 @@ public class StorageQuotaService {
         UserSubscription subscription = getActiveSubscription(userId);
 
         long limitBytes =
-                subscription.getEffectiveMaxUploadSizePerFileMb() * 1024L * 1024L;
+                subscription.getPlan().getMaxUploadSizePerFileMb() * 1024L * 1024L;
 
         if (fileSizeBytes > limitBytes) {
             throw new QuotaExceededException(
                     "File size exceeds the maximum allowed size of "
-                            + subscription.getEffectiveMaxUploadSizePerFileMb()
+                            + subscription.getPlan().getMaxUploadSizePerFileMb()
                             + " MB for your plan."
             );
         }
@@ -126,19 +126,19 @@ public class StorageQuotaService {
         UserSubscription subscription = getActiveSubscription(userId);
         String lc = mimeType.toLowerCase();
 
-        if (lc.startsWith("video/") && !subscription.getEffectiveAllowVideoUpload()) {
+        if (lc.startsWith("video/") && !subscription.getPlan().getAllowVideoUpload()) {
             throw new PlanRestrictionException(
                     "Your current " + subscription.getPlan().getCode() + " plan does not allow video uploads."
             );
         }
 
-        if (lc.startsWith("audio/") && !subscription.getEffectiveAllowAudioUpload()) {
+        if (lc.startsWith("audio/") && !subscription.getPlan().getAllowAudioUpload()) {
             throw new PlanRestrictionException(
                     "Your current " + subscription.getPlan().getCode() + " plan does not allow audio uploads."
             );
         }
 
-        if (lc.startsWith("image/") && !subscription.getEffectiveAllowImageUpload()) {
+        if (lc.startsWith("image/") && !subscription.getPlan().getAllowImageUpload()) {
             throw new PlanRestrictionException(
                     "Your current " + subscription.getPlan().getCode() + " plan does not allow image uploads."
             );
@@ -153,7 +153,7 @@ public class StorageQuotaService {
                         || lc.equals("text/plain")
                         || lc.startsWith("application/vnd.ms-");
 
-        if (isDocument && !subscription.getEffectiveAllowDocumentUpload()) {
+        if (isDocument && !subscription.getPlan().getAllowDocumentUpload()) {
             throw new PlanRestrictionException(
                     "Your current " + subscription.getPlan().getCode() + " plan does not allow document uploads."
             );

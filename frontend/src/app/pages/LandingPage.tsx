@@ -144,11 +144,7 @@ export function LandingPage() {
             Array.isArray(
               response.data,
             )
-              ? response.data.filter(
-                  (plan) =>
-                    plan.isActive !==
-                    false,
-                )
+              ? response.data
               : [];
 
           setPlans(activePlans);
