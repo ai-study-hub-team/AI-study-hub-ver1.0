@@ -869,6 +869,33 @@ export function DocumentSharesPage() {
     }
   };
 
+  const deleteSubmissionGroup = async (
+    linkId: number,
+    submissionsForLink: SharedDocumentSubmissionResponse[],
+  ) => {
+    const allReviewed = submissionsForLink.every(
+      (submission) => submission.status === "APPROVED" || submission.status === "REJECTED",
+    );
+    if (!allReviewed) {
+      toast.error("All submissions must be approved or rejected before deletion.");
+      return;
+    }
+    if (!window.confirm("Remove this submission group from your list? Approved documents will remain in your library.")) {
+      return;
+    }
+
+    try {
+      setDeletingSubmissionGroupLinkId(linkId);
+      await sharedDocumentSubmissionApi.deleteSubmissionGroup(linkId);
+      setSubmissions((current) => current.filter((submission) => Number(submission.shareLinkId) !== linkId));
+      toast.success("Submission group removed from your list.");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.response?.data?.error || "Cannot delete submission group.");
+    } finally {
+      setDeletingSubmissionGroupLinkId(null);
+    }
+  };
+
   const closeAllowlistManager = () => {
     if (isUpdatingAllowlist || isUpdatingLinkSettings) return;
     setAllowlistLink(null);
