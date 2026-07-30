@@ -1668,7 +1668,6 @@ export function AIChatPage() {
                     <p className="text-base font-extrabold text-blue-600">
                       Upload New Material
                     </p>
-
                   </div>
                 </button>
 
