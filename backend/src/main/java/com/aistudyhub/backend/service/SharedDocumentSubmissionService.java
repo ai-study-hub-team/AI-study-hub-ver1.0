@@ -110,9 +110,10 @@ public class SharedDocumentSubmissionService {
 
         // Step 5: size checks
         long fileSize = file.getSize();
+        long planFileSizeLimit = storageQuotaService.getPlanFileSizeLimitBytes(ownerId);
         long effectiveSizeLimit = (link.getMaxFileSizeBytes() != null)
-                ? link.getMaxFileSizeBytes()
-                : storageQuotaService.getPlanFileSizeLimitBytes(ownerId);
+                ? Math.min(link.getMaxFileSizeBytes(), planFileSizeLimit)
+                : planFileSizeLimit;
 
         if (fileSize > effectiveSizeLimit) {
             throw new FileTooLargeException(

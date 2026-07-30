@@ -355,6 +355,7 @@ export function DocumentSharesPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [isPro, setIsPro] = useState(isAdmin);
+  const [planMaxFileSizeMb, setPlanMaxFileSizeMb] = useState<number | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [disablingLinkId, setDisablingLinkId] = useState<number | null>(null);
@@ -550,6 +551,17 @@ export function DocumentSharesPage() {
 
         if (isMounted) {
           setIsPro(isAdmin || data.adminAccess === true || hasActiveProPlan);
+
+          const maxFileSizeMb = Number(data.plan?.maxUploadSizePerFileMb);
+          if (Number.isFinite(maxFileSizeMb) && maxFileSizeMb > 0) {
+            setPlanMaxFileSizeMb(maxFileSizeMb);
+            setLinkForm((current) => {
+              const selectedMaxFileSizeMb = Number(current.maxFileSizeMb);
+              return Number.isFinite(selectedMaxFileSizeMb) && selectedMaxFileSizeMb > maxFileSizeMb
+                ? { ...current, maxFileSizeMb: String(maxFileSizeMb) }
+                : current;
+            });
+          }
         }
       })
       .catch((error) => {
@@ -666,6 +678,14 @@ export function DocumentSharesPage() {
 
     if (maxFileSizeBytes <= 0 || maxTotalBytes <= 0 || maxFileSizeBytes > maxTotalBytes) {
       toast.error("File size limits are invalid.");
+      return;
+    }
+
+    if (
+      planMaxFileSizeMb !== null &&
+      Number(linkForm.maxFileSizeMb) > planMaxFileSizeMb
+    ) {
+      toast.error(`Your plan allows a maximum file size of ${planMaxFileSizeMb} MB.`);
       return;
     }
 
@@ -1193,8 +1213,14 @@ export function DocumentSharesPage() {
                   }
                   type="number"
                   min={1}
+                  max={planMaxFileSizeMb ?? undefined}
                   className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
+                {planMaxFileSizeMb !== null && (
+                  <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                    Your plan allows up to {planMaxFileSizeMb} MB per file.
+                  </span>
+                )}
               </label>
 
               <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
