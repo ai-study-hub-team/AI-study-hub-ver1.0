@@ -72,6 +72,8 @@ export const sharedDocumentSubmissionApi = {
       payload,
     );
   },
+  deleteSubmissionGroup: (shareLinkId: number) =>
+    apiClient.delete(`/api/shared-document-submissions/share-links/${shareLinkId}`),
   viewSubmissionFile: async (id: number): Promise<Blob> => {
     const response = await apiClient.get(`/api/shared-document-submissions/${id}/preview`, {
       responseType: "blob",

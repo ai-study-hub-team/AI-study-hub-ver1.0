@@ -608,6 +608,12 @@ export function DashboardLayout({
           label: "Reports",
         },
         {
+          to: "/admin/share-links",
+          icon: Share2,
+          label: "Share Links",
+          adminOnly: true,
+        },
+        {
           to: "/admin/plans",
           icon: Package,
           label: "Plan Management",

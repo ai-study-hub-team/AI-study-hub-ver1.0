@@ -8,6 +8,7 @@ export interface PlanResponse {
   storageLimitMb: number;
   maxUploadSizePerFileMb: number;
   dailyTokenLimit: number;
+  maxShareLinksPerDay: number;
   price: number;
   durationDays?: number | null;
   description?: string | null;
@@ -24,6 +25,7 @@ export interface AdminPlanPayload {
   storageLimitMb: number;
   maxUploadSizePerFileMb: number;
   dailyTokenLimit: number;
+  maxShareLinksPerDay: number;
   price: number;
   durationDays?: number | null;
   description?: string | null;

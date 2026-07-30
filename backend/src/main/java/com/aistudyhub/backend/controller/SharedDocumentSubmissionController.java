@@ -99,4 +99,11 @@ public class SharedDocumentSubmissionController {
         User reviewer = currentUserService.getCurrentUser();
         return ResponseEntity.ok(submissionService.rejectSubmission(id, request, reviewer));
     }
+
+    @DeleteMapping("/share-links/{linkId}")
+    public ResponseEntity<Void> deleteSubmissionGroup(@PathVariable Long linkId) {
+        User owner = currentUserService.getCurrentUser();
+        submissionService.softDeleteSubmissionGroup(linkId, owner.getId());
+        return ResponseEntity.noContent().build();
+    }
 }

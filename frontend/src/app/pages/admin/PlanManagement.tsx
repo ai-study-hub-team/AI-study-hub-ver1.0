@@ -28,6 +28,7 @@ const EMPTY_FORM: AdminPlanPayload = {
   storageLimitMb: 0,
   maxUploadSizePerFileMb: 0,
   dailyTokenLimit: 0,
+  maxShareLinksPerDay: 5,
   price: 0,
   durationDays: 0,
   description: "",
@@ -152,6 +153,7 @@ export function PlanManagement() {
         storageLimitMb: Number(plan.storageLimitMb),
         maxUploadSizePerFileMb: Number(plan.maxUploadSizePerFileMb),
         dailyTokenLimit: Number(plan.dailyTokenLimit),
+        maxShareLinksPerDay: Number(plan.maxShareLinksPerDay),
         price: Number(plan.price),
         durationDays: Number(plan.durationDays ?? 0),
         description: plan.description ?? "",
@@ -184,6 +186,7 @@ export function PlanManagement() {
       form.storageLimitMb,
       form.maxUploadSizePerFileMb,
       form.dailyTokenLimit,
+      form.maxShareLinksPerDay,
       form.price,
       form.durationDays ?? 0,
     ];
@@ -210,6 +213,7 @@ export function PlanManagement() {
       storageLimitMb: Number(form.storageLimitMb),
       maxUploadSizePerFileMb: Number(form.maxUploadSizePerFileMb),
       dailyTokenLimit: Number(form.dailyTokenLimit),
+      maxShareLinksPerDay: Number(form.maxShareLinksPerDay),
       price: Number(form.price),
       durationDays: Number(form.durationDays ?? 0),
     };
@@ -322,6 +326,7 @@ export function PlanManagement() {
                 <th className="px-5 py-4">Price</th>
                 <th className="px-5 py-4">Storage</th>
                 <th className="px-5 py-4">Daily tokens</th>
+                <th className="px-5 py-4">Daily links</th>
                 <th className="px-5 py-4">Duration</th>
                 <th className="px-5 py-4">Status</th>
                 <th className="px-5 py-4 text-right">Actions</th>
@@ -329,9 +334,9 @@ export function PlanManagement() {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading ? (
-                <tr><td colSpan={8} className="px-5 py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" /></td></tr>
+                <tr><td colSpan={9} className="px-5 py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" /></td></tr>
               ) : filteredPlans.length === 0 ? (
-                <tr><td colSpan={8} className="px-5 py-16 text-center text-slate-500">No {statusTab} subscription plans found.</td></tr>
+                <tr><td colSpan={9} className="px-5 py-16 text-center text-slate-500">No {statusTab} subscription plans found.</td></tr>
               ) : (
                 paginatedPlans.map((plan) => (
                   <tr key={plan.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
@@ -345,6 +350,7 @@ export function PlanManagement() {
                     <td className="px-5 py-4 font-semibold text-slate-700 dark:text-slate-200">{formatPrice(plan.price)}</td>
                     <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{formatNumber(plan.storageLimitMb)} MB</td>
                     <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{formatNumber(plan.dailyTokenLimit)}</td>
+                    <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{formatNumber(plan.maxShareLinksPerDay)}</td>
                     <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{plan.durationDays ? `${plan.durationDays} days` : "Unlimited"}</td>
                     <td className="px-5 py-4">
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${plan.isActive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
@@ -412,6 +418,7 @@ export function PlanManagement() {
                   <NumberField label="Storage limit (MB)" value={form.storageLimitMb} disabled={dialogMode === "view"} onChange={(value) => updateField("storageLimitMb", value)} />
                   <NumberField label="Maximum upload per file (MB)" value={form.maxUploadSizePerFileMb} disabled={dialogMode === "view"} onChange={(value) => updateField("maxUploadSizePerFileMb", value)} />
                   <NumberField label="Daily token limit" value={form.dailyTokenLimit} disabled={dialogMode === "view"} onChange={(value) => updateField("dailyTokenLimit", value)} />
+                  <NumberField label="Share links per day" value={form.maxShareLinksPerDay} disabled={dialogMode === "view"} onChange={(value) => updateField("maxShareLinksPerDay", value)} />
                   <NumberField label="Price (VND)" value={form.price} disabled={dialogMode === "view"} onChange={(value) => updateField("price", value)} />
                   <NumberField label="Duration (days)" value={form.durationDays ?? 0} disabled={dialogMode === "view"} onChange={(value) => updateField("durationDays", value)} />
                   <Field label="Status">

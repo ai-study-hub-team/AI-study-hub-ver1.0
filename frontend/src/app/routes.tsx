@@ -70,6 +70,7 @@ import { TokenAnalyticsPage } from "./pages/admin/TokenAnalyticsPage";
 import { StorageAnalyticsPage } from "./pages/admin/StorageAnalyticsPage";
 import { PricingAnalyticsPage } from "./pages/admin/PricingAnalyticsPage";
 import { PlanManagement } from "./pages/admin/PlanManagement";
+import { ShareLinkManagement } from "./pages/admin/ShareLinkManagement";
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
   let role = localStorage.getItem("role") || "";
@@ -328,6 +329,10 @@ export const router = createBrowserRouter([
           {
             path: "plans",
             element: <AdminOnly><PlanManagement /></AdminOnly>,
+          },
+          {
+            path: "share-links",
+            element: <AdminOnly><ShareLinkManagement /></AdminOnly>,
           },
           { path: "pricing", element: <AdminOnly><PricingAnalyticsPage /></AdminOnly> },
           { path: "tokens", element: <TokenAnalyticsPage /> },
