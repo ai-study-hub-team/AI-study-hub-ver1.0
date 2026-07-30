@@ -8,6 +8,7 @@ import {
   RotateCcw,
   Share2,
   ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 
 import { useEffect, useState } from "react";
@@ -59,6 +60,51 @@ type QuizHistoryItem = {
 
   createdAt?: string;
   date?: string;
+};
+
+type SavedQuizAttempt = {
+  quizId: number;
+  answers: (number | null)[];
+  score: number;
+  completed: boolean;
+  updatedAt: string;
+};
+
+const getQuizAttemptStorageKey = (
+  userId: number,
+  quizId: number,
+) => `ai-study-hub:quiz-attempt:${userId}:${quizId}`;
+
+const readSavedQuizAttempt = (
+  userId: number,
+  quizId: number,
+): SavedQuizAttempt | null => {
+  try {
+    const raw = localStorage.getItem(
+      getQuizAttemptStorageKey(userId, quizId),
+    );
+
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    if (!Array.isArray(parsed?.answers)) {
+      return null;
+    }
+
+    return {
+      quizId,
+      answers: parsed.answers.map((value: unknown) =>
+        Number.isInteger(value) ? Number(value) : null,
+      ),
+      score: Number(parsed?.score) || 0,
+      completed: Boolean(parsed?.completed),
+      updatedAt: String(parsed?.updatedAt || ""),
+    };
+  } catch (error) {
+    console.warn("Cannot read saved quiz attempt:", error);
+    return null;
+  }
 };
 
 /* =========================================================
@@ -124,6 +170,9 @@ export function QuizGeneratorPage() {
 
   const [questions, setQuestions] =
     useState<Question[]>([]);
+
+  const [currentQuizId, setCurrentQuizId] =
+    useState<number | null>(null);
 
   const [currentQ, setCurrentQ] =
     useState(0);
@@ -249,6 +298,46 @@ export function QuizGeneratorPage() {
       doc?.title ||
       doc?.fileName ||
       "Untitled"
+    );
+  };
+
+  const calculateScore = (
+    quizQuestions: Question[],
+    quizAnswers: (number | null)[],
+  ) =>
+    quizQuestions.reduce(
+      (total, question, index) =>
+        quizAnswers[index] === question.correct
+          ? total + 1
+          : total,
+      0,
+    );
+
+  const saveQuizAttempt = (
+    quizId: number,
+    quizQuestions: Question[],
+    quizAnswers: (number | null)[],
+    completed = false,
+  ) => {
+    const userId = getCurrentUserId();
+
+    if (!userId) return;
+
+    const normalizedAnswers = quizQuestions.map(
+      (_, index) => quizAnswers[index] ?? null,
+    );
+
+    const attempt: SavedQuizAttempt = {
+      quizId,
+      answers: normalizedAnswers,
+      score: calculateScore(quizQuestions, normalizedAnswers),
+      completed,
+      updatedAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem(
+      getQuizAttemptStorageKey(userId, quizId),
+      JSON.stringify(attempt),
     );
   };
 
@@ -627,22 +716,33 @@ export function QuizGeneratorPage() {
           generatedQuestions,
         );
 
+        setCurrentQuizId(quizId);
         setCurrentQ(0);
 
         /*
-         * History API hiện chưa lấy lại đáp án
-         * user đã chọn, nên reset score và answers.
+         * Backend hiện chỉ lưu bộ quiz/questions/options.
+         * Đáp án người dùng được lưu theo quizId ở localStorage
+         * để History có thể hiển thị lại lựa chọn của người dùng.
          */
-        setScore(0);
+        const savedAttempt = readSavedQuizAttempt(
+          userId,
+          quizId,
+        );
 
-        setAnswers(
-          new Array(
-            generatedQuestions.length,
-          ).fill(null),
+        const restoredAnswers = generatedQuestions.map(
+          (_, index) => savedAttempt?.answers[index] ?? null,
+        );
+
+        setAnswers(restoredAnswers);
+        setScore(
+          calculateScore(
+            generatedQuestions,
+            restoredAnswers,
+          ),
         );
 
         setSelectedAnswer(
-          null,
+          restoredAnswers[0] ?? null,
         );
 
         setView("review");
@@ -760,14 +860,32 @@ export function QuizGeneratorPage() {
           generatedQuestions,
         );
 
+        const generatedQuizId = Number(
+          response.data?.quizId ?? response.data?.id,
+        );
+
+        const validQuizId = Number.isFinite(generatedQuizId)
+          ? generatedQuizId
+          : null;
+
+        setCurrentQuizId(validQuizId);
         setCurrentQ(0);
         setScore(0);
 
-        setAnswers(
-          new Array(
-            generatedQuestions.length,
-          ).fill(null),
-        );
+        const emptyAnswers = new Array(
+          generatedQuestions.length,
+        ).fill(null);
+
+        setAnswers(emptyAnswers);
+
+        if (validQuizId) {
+          saveQuizAttempt(
+            validQuizId,
+            generatedQuestions,
+            emptyAnswers,
+            false,
+          );
+        }
 
         setSelectedAnswer(
           null,
@@ -805,70 +923,118 @@ export function QuizGeneratorPage() {
   const handleAnswer = (
     answerIndex: number,
   ) => {
-    if (
-      !questions[currentQ]
-    ) {
+    if (!questions[currentQ]) {
       return;
     }
 
     /*
-     * Không cho chọn lại khi đã click đáp án.
+     * Mỗi câu chỉ chốt 1 đáp án tại một thời điểm.
+     * Muốn chọn lại, người dùng bấm Reset Answer.
+     * Không còn tự động chuyển câu bằng setTimeout.
      */
+    if (selectedAnswer !== null) {
+      return;
+    }
+
+    setSelectedAnswer(answerIndex);
+
+    setAnswers((previousAnswers) => {
+      const updatedAnswers = [...previousAnswers];
+      updatedAnswers[currentQ] = answerIndex;
+
+      const nextScore = calculateScore(questions, updatedAnswers);
+      setScore(nextScore);
+
+      if (currentQuizId) {
+        saveQuizAttempt(
+          currentQuizId,
+          questions,
+          updatedAnswers,
+          false,
+        );
+      }
+
+      return updatedAnswers;
+    });
+  };
+
+  /* =======================================================
+     QUESTION NAVIGATION
+
+     - Không tự chuyển câu sau khi chọn đáp án.
+     - Previous / Next cho phép đi qua lại giữa các câu.
+     - Khi sang câu chưa làm, selectedAnswer được reset về null.
+     - Khi quay lại câu đã làm, đáp án cũ được hiển thị lại.
+  ======================================================= */
+
+  const goToQuestion = (questionIndex: number) => {
     if (
-      selectedAnswer !== null
+      questionIndex < 0 ||
+      questionIndex >= questions.length
     ) {
       return;
     }
 
-    setSelectedAnswer(
-      answerIndex,
-    );
+    setCurrentQ(questionIndex);
+    setSelectedAnswer(answers[questionIndex] ?? null);
+  };
 
-    setAnswers(
-      (previousAnswers) => {
-        const updatedAnswers =
-          [
-            ...previousAnswers,
-          ];
+  const handlePreviousQuestion = () => {
+    goToQuestion(currentQ - 1);
+  };
 
-        updatedAnswers[
-          currentQ
-        ] = answerIndex;
+  const handleNextQuestion = () => {
+    const isLastQuestion = currentQ >= questions.length - 1;
 
-        return updatedAnswers;
-      },
-    );
-
-    if (
-      answerIndex ===
-      questions[currentQ]
-        .correct
-    ) {
-      setScore(
-        (previousScore) =>
-          previousScore + 1,
-      );
-    }
-
-    setTimeout(() => {
-      const isLastQuestion =
-        currentQ >=
-        questions.length - 1;
-
-      if (isLastQuestion) {
-        setView("result");
-        return;
+    if (isLastQuestion) {
+      if (currentQuizId) {
+        saveQuizAttempt(
+          currentQuizId,
+          questions,
+          answers,
+          true,
+        );
       }
 
-      setCurrentQ(
-        (previousQuestion) =>
-          previousQuestion + 1,
-      );
+      setView("result");
+      return;
+    }
 
-      setSelectedAnswer(
-        null,
-      );
-    }, 1000);
+    goToQuestion(currentQ + 1);
+  };
+
+  /* =======================================================
+     RESET CURRENT ANSWER
+
+     Xóa đáp án của đúng câu đang xem để người dùng có thể
+     trả lời lại. Nếu đáp án cũ đúng thì cập nhật lại score.
+  ======================================================= */
+
+  const handleResetCurrentAnswer = () => {
+    if (selectedAnswer === null || !questions[currentQ]) {
+      return;
+    }
+
+    setAnswers((previousAnswers) => {
+      const updatedAnswers = [...previousAnswers];
+      updatedAnswers[currentQ] = null;
+
+      const nextScore = calculateScore(questions, updatedAnswers);
+      setScore(nextScore);
+
+      if (currentQuizId) {
+        saveQuizAttempt(
+          currentQuizId,
+          questions,
+          updatedAnswers,
+          false,
+        );
+      }
+
+      return updatedAnswers;
+    });
+
+    setSelectedAnswer(null);
   };
 
   /* =======================================================
@@ -893,11 +1059,20 @@ export function QuizGeneratorPage() {
     setCurrentQ(0);
     setScore(0);
 
-    setAnswers(
-      new Array(
-        questions.length,
-      ).fill(null),
-    );
+    const emptyAnswers = new Array(
+      questions.length,
+    ).fill(null);
+
+    setAnswers(emptyAnswers);
+
+    if (currentQuizId) {
+      saveQuizAttempt(
+        currentQuizId,
+        questions,
+        emptyAnswers,
+        false,
+      );
+    }
 
     setSelectedAnswer(
       null,
@@ -914,6 +1089,7 @@ export function QuizGeneratorPage() {
     setView("setup");
 
     setQuestions([]);
+    setCurrentQuizId(null);
     setCurrentQ(0);
     setScore(0);
     setAnswers([]);
@@ -934,6 +1110,7 @@ export function QuizGeneratorPage() {
     setView("setup");
 
     setQuestions([]);
+    setCurrentQuizId(null);
     setCurrentQ(0);
     setScore(0);
     setAnswers([]);
@@ -1437,6 +1614,42 @@ export function QuizGeneratorPage() {
                     </p>
                   </motion.div>
                 )}
+
+                {/* =========================================
+                    QUESTION CONTROLS
+                ========================================= */}
+                <div className="mt-7 flex flex-col gap-3 border-t border-slate-200 pt-5 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
+                  <button
+                    type="button"
+                    onClick={handlePreviousQuestion}
+                    disabled={currentQ === 0}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Previous
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetCurrentAnswer}
+                    disabled={selectedAnswer === null}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Reset Answer
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleNextQuestion}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700"
+                  >
+                    {currentQ === questions.length - 1
+                      ? "Finish Quiz"
+                      : "Next"}
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               <div className="flex justify-center mt-5">
@@ -1681,32 +1894,41 @@ export function QuizGeneratorPage() {
                       )}
                     </div>
 
-                    {hasUserAnswer && (
-                      <p
-                        className={`mt-4 text-sm font-bold ${
-                          isUserCorrect
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-red-600 dark:text-red-400"
-                        }`}
-                      >
-                        {isUserCorrect
-                          ? "✓ Your answer is correct."
-                          : "✗ Your answer is incorrect."}
-                      </p>
-                    )}
+                    <div className="mt-4 space-y-2 rounded-2xl bg-slate-50 p-4 dark:bg-slate-800">
+                      {hasUserAnswer ? (
+                        <>
+                          <p
+                            className={`text-sm font-bold ${
+                              isUserCorrect
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : "text-red-600 dark:text-red-400"
+                            }`}
+                          >
+                            {isUserCorrect
+                              ? "✓ Your answer is correct."
+                              : "✗ Your answer is incorrect."}
+                          </p>
 
-                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-3">
-                      <span className="font-bold">
-                        Correct
-                        answer:
-                      </span>{" "}
+                          <p className="text-sm text-slate-700 dark:text-slate-300">
+                            <span className="font-bold">Your answer:</span>{" "}
+                            {String.fromCharCode(65 + Number(userAnswer))}.{" "}
+                            {question.options[Number(userAnswer)] || "N/A"}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                          Not answered.
+                        </p>
+                      )}
 
-                      {question
-                        .options[
-                        question.correct
-                      ] ||
-                        "N/A"}
-                    </p>
+                      {(!hasUserAnswer || !isUserCorrect) && (
+                        <p className="text-sm text-emerald-700 dark:text-emerald-300">
+                          <span className="font-bold">Correct answer:</span>{" "}
+                          {String.fromCharCode(65 + question.correct)}.{" "}
+                          {question.options[question.correct] || "N/A"}
+                        </p>
+                      )}
+                    </div>
 
                     <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
                       <span className="font-bold">
@@ -1774,6 +1996,19 @@ export function QuizGeneratorPage() {
                     quiz.totalQuestions ??
                     0;
 
+                  const currentUserId = getCurrentUserId();
+                  const savedAttempt =
+                    currentUserId && quizId !== undefined
+                      ? readSavedQuizAttempt(currentUserId, quizId)
+                      : null;
+
+                  const savedPct =
+                    savedAttempt && totalQuestions > 0
+                      ? Math.round(
+                          (savedAttempt.score / totalQuestions) * 100,
+                        )
+                      : null;
+
                   return (
                     <button
                       key={
@@ -1802,10 +2037,11 @@ export function QuizGeneratorPage() {
                       </p>
 
                       <p className="text-sm text-slate-500 mt-1">
-                        {quiz.score !==
-                        undefined
-                          ? `${quiz.score}% · `
-                          : ""}
+                        {savedPct !== null
+                          ? `${savedPct}% · `
+                          : quiz.score !== undefined
+                            ? `${quiz.score}% · `
+                            : ""}
 
                         {quiz.difficulty ||
                           "N/A"}

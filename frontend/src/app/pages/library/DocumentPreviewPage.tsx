@@ -23,6 +23,8 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import mammoth from "mammoth";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -211,79 +213,20 @@ const highlightHtml = (html: string, keyword: string) => {
 type ChatMode = "collapsed" | "floating" | "docked";
 type StudyPanel = "document" | "notes" | "split";
 
-type SummaryType = "SHORT" | "DETAILED" | "BULLET_POINTS";
-
 type ChatMessage = {
   id: number;
   role: "user" | "assistant" | "system";
   content: string;
 };
 
-const generateSummaryApi = (
-  userId: number,
-  documentId: number,
-  summaryType: SummaryType = "SHORT",
-) => {
-  return apiClient.post("/api/summaries/generate", {
-    userId,
-    documentId,
-    summaryType,
-  });
-};
+const buildChatTitle = (text: string) => {
+  const cleaned = text.replace(/\s+/g, " ").trim();
 
-const getSummaryByDocumentApi = (documentId: number, userId: number) => {
-  return apiClient.get(`/api/summaries/document/${documentId}`, {
-    params: { userId },
-  });
-};
+  if (!cleaned) return "New Chat";
 
-const generateQuizApi = (data: {
-  userId: number;
-  documentId: number;
-  questionCount: number;
-  difficulty: string;
-  quizType: string;
-}) => {
-  return apiClient.post("/api/quizzes/generate", data);
-};
-
-const extractSummaryText = (data: any) => {
-  if (!data) return "Summary generated successfully.";
-
-  if (typeof data === "string") return data;
-
-  return (
-    data.summaryText ||
-    data.content ||
-    data.summary ||
-    data.text ||
-    data.data?.summaryText ||
-    data.data?.content ||
-    "Summary generated successfully."
-  );
-};
-
-const extractQuizText = (data: any) => {
-  const quiz = data?.data || data;
-  const questions = quiz?.questions || quiz?.items || quiz?.quizQuestions || [];
-
-  if (!Array.isArray(questions) || questions.length === 0) {
-    return "Quiz generated successfully. Open the quiz page to view all questions.";
-  }
-
-  return questions
-    .slice(0, 5)
-    .map((question: any, index: number) => {
-      const title =
-        question.questionText ||
-        question.question ||
-        question.content ||
-        `Question ${index + 1}`;
-      const answer = question.correctAnswer || question.answer || "";
-
-      return `${index + 1}. ${title}${answer ? `\nAnswer: ${answer}` : ""}`;
-    })
-    .join("\n\n");
+  return cleaned.length > 60
+    ? `${cleaned.slice(0, 60)}...`
+    : cleaned;
 };
 
 type QuickPrompt = {
@@ -422,7 +365,9 @@ export function DocumentPreviewPage() {
   const [activePanel, setActivePanel] = useState<StudyPanel>("split");
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatSessionId, setChatSessionId] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isChatHistoryLoading, setIsChatHistoryLoading] = useState(false);
 
   const documentId = Number(id);
   const currentUserId = getCurrentUserId();
@@ -840,8 +785,111 @@ export function DocumentPreviewPage() {
   };
 
   useEffect(() => {
-    if (!documentId || !fileName || fileName === "Document") return;
+    if (
+      !documentId ||
+      !currentUserId ||
+      !fileName ||
+      fileName === "Document"
+    ) {
+      return;
+    }
 
+    let cancelled = false;
+
+    const storageKey = `document-preview-chat:${currentUserId}:${documentId}`;
+
+    const initialMessage: ChatMessage = {
+      id: Date.now(),
+      role: "system",
+      content: `AI is ready for this document: ${fileName}.`,
+    };
+
+    const restoreChatHistory = async () => {
+      setChatInput("");
+
+      const savedSessionId = localStorage.getItem(storageKey) || "";
+
+      if (!savedSessionId) {
+        setChatSessionId("");
+        setChatMessages([initialMessage]);
+        return;
+      }
+
+      try {
+        setIsChatHistoryLoading(true);
+
+        const response = await apiClient.get(
+          `/api/chat/sessions/${savedSessionId}/messages`,
+          {
+            params: {
+              userId: currentUserId,
+            },
+          },
+        );
+
+        const rawMessages =
+          response.data?.content ??
+          response.data?.messages ??
+          response.data?.data ??
+          response.data ??
+          [];
+
+        const restoredMessages: ChatMessage[] = Array.isArray(rawMessages)
+          ? rawMessages
+              .map((message: any, index: number): ChatMessage | null => {
+                const role = String(message?.role ?? "").toUpperCase();
+                const content =
+                  typeof message?.content === "string"
+                    ? message.content.trim()
+                    : "";
+
+                if (!content) return null;
+
+                return {
+                  id: Date.now() + index + 1,
+                  role: role === "USER" ? "user" : "assistant",
+                  content,
+                };
+              })
+              .filter((message): message is ChatMessage => message !== null)
+          : [];
+
+        if (cancelled) return;
+
+        setChatSessionId(savedSessionId);
+        setChatMessages([initialMessage, ...restoredMessages]);
+      } catch (error) {
+        console.error("Cannot restore document chat history:", error);
+
+        localStorage.removeItem(storageKey);
+
+        if (!cancelled) {
+          setChatSessionId("");
+          setChatMessages([initialMessage]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsChatHistoryLoading(false);
+        }
+      }
+    };
+
+    void restoreChatHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId, fileName, currentUserId]);
+
+  const handleStartNewDocumentChat = () => {
+    if (!currentUserId || !documentId) return;
+
+    localStorage.removeItem(
+      `document-preview-chat:${currentUserId}:${documentId}`,
+    );
+
+    setChatSessionId("");
+    setChatInput("");
     setChatMessages([
       {
         id: Date.now(),
@@ -849,7 +897,9 @@ export function DocumentPreviewPage() {
         content: `AI is ready for this document: ${fileName}.`,
       },
     ]);
-  }, [documentId, fileName]);
+
+    toast.success("New document chat started.");
+  };
 
   const addChatMessage = (message: Omit<ChatMessage, "id">) => {
     setChatMessages((currentMessages) => [
@@ -867,7 +917,7 @@ export function DocumentPreviewPage() {
       return;
     }
 
-    if (!documentId) {
+    if (!documentId || Number.isNaN(documentId)) {
       toast.error("Invalid document id.");
       return;
     }
@@ -876,92 +926,83 @@ export function DocumentPreviewPage() {
 
     if (!cleanPrompt || isAiLoading) return;
 
-    addChatMessage({ role: "user", content: cleanPrompt });
+    addChatMessage({
+      role: "user",
+      content: cleanPrompt,
+    });
+
     setChatInput("");
     setIsAiLoading(true);
 
     try {
-      const lowerPrompt = cleanPrompt.toLowerCase();
-      const wantsFlashcards =
-        lowerPrompt.includes("flashcard") || lowerPrompt.includes("flashcards");
-      const wantsFillBlank =
-        lowerPrompt.includes("gap") ||
-        lowerPrompt.includes("blank") ||
-        lowerPrompt.includes("fill") ||
-        lowerPrompt.includes("missing");
-      const wantsQuiz =
-        lowerPrompt.includes("quiz") ||
-        lowerPrompt.includes("test") ||
-        lowerPrompt.includes("question") ||
-        wantsFlashcards ||
-        wantsFillBlank;
-      const wantsDetailed =
-        lowerPrompt.includes("detail") ||
-        lowerPrompt.includes("detailed") ||
-        lowerPrompt.includes("explain") ||
-        lowerPrompt.includes("explain") ||
-        lowerPrompt.includes("hard");
-      const wantsBullet =
-        lowerPrompt.includes("bullet") ||
-        lowerPrompt.includes("main points") ||
-        lowerPrompt.includes("key points");
+      let sessionId = chatSessionId;
 
-      if (wantsQuiz) {
-        const response = await generateQuizApi({
-          userId: currentUserId,
-          documentId,
-          questionCount: wantsFillBlank ? 8 : 10,
-          difficulty: wantsDetailed ? "HARD" : "MEDIUM",
-          quizType: wantsFillBlank
-            ? "FILL_IN_THE_BLANK"
-            : wantsFlashcards
-              ? "FLASHCARD"
-              : "MULTIPLE_CHOICE",
-        });
+      // Use the same Chat Session API as AIChatPage.
+      if (!sessionId) {
+        const sessionResponse = await apiClient.post(
+          "/api/chat/sessions",
+          {
+            userId: currentUserId,
+            title: buildChatTitle(cleanPrompt),
+          },
+        );
 
-        addChatMessage({
-          role: "assistant",
-          content: extractQuizText(response.data),
-        });
-        toast.success("Quiz generated for this document.");
-        return;
+        const createdSessionId =
+          sessionResponse.data?.sessionId ??
+          sessionResponse.data?.id ??
+          "";
+
+        sessionId = createdSessionId
+          ? String(createdSessionId)
+          : "";
+
+        if (!sessionId) {
+          throw new Error("Backend did not return a session ID.");
+        }
+
+        setChatSessionId(sessionId);
+
+        localStorage.setItem(
+          `document-preview-chat:${currentUserId}:${documentId}`,
+          sessionId,
+        );
       }
 
-      const summaryType: SummaryType = wantsBullet
-        ? "BULLET_POINTS"
-        : wantsDetailed
-          ? "DETAILED"
-          : "SHORT";
-
-      const response = await generateSummaryApi(
-        currentUserId,
-        documentId,
-        summaryType,
+      // Send the actual user question to the same AI Chat API as AIChatPage.
+      const response = await apiClient.post(
+        "/api/chat/ask",
+        {
+          sessionId,
+          userId: currentUserId,
+          documentIds: [documentId],
+          question: cleanPrompt,
+        },
       );
+
+      const answer =
+        response.data?.answer ??
+        response.data?.response ??
+        response.data?.message ??
+        "AI không có câu trả lời.";
 
       addChatMessage({
         role: "assistant",
-        content: extractSummaryText(response.data),
+        content: String(answer),
       });
-      toast.success("AI response generated for this document.");
     } catch (error) {
-      console.error("Cannot run AI action:", error);
+      console.error("Cannot send AI chat message:", error);
 
-      try {
-        const response = await getSummaryByDocumentApi(documentId, currentUserId);
-        addChatMessage({
-          role: "assistant",
-          content: extractSummaryText(response.data),
-        });
-      } catch (fallbackError) {
-        console.error("Cannot load existing summary:", fallbackError);
-        addChatMessage({
-          role: "assistant",
-          content:
-            "I could not generate an AI response for this document. Please check whether the backend AI service is running and this document has been processed.",
-        });
-        toast.error("Cannot generate AI response.");
-      }
+      addChatMessage({
+        role: "assistant",
+        content: getErrorMessage(
+          error,
+          "Cannot connect to AI. Please check whether the backend and AI service are running, and whether this document has finished AI processing.",
+        ),
+      });
+
+      toast.error(
+        getErrorMessage(error, "Cannot connect to AI."),
+      );
     } finally {
       setIsAiLoading(false);
     }
@@ -1396,6 +1437,16 @@ export function DocumentPreviewPage() {
           </button>
 
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={handleStartNewDocumentChat}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-blue-700"
+              title="Start a new chat for this document"
+            >
+              <Plus className="h-4 w-4" />
+              New
+            </button>
+
             {!isDocked && (
               <button
                 onClick={() => setChatMode("docked")}
@@ -1459,20 +1510,138 @@ export function DocumentPreviewPage() {
             </div>
 
             <div className="mt-4 w-full space-y-3 text-left">
-              {chatMessages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`rounded-2xl px-4 py-3 text-sm leading-6 ${
-                    message.role === "user"
-                      ? "ml-8 bg-blue-600 text-white"
-                      : message.role === "system"
-                        ? "bg-slate-100 text-slate-500"
-                        : "mr-8 bg-white text-slate-700 shadow-sm ring-1 ring-slate-200"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{message.content}</p>
+              {isChatHistoryLoading && (
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
+                  Loading previous chat history...
                 </div>
-              ))}
+              )}
+
+              {chatMessages.map((message) => {
+                const isUserMessage = message.role === "user";
+                const isSystemMessage = message.role === "system";
+
+                return (
+                  <div
+                    key={message.id}
+                    className={`overflow-hidden rounded-2xl px-4 py-3 text-sm ${
+                      isUserMessage
+                        ? "ml-8 bg-blue-600 text-white"
+                        : isSystemMessage
+                          ? "border border-slate-200 bg-slate-100 text-slate-500"
+                          : "mr-8 border border-slate-200 bg-white text-slate-700 shadow-sm"
+                    }`}
+                  >
+                    {isUserMessage || isSystemMessage ? (
+                      <p className="whitespace-pre-wrap break-words leading-6">
+                        {message.content}
+                      </p>
+                    ) : (
+                      <div className="min-w-0 break-words leading-6">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            p: ({ children }) => (
+                              <p className="mb-2 whitespace-pre-wrap leading-6 last:mb-0">
+                                {children}
+                              </p>
+                            ),
+                            strong: ({ children }) => (
+                              <strong className="font-extrabold text-slate-900">
+                                {children}
+                              </strong>
+                            ),
+                            em: ({ children }) => (
+                              <em className="italic text-slate-700">
+                                {children}
+                              </em>
+                            ),
+                            ul: ({ children }) => (
+                              <ul className="mb-2 list-disc space-y-1 pl-5 last:mb-0">
+                                {children}
+                              </ul>
+                            ),
+                            ol: ({ children }) => (
+                              <ol className="mb-2 list-decimal space-y-1 pl-5 last:mb-0">
+                                {children}
+                              </ol>
+                            ),
+                            li: ({ children }) => (
+                              <li className="leading-6">{children}</li>
+                            ),
+                            blockquote: ({ children }) => (
+                              <blockquote className="my-2 border-l-4 border-blue-200 bg-blue-50 px-3 py-2 text-slate-600">
+                                {children}
+                              </blockquote>
+                            ),
+                            h1: ({ children }) => (
+                              <h1 className="mb-2 mt-3 text-lg font-extrabold text-slate-950 first:mt-0">
+                                {children}
+                              </h1>
+                            ),
+                            h2: ({ children }) => (
+                              <h2 className="mb-2 mt-3 text-base font-extrabold text-slate-950 first:mt-0">
+                                {children}
+                              </h2>
+                            ),
+                            h3: ({ children }) => (
+                              <h3 className="mb-1.5 mt-3 text-sm font-extrabold text-slate-900 first:mt-0">
+                                {children}
+                              </h3>
+                            ),
+                            code: ({ children, className }) => {
+                              const isBlock = Boolean(className);
+
+                              return isBlock ? (
+                                <code className="block overflow-x-auto whitespace-pre rounded-xl bg-slate-950 p-3 font-mono text-xs leading-5 text-slate-100">
+                                  {children}
+                                </code>
+                              ) : (
+                                <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.92em] text-slate-800">
+                                  {children}
+                                </code>
+                              );
+                            },
+                            pre: ({ children }) => (
+                              <pre className="my-2 overflow-x-auto rounded-xl bg-slate-950 p-0">
+                                {children}
+                              </pre>
+                            ),
+                            a: ({ children, href }) => (
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-bold text-blue-600 underline underline-offset-2 hover:text-blue-700"
+                              >
+                                {children}
+                              </a>
+                            ),
+                            table: ({ children }) => (
+                              <div className="my-3 overflow-x-auto rounded-xl border border-slate-200">
+                                <table className="w-full border-collapse text-left text-xs">
+                                  {children}
+                                </table>
+                              </div>
+                            ),
+                            th: ({ children }) => (
+                              <th className="border-b border-r border-slate-200 bg-slate-50 px-3 py-2 font-extrabold text-slate-800 last:border-r-0">
+                                {children}
+                              </th>
+                            ),
+                            td: ({ children }) => (
+                              <td className="border-b border-r border-slate-100 px-3 py-2 align-top last:border-r-0">
+                                {children}
+                              </td>
+                            ),
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
 
               {isAiLoading && (
                 <div className="mr-8 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200">
@@ -1495,7 +1664,7 @@ export function DocumentPreviewPage() {
                     runAiAction(chatInput);
                   }
                 }}
-                placeholder="Ask your AI tutor anything..."
+                placeholder="Ask about this document..."
                 className="h-10 min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-800 outline-none placeholder:text-slate-400"
               />
               <button
