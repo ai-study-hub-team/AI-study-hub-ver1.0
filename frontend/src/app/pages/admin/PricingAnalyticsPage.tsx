@@ -122,6 +122,12 @@ export function PricingAnalyticsPage() {
     [selectedUserId, users],
   );
 
+  const trackedDays = {
+    DAY: 1,
+    WEEK: 7,
+    MONTH: 30,
+  }[reportPeriod];
+
   const filteredUsers = useMemo(() => {
     const keyword = userSearch.trim().toLowerCase();
     return [...users]
@@ -184,7 +190,7 @@ export function PricingAnalyticsPage() {
     { label: "Input price", value: formatMoney(Number(pricing?.inputPricePerMillion || 0) / 10), Icon: Coins, editableField: "inputPricePerMillion" as const },
     { label: "Output price", value: formatMoney(Number(pricing?.outputPricePerMillion || 0) / 10), Icon: Coins, editableField: "outputPricePerMillion" as const },
     { label: "Total tokens", value: formatNumber(tokenUsage?.totals?.overallTokens ?? tokenUsage?.totals?.totalTokens), Icon: Coins },
-    { label: "Tracked days", value: formatNumber(tokenUsage?.numberOfDays), Icon: Coins },
+    { label: "Tracked days", value: formatNumber(trackedDays), Icon: Coins },
     { label: "Total input cost", value: formatMoney(cost?.inputCost), Icon: WalletCards },
     { label: "Total output cost", value: formatMoney(cost?.outputCost), Icon: WalletCards },
     { label: "Total AI cost", value: formatMoney(cost?.totalCost), Icon: WalletCards },
