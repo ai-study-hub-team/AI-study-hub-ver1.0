@@ -189,10 +189,10 @@ export function StudentDashboard() {
     : 0;
 
   const stats = [
-    { label: "Total Documents", value: documents.length, icon: FileText, color: "blue" as const },
-    { label: "AI Summaries", value: summaryCount, icon: FileSearch, color: "purple" as const },
-    { label: "Quizzes Created", value: quizCount, icon: Puzzle, color: "amber" as const },
-    { label: "AI Chat Sessions", value: chatSessions.length, icon: MessageSquare, color: "emerald" as const },
+    { label: "Total Documents", value: documents.length, icon: FileText, color: "blue" as const, path: "/app/library" },
+    { label: "AI Summaries", value: summaryCount, icon: FileSearch, color: "purple" as const, path: "/app/summary" },
+    { label: "Quizzes Created", value: quizCount, icon: Puzzle, color: "amber" as const, path: "/app/quiz" },
+    { label: "AI Chat Sessions", value: chatSessions.length, icon: MessageSquare, color: "emerald" as const, path: "/app/chat" },
   ];
 
   const quickActions = [
@@ -235,12 +235,15 @@ export function StudentDashboard() {
 
       <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat, index) => (
-          <motion.div
+          <motion.button
+            type="button"
             key={stat.label}
+            onClick={() => navigate(stat.path)}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.08 }}
-            className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+            whileHover={{ y: -3 }}
+            className="group relative rounded-2xl border border-slate-100 bg-white p-6 text-left shadow-sm transition-colors hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700"
           >
             <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-xl ${statStyles[stat.color]}`}>
               <stat.icon className="h-6 w-6" />
@@ -249,7 +252,8 @@ export function StudentDashboard() {
             <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
               {loading ? "..." : stat.value.toLocaleString("en-US")}
             </h3>
-          </motion.div>
+            <ArrowUpRight className="absolute right-5 top-5 h-4 w-4 text-slate-300 transition-colors group-hover:text-blue-600" />
+          </motion.button>
         ))}
       </section>
 

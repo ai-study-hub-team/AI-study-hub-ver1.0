@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { PaginationControls } from "../../../components/ui/PaginationControls";
 import {
   folderApi,
   type FolderResponse,
@@ -24,6 +25,8 @@ const statusLabels: Record<string, string> = {
   ACTIVE: "Active",
   REVOKED: "Revoked",
 };
+
+const SHARED_USERS_PAGE_SIZE = 5;
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return "No expiration";
@@ -64,8 +67,17 @@ export function FolderShareModal({ folder, onClose }: FolderShareModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingShares, setIsLoadingShares] = useState(false);
   const [revokingUserId, setRevokingUserId] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const emails = useMemo(() => normalizeEmails(emailsText), [emailsText]);
+  const totalPages = Math.max(
+    1,
+    Math.ceil(sharedUsers.length / SHARED_USERS_PAGE_SIZE),
+  );
+  const paginatedSharedUsers = useMemo(() => {
+    const startIndex = (currentPage - 1) * SHARED_USERS_PAGE_SIZE;
+    return sharedUsers.slice(startIndex, startIndex + SHARED_USERS_PAGE_SIZE);
+  }, [currentPage, sharedUsers]);
 
   const loadSharedUsers = useCallback(async () => {
     try {
@@ -83,6 +95,10 @@ export function FolderShareModal({ folder, onClose }: FolderShareModalProps) {
   useEffect(() => {
     loadSharedUsers();
   }, [loadSharedUsers]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
 
   const handleShare = async () => {
     if (emails.length === 0) {
@@ -162,7 +178,7 @@ export function FolderShareModal({ folder, onClose }: FolderShareModalProps) {
           </button>
         </div>
 
-        <div className="grid max-h-[calc(90vh-80px)] gap-6 overflow-y-auto p-6 lg:grid-cols-[1fr_1.2fr]">
+        <div className="grid max-h-[calc(90vh-80px)] gap-6 overflow-y-auto p-6 lg:h-[calc(90vh-80px)] lg:max-h-[700px] lg:grid-cols-[1fr_1.2fr]">
           <section className="space-y-4">
             <div>
               <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
@@ -248,50 +264,61 @@ export function FolderShareModal({ folder, onClose }: FolderShareModalProps) {
                 This folder has not been shared with anyone yet.
               </div>
             ) : (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {sharedUsers.map((user) => (
-                  <div
-                    key={`${user.shareId}-${user.userId}`}
-                    className="flex flex-col gap-3 px-4 py-4 xl:flex-row xl:items-center xl:justify-between"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-extrabold text-slate-950 dark:text-white">
-                        {user.fullName || user.email}
-                      </p>
-                      <p className="truncate text-xs text-slate-500">
-                        {user.email}
-                      </p>
-
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                        <span className="rounded-full bg-blue-50 px-2.5 py-1 font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                          {permissionLabels[user.permission] || user.permission}
-                        </span>
-
-                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                          {statusLabels[user.status] || user.status}
-                        </span>
-
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                          Expires: {formatDateTime(user.expiresAt)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleRevoke(user.userId)}
-                      disabled={revokingUserId === user.userId}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-xs font-extrabold text-red-600 hover:bg-red-50 disabled:opacity-60 dark:border-red-900/60 dark:hover:bg-red-950/30"
+              <div>
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {paginatedSharedUsers.map((user) => (
+                    <div
+                      key={`${user.shareId}-${user.userId}`}
+                      className="flex flex-col gap-3 px-4 py-4 xl:flex-row xl:items-center xl:justify-between"
                     >
-                      {revokingUserId === user.userId ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                      Revoke
-                    </button>
-                  </div>
-                ))}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-extrabold text-slate-950 dark:text-white">
+                          {user.fullName || user.email}
+                        </p>
+                        <p className="truncate text-xs text-slate-500">
+                          {user.email}
+                        </p>
+
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                          <span className="rounded-full bg-blue-50 px-2.5 py-1 font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                            {permissionLabels[user.permission] || user.permission}
+                          </span>
+
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                            {statusLabels[user.status] || user.status}
+                          </span>
+
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                            Expires: {formatDateTime(user.expiresAt)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRevoke(user.userId)}
+                        disabled={revokingUserId === user.userId}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-xs font-extrabold text-red-600 hover:bg-red-50 disabled:opacity-60 dark:border-red-900/60 dark:hover:bg-red-950/30"
+                      >
+                        {revokingUserId === user.userId ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-slate-100 px-4 pb-4 dark:border-slate-800">
+                  <PaginationControls
+                    currentPage={currentPage}
+                    totalItems={sharedUsers.length}
+                    pageSize={SHARED_USERS_PAGE_SIZE}
+                    onPageChange={setCurrentPage}
+                  />
+                </div>
               </div>
             )}
           </section>

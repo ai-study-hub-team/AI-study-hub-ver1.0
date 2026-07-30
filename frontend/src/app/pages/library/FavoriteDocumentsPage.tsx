@@ -98,7 +98,7 @@ const statusBadgeClass: Record<AiStatus, string> = {
 };
 
 const favoriteListGridClass =
-  "grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_72px] items-center";
+  "grid w-full grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)_72px] items-center [&>*]:min-w-0";
 
 const actionIconButtonClass =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-300";
@@ -610,7 +610,9 @@ export function FavoriteDocumentsPage() {
   };
 
   const handleViewFile = (documentId: number) => {
-    navigate(`/app/library/${documentId}/preview`);
+    navigate(`/app/library/${documentId}/preview`, {
+      state: { returnTo: "/app/library/favorites", returnLabel: "Favorites" },
+    });
   };
 
   const handleOpenEdit = (document: FavoriteLibraryDocument) => {
@@ -696,8 +698,8 @@ export function FavoriteDocumentsPage() {
       </div>
 
       {viewMode === "list" ? (
-        <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="min-w-[1265px]">
+        <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="w-full">
             <div
               className={`${favoriteListGridClass} border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60`}
             >

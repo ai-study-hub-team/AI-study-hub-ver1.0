@@ -55,7 +55,7 @@ const viewToggleButtonBase =
   "flex h-9 w-9 items-center justify-center rounded-lg transition-all";
 
 const documentListGridClass =
-  "grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_80px] items-center";
+  "grid w-full grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)_72px] items-center [&>*]:min-w-0";
 
 const statusBadgeClass: Record<AiStatus, string> = {
   UPLOADED:
@@ -665,7 +665,9 @@ export function AllDocumentsPage() {
   };
 
   const handleViewFile = (documentId: number) => {
-    navigate(`/app/library/${documentId}/preview`);
+    navigate(`/app/library/${documentId}/preview`, {
+      state: { returnTo: "/app/library/documents", returnLabel: "All Documents" },
+    });
   };
 
   const handleOpenEdit = (document: LibraryDocument) => {
@@ -843,8 +845,8 @@ export function AllDocumentsPage() {
       </div>
 
       {viewMode === "list" ? (
-        <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="min-w-[1270px]">
+        <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="w-full">
             <div
               className={`${documentListGridClass} border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60`}
             >

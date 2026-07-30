@@ -615,7 +615,7 @@ function FolderRow({
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className={`grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_80px] items-center border-t px-4 py-4 transition-colors ${
+      className={`grid w-full grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)_72px] items-center border-t px-4 py-4 transition-colors [&>*]:min-w-0 ${
         isDragOver
           ? "border-blue-200 bg-blue-50/80 ring-2 ring-inset ring-blue-200 dark:border-blue-800 dark:bg-blue-950/30 dark:ring-blue-900/60"
           : isActive
@@ -721,7 +721,7 @@ function DocumentRow({
       onDoubleClick={() => onViewFile(document.id)}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_80px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70">
+      className="grid w-full grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)_72px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70 [&>*]:min-w-0">
       <button
         type="button"
         onClick={() => onViewFile(document.id)}
@@ -1050,7 +1050,9 @@ export function MyLibrary() {
   };
 
   const handleViewFile = (documentId: number) => {
-    navigate(`/app/library/${documentId}/preview`);
+    navigate(`/app/library/${documentId}/preview`, {
+      state: { returnTo: "/app/library", returnLabel: "Library" },
+    });
   };
 
   const handleOpenEdit = (document: LibraryDocument) => {
@@ -2041,9 +2043,9 @@ export function MyLibrary() {
             </div>
           )
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="min-w-[1270px]">
-              <div className="grid grid-cols-[320px_150px_150px_150px_120px_150px_150px_80px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60">
+          <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="w-full">
+              <div className="grid w-full grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)_72px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-900/60 [&>*]:min-w-0">
                 <div>Name</div>
                 <div>Type / Category</div>
                 <div>Location</div>
