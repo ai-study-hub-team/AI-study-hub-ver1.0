@@ -222,7 +222,7 @@ const getCurrentRole = (): string => {
       ?.trim() ||
     storedUser?.role?.trim() ||
     getRoleFromToken() ||
-    "USER"
+    ""
   );
 };
 
