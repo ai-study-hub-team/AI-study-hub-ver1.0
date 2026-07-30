@@ -73,6 +73,8 @@ const PRO_MIME_OPTIONS = [
   },
 ] as const;
 
+const SHARE_LINK_MAX_VALIDITY_MS = 7 * 24 * 60 * 60 * 1000;
+
 const normalizeList = <T,>(data: ListResponse<T> | null | undefined): T[] => {
   if (Array.isArray(data)) return data;
   return data?.content ?? [];
@@ -371,10 +373,13 @@ export function DocumentSharesPage() {
   );
 
   const defaultExpiry = useMemo(() => {
-    const date = new Date();
-    date.setDate(date.getDate() + 7);
+    const date = new Date(Date.now() + SHARE_LINK_MAX_VALIDITY_MS);
     return toDatetimeLocalValue(date);
   }, []);
+  const expirationMin = toDatetimeLocalValue(new Date());
+  const expirationMax = toDatetimeLocalValue(
+    new Date(Date.now() + SHARE_LINK_MAX_VALIDITY_MS),
+  );
 
   const [linkForm, setLinkForm] = useState({
     title: "",
@@ -610,6 +615,24 @@ export function DocumentSharesPage() {
 
     if (!linkForm.title.trim()) {
       toast.error("Please enter a link title.");
+      return;
+    }
+
+    const expiresAt = new Date(linkForm.expiresAt);
+    const now = Date.now();
+
+    if (!linkForm.expiresAt || Number.isNaN(expiresAt.getTime())) {
+      toast.error("Please choose an expiration date.");
+      return;
+    }
+
+    if (expiresAt.getTime() <= now) {
+      toast.error("Expiration date must be in the future.");
+      return;
+    }
+
+    if (expiresAt.getTime() > now + SHARE_LINK_MAX_VALIDITY_MS) {
+      toast.error("Share links cannot be valid for more than 7 days.");
       return;
     }
 
@@ -1221,8 +1244,14 @@ export function DocumentSharesPage() {
                     setLinkForm((current) => ({ ...current, expiresAt: event.target.value }))
                   }
                   type="datetime-local"
+                  min={expirationMin}
+                  max={expirationMax}
+                  required
                   className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
+                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                  The link can be valid for up to 7 days.
+                </span>
               </label>
 
               <textarea
