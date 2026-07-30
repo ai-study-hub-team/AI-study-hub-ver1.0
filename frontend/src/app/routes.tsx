@@ -71,6 +71,7 @@ import { StorageAnalyticsPage } from "./pages/admin/StorageAnalyticsPage";
 import { PricingAnalyticsPage } from "./pages/admin/PricingAnalyticsPage";
 import { PlanManagement } from "./pages/admin/PlanManagement";
 import { ShareLinkManagement } from "./pages/admin/ShareLinkManagement";
+import { RequireAuth, RequireRole } from "./components/auth/RequireAuth";
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
   return (
