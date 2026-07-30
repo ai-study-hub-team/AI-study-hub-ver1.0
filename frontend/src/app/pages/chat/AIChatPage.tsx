@@ -83,6 +83,8 @@ type PersistedChatState = {
   updatedAt: string;
 };
 
+const MAX_SELECTED_DOCUMENTS = 5;
+
 type ApiError = {
   response?: {
     data?: {
@@ -433,6 +435,10 @@ export function AIChatPage() {
                 (id) =>
                   Number.isInteger(id) &&
                   id > 0,
+              )
+              .slice(
+                0,
+                MAX_SELECTED_DOCUMENTS,
               )
           : [];
 
@@ -938,16 +944,32 @@ export function AIChatPage() {
     id: number,
   ): void => {
     setSelectedDocumentIds(
-      (currentIds) =>
-        currentIds.includes(id)
-          ? currentIds.filter(
-              (documentId) =>
-                documentId !== id,
-            )
-          : [
-              ...currentIds,
-              id,
-            ],
+      (currentIds) => {
+        // Always allow deselecting a material.
+        if (currentIds.includes(id)) {
+          return currentIds.filter(
+            (documentId) =>
+              documentId !== id,
+          );
+        }
+
+        // Do not allow selecting more than 5 materials.
+        if (
+          currentIds.length >=
+          MAX_SELECTED_DOCUMENTS
+        ) {
+          toast.error(
+            `You can select up to ${MAX_SELECTED_DOCUMENTS} materials at a time.`,
+          );
+
+          return currentIds;
+        }
+
+        return [
+          ...currentIds,
+          id,
+        ];
+      },
     );
   };
 
@@ -969,6 +991,16 @@ export function AIChatPage() {
       if (!userId) {
         toast.error(
           "Please login again.",
+        );
+        return;
+      }
+
+      if (
+        selectedDocumentIds.length >
+        MAX_SELECTED_DOCUMENTS
+      ) {
+        toast.error(
+          `You can use up to ${MAX_SELECTED_DOCUMENTS} materials in one chat.`,
         );
         return;
       }
@@ -1596,6 +1628,10 @@ export function AIChatPage() {
                           document.processStatus ===
                             "PROCESSED",
                       )
+                      .slice(
+                        0,
+                        MAX_SELECTED_DOCUMENTS,
+                      )
                       .map(
                         (document) =>
                           document.id,
@@ -1605,7 +1641,7 @@ export function AIChatPage() {
                 className="px-4 py-2 text-sm font-bold text-blue-600 border border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-xl transition flex items-center gap-2"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                Select All
+                Select Up to 5
               </button>
             </div>
 
@@ -1646,6 +1682,11 @@ export function AIChatPage() {
                       selectedDocumentIds.includes(
                         document.id,
                       );
+
+                    const isLimitReached =
+                      selectedDocumentIds.length >=
+                        MAX_SELECTED_DOCUMENTS &&
+                      !isSelected;
 
                     const documentName =
                       document.title ||
@@ -1706,7 +1747,8 @@ export function AIChatPage() {
                           }
                         }}
                         className={`relative min-h-[230px] rounded-3xl border p-4 shadow-sm hover:shadow-lg transition-all overflow-hidden ${
-                          isProcessed
+                          isProcessed &&
+                          !isLimitReached
                             ? "cursor-pointer"
                             : "cursor-not-allowed opacity-60"
                         } ${
@@ -1842,6 +1884,10 @@ export function AIChatPage() {
                   <span className="font-extrabold text-blue-600">
                     {
                       selectedDocumentIds.length
+                    }
+                    /
+                    {
+                      MAX_SELECTED_DOCUMENTS
                     }{" "}
                     materials selected
                   </span>
@@ -1850,9 +1896,9 @@ export function AIChatPage() {
                     •
                   </span>
 
-                  You can select multiple
-                  materials to improve
-                  answer accuracy.
+                  Maximum 5 materials can
+                  be selected at the same
+                  time.
                 </p>
               </div>
 
