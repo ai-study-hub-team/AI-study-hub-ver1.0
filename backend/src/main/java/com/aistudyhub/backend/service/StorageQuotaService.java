@@ -128,19 +128,19 @@ public class StorageQuotaService {
 
         if (lc.startsWith("video/") && !subscription.getEffectiveAllowVideoUpload()) {
             throw new PlanRestrictionException(
-                    "Video uploads are not allowed on your current plan."
+                    "Your current " + subscription.getPlan().getCode() + " plan does not allow video uploads."
             );
         }
 
         if (lc.startsWith("audio/") && !subscription.getEffectiveAllowAudioUpload()) {
             throw new PlanRestrictionException(
-                    "Audio uploads are not allowed on your current plan."
+                    "Your current " + subscription.getPlan().getCode() + " plan does not allow audio uploads."
             );
         }
 
         if (lc.startsWith("image/") && !subscription.getEffectiveAllowImageUpload()) {
             throw new PlanRestrictionException(
-                    "Image uploads are not allowed on your current plan."
+                    "Your current " + subscription.getPlan().getCode() + " plan does not allow image uploads."
             );
         }
 
@@ -155,7 +155,7 @@ public class StorageQuotaService {
 
         if (isDocument && !subscription.getEffectiveAllowDocumentUpload()) {
             throw new PlanRestrictionException(
-                    "Document uploads are not allowed on your current plan."
+                    "Your current " + subscription.getPlan().getCode() + " plan does not allow document uploads."
             );
         }
     }
