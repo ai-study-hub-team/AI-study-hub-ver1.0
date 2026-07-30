@@ -11,9 +11,6 @@ import lombok.*;
 @AllArgsConstructor
 public class QuizGenerateRequest {
 
-    @NotNull(message = "userId is required")
-    private Long userId;
-
     @NotNull(message = "documentId is required")
     private Long documentId;
 

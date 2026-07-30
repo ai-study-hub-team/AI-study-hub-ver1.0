@@ -26,16 +26,15 @@ public class SummaryController {
     }
 
     @GetMapping
-    public ResponseEntity<List<SummaryGenerateResponse>> getSummariesByUserId(@RequestParam Long userId) {
-        List<SummaryGenerateResponse> responses = summaryService.getSummariesByUserId(userId);
+    public ResponseEntity<List<SummaryGenerateResponse>> getSummaries() {
+        List<SummaryGenerateResponse> responses = summaryService.getCurrentUserSummaries();
         return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/document/{documentId}")
     public ResponseEntity<List<SummaryGenerateResponse>> getSummariesByDocumentId(
-            @PathVariable Long documentId,
-            @RequestParam Long userId) {
-        List<SummaryGenerateResponse> responses = summaryService.getSummariesByDocumentId(documentId, userId);
+            @PathVariable Long documentId) {
+        List<SummaryGenerateResponse> responses = summaryService.getSummariesByDocumentId(documentId);
         return ResponseEntity.ok(responses);
     }
 }

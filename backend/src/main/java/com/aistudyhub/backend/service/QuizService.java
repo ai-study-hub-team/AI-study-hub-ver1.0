@@ -8,6 +8,7 @@ import com.aistudyhub.backend.dto.response.QuizQuestionResponse;
 import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.enums.QuizDifficulty;
 import com.aistudyhub.backend.enums.QuizType;
+import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +30,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class QuizService {
 
-    private final UserRepository userRepository;
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository documentChunkRepository;
     private final QuizRepository quizRepository;
@@ -37,6 +37,7 @@ public class QuizService {
     private final QuizOptionRepository quizOptionRepository;
     private final TokenUsageService tokenUsageService;
     private final TokenPricingService tokenPricingService;
+    private final CurrentUserService currentUserService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.base-url}")
@@ -51,7 +52,8 @@ public class QuizService {
 
     @Transactional
     public QuizGenerateResponse generateQuiz(QuizGenerateRequest request) {
-        log.info("Generating quiz for documentId: {}, userId: {}", request.getDocumentId(), request.getUserId());
+        User user = currentUserService.getCurrentUser();
+        log.info("Generating quiz for documentId: {}, userId: {}", request.getDocumentId(), user.getId());
 
         // 1. Apply defaults and validate inputs
         int questionCount = request.getQuestionCount() != null ? request.getQuestionCount() : DEFAULT_QUESTION_COUNT;
@@ -65,11 +67,7 @@ public class QuizService {
         QuizDifficulty difficulty = request.getDifficulty() != null ? request.getDifficulty() : QuizDifficulty.MEDIUM;
         QuizType quizType = request.getQuizType() != null ? request.getQuizType() : QuizType.MULTIPLE_CHOICE;
 
-        // 2. Validate User
-        User user = userRepository.findById(request.getUserId())
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + request.getUserId()));
-
-        // 3. Validate Document
+        // 2. Validate Document
         Document document = documentRepository.findById(request.getDocumentId())
                 .orElseThrow(() -> new RuntimeException("Document not found with id: " + request.getDocumentId()));
 
@@ -231,28 +229,34 @@ public class QuizService {
     // History Queries
     // ─────────────────────────────────────────────────────────────────────────
 
-    public List<QuizGenerateResponse> getQuizzesByUserId(Long userId) {
-        List<Quiz> quizzes = quizRepository.findByUser_IdOrderByCreatedAtDesc(userId);
+    @Transactional(readOnly = true)
+    public List<QuizGenerateResponse> getCurrentUserQuizzes() {
+        User currentUser = currentUserService.getCurrentUser();
+        List<Quiz> quizzes = quizRepository.findByUser_IdOrderByCreatedAtDesc(currentUser.getId());
         return quizzes.stream().map(this::mapToResponse).collect(Collectors.toList());
     }
 
-    public QuizGenerateResponse getQuizById(Long quizId, Long userId) {
+    @Transactional(readOnly = true)
+    public QuizGenerateResponse getQuizById(Long quizId) {
+        User currentUser = currentUserService.getCurrentUser();
         Quiz quiz = quizRepository.findById(quizId)
-                .orElseThrow(() -> new RuntimeException("Quiz not found with id: " + quizId));
+                .orElseThrow(() -> new NotFoundException("Quiz not found with id: " + quizId));
 
-        if (!quiz.getUser().getId().equals(userId)) {
-            throw new RuntimeException("User does not have permission to access this quiz");
+        if (!quiz.getUser().getId().equals(currentUser.getId())) {
+            throw new NotFoundException("Quiz not found with id: " + quizId);
         }
         return mapToResponse(quiz);
     }
 
-    public List<QuizGenerateResponse> getQuizzesByDocumentId(Long documentId, Long userId) {
+    @Transactional(readOnly = true)
+    public List<QuizGenerateResponse> getQuizzesByDocumentId(Long documentId) {
+        User currentUser = currentUserService.getCurrentUser();
         // Verify document belongs to the user before returning quizzes
         Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new RuntimeException("Document not found with id: " + documentId));
+                .orElseThrow(() -> new NotFoundException("Document not found with id: " + documentId));
 
-        if (!document.getUser().getId().equals(userId)) {
-            throw new RuntimeException("User does not have permission to access this document");
+        if (!document.getUser().getId().equals(currentUser.getId())) {
+            throw new NotFoundException("Document not found with id: " + documentId);
         }
 
         List<Quiz> quizzes = quizRepository.findByDocument_IdOrderByCreatedAtDesc(documentId);
@@ -269,12 +273,10 @@ public class QuizService {
                         .questionId(q.getId())
                         .questionText(q.getQuestionText())
                         .questionOrder(q.getQuestionOrder())
-                        .explanation(q.getExplanation())
                         .options(q.getOptions().stream()
                                 .map(o -> QuizOptionResponse.builder()
                                         .optionId(o.getId())
                                         .optionText(o.getOptionText())
-                                        .isCorrect(o.getIsCorrect())
                                         .optionOrder(o.getOptionOrder())
                                         .build())
                                 .collect(Collectors.toList()))
