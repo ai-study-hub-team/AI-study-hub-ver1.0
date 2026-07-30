@@ -90,7 +90,10 @@ public class AuthService {
     // Dang nhap bang email/password.
     // Neu thong tin hop le, user ACTIVE va da verify email,
     // thi cap nhat thoi gian hoat dong va tao cap access/refresh token.
-    @Transactional
+    @Transactional(noRollbackFor = {
+            UnauthorizedException.class,
+            TooManyLoginAttemptsException.class
+    })
     public AuthResponse login(LoginRequest request) {
         String email = normalizeEmail(request.getEmail());
 
@@ -119,6 +122,11 @@ public class AuthService {
         if (!passwordMatches) {
             recordFailedLogin(user, now);
             userRepository.save(user);
+
+            if (isTemporarilyLocked(user, now)) {
+                throwTooManyLoginAttempts(user, now);
+            }
+
             throw new UnauthorizedException(INVALID_CREDENTIALS);
         }
 
@@ -232,17 +240,25 @@ public class AuthService {
     }
 
     private void rejectIfTemporarilyLocked(User user, LocalDateTime now) {
-        LocalDateTime lockedUntil = user.getLockedUntil();
-        if (lockedUntil != null && lockedUntil.isAfter(now)) {
-            long retryAfterSeconds = Math.max(
-                    1,
-                    Duration.between(now, lockedUntil).getSeconds()
-            );
-            throw new TooManyLoginAttemptsException(
-                    TOO_MANY_LOGIN_ATTEMPTS,
-                    retryAfterSeconds
-            );
+        if (isTemporarilyLocked(user, now)) {
+            throwTooManyLoginAttempts(user, now);
         }
+    }
+
+    private boolean isTemporarilyLocked(User user, LocalDateTime now) {
+        LocalDateTime lockedUntil = user.getLockedUntil();
+        return lockedUntil != null && lockedUntil.isAfter(now);
+    }
+
+    private void throwTooManyLoginAttempts(User user, LocalDateTime now) {
+        long retryAfterSeconds = Math.max(
+                1,
+                Duration.between(now, user.getLockedUntil()).getSeconds()
+        );
+        throw new TooManyLoginAttemptsException(
+                TOO_MANY_LOGIN_ATTEMPTS,
+                retryAfterSeconds
+        );
     }
 
     private void recordFailedLogin(User user, LocalDateTime now) {
