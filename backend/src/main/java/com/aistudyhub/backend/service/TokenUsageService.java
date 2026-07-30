@@ -69,7 +69,7 @@ public class TokenUsageService {
         }
 
         UserSubscription subscription = subscriptionService.getCurrentSubscription(userId);
-        Long dailyLimit = subscription.getEffectiveDailyTokenLimit();
+        Long dailyLimit = subscription.getPlan().getDailyTokenLimit();
 
         LocalDate today = LocalDate.now();
 
