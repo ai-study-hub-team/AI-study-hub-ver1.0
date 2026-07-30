@@ -70,10 +70,6 @@ import { TokenAnalyticsPage } from "./pages/admin/TokenAnalyticsPage";
 import { StorageAnalyticsPage } from "./pages/admin/StorageAnalyticsPage";
 import { PricingAnalyticsPage } from "./pages/admin/PricingAnalyticsPage";
 import { PlanManagement } from "./pages/admin/PlanManagement";
-import {
-  RequireAuth,
-  RequireRole,
-} from "./components/auth/RequireAuth";
 import { ShareLinkManagement } from "./pages/admin/ShareLinkManagement";
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
