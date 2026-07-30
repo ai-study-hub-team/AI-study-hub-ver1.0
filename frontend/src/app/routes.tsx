@@ -74,6 +74,7 @@ import {
   RequireAuth,
   RequireRole,
 } from "./components/auth/RequireAuth";
+import { ShareLinkManagement } from "./pages/admin/ShareLinkManagement";
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
   return (
@@ -323,6 +324,10 @@ export const router = createBrowserRouter([
           {
             path: "plans",
             element: <AdminOnly><PlanManagement /></AdminOnly>,
+          },
+          {
+            path: "share-links",
+            element: <AdminOnly><ShareLinkManagement /></AdminOnly>,
           },
           { path: "pricing", element: <AdminOnly><PricingAnalyticsPage /></AdminOnly> },
           { path: "tokens", element: <TokenAnalyticsPage /> },

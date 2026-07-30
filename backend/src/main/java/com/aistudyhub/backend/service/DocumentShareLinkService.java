@@ -46,6 +46,7 @@ public class DocumentShareLinkService {
     private final CurrentUserService currentUserService;
     private final NotificationService notificationService;
     private final StorageQuotaService storageQuotaService;
+    private final SubscriptionService subscriptionService;
 
     @Value("${app.frontend.base-url:http://localhost:5173}")
     private String frontendBaseUrl;
@@ -72,6 +73,7 @@ public class DocumentShareLinkService {
     @Transactional
     public DocumentShareLinkResponse createShareLink(DocumentShareLinkCreateRequest request) {
         User owner = currentUserService.getCurrentUser();
+        validateDailyShareLinkCreationLimit(owner.getId());
         validateLinkMaxFileSize(owner.getId(), request.getMaxFileSizeBytes());
 
         // Resolve and validate access policy
@@ -223,6 +225,19 @@ public class DocumentShareLinkService {
             throw new BadRequestException(
                     "maxFileSizeBytes cannot exceed your plan limit of "
                             + (planFileSizeLimitBytes / 1024 / 1024) + " MB.");
+        }
+    }
+
+    private void validateDailyShareLinkCreationLimit(Long ownerId) {
+        int dailyLimit = subscriptionService.getCurrentSubscription(ownerId)
+                .getPlan()
+                .getMaxShareLinksPerDay();
+        long createdToday = shareLinkRepository.countByOwnerIdAndCreatedAtGreaterThanEqual(
+                ownerId, LocalDateTime.now().toLocalDate().atStartOfDay());
+
+        if (createdToday >= dailyLimit) {
+            throw new ForbiddenException(
+                    "You have reached your daily share-link creation limit of " + dailyLimit + " links.");
         }
     }
 

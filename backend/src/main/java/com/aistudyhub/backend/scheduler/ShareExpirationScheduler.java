@@ -33,19 +33,27 @@ public class ShareExpirationScheduler {
 
     @Scheduled(cron = "0 45 2 * * *")
     @Transactional
-    public void expireSharesAndLinks() {
+    public void expireDocumentAndFolderShares() {
         LocalDateTime now = LocalDateTime.now();
 
         int expiredDocumentShares = expireDocumentShares(now);
         int expiredFolderShares = expireFolderShares(now);
-        int expiredUploadLinks = expireUploadLinks(now);
 
         log.info(
-                "[ShareExpiration] Expired documentShares={} folderShares={} uploadLinks={}",
+                "[ShareExpiration] Expired documentShares={} folderShares={}",
                 expiredDocumentShares,
-                expiredFolderShares,
-                expiredUploadLinks
+                expiredFolderShares
         );
+    }
+
+    /** Upload links should visibly expire shortly after their configured time. */
+    @Scheduled(fixedDelay = 60_000)
+    @Transactional
+    public void expireUploadShareLinks() {
+        int expiredUploadLinks = expireUploadLinks(LocalDateTime.now());
+        if (expiredUploadLinks > 0) {
+            log.info("[ShareExpiration] Expired uploadLinks={}", expiredUploadLinks);
+        }
     }
 
     private int expireDocumentShares(LocalDateTime now) {

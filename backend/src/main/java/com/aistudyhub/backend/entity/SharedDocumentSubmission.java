@@ -172,6 +172,13 @@ public class SharedDocumentSubmission {
     @Builder.Default
     private int cloudDeleteAttempts = 0;
 
+    /** Soft-delete audit fields. Deleted submissions are hidden from the owner list. */
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    @Column(name = "deleted_by")
+    private Long deletedBy;
+
     @PrePersist
     void prePersist() {
         if (submittedAt == null) submittedAt = LocalDateTime.now();

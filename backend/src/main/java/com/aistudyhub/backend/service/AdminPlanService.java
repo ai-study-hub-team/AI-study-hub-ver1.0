@@ -51,6 +51,7 @@ public class AdminPlanService {
                 .storageLimitMb(request.getStorageLimitMb())
                 .maxUploadSizePerFileMb(request.getMaxUploadSizePerFileMb())
                 .dailyTokenLimit(request.getDailyTokenLimit())
+                .maxShareLinksPerDay(request.getMaxShareLinksPerDay())
                 .price(request.getPrice())
                 .durationDays(request.getDurationDays())
                 .description(request.getDescription())
@@ -107,6 +108,7 @@ public class AdminPlanService {
                 .storageLimitMb(request.getStorageLimitMb())
                 .maxUploadSizePerFileMb(request.getMaxUploadSizePerFileMb())
                 .dailyTokenLimit(request.getDailyTokenLimit())
+                .maxShareLinksPerDay(request.getMaxShareLinksPerDay())
                 .price(request.getPrice())
                 .durationDays(request.getDurationDays())
                 .description(request.getDescription())
@@ -165,6 +167,7 @@ public class AdminPlanService {
         plan.setStorageLimitMb(request.getStorageLimitMb());
         plan.setMaxUploadSizePerFileMb(request.getMaxUploadSizePerFileMb());
         plan.setDailyTokenLimit(request.getDailyTokenLimit());
+        plan.setMaxShareLinksPerDay(request.getMaxShareLinksPerDay());
         plan.setPrice(request.getPrice());
         plan.setDurationDays(request.getDurationDays());
         plan.setDescription(request.getDescription());
@@ -184,6 +187,7 @@ public class AdminPlanService {
                 .storageLimitMb(plan.getStorageLimitMb())
                 .maxUploadSizePerFileMb(plan.getMaxUploadSizePerFileMb())
                 .dailyTokenLimit(plan.getDailyTokenLimit())
+                .maxShareLinksPerDay(plan.getMaxShareLinksPerDay())
                 .price(plan.getPrice())
                 .durationDays(plan.getDurationDays())
                 .description(plan.getDescription())

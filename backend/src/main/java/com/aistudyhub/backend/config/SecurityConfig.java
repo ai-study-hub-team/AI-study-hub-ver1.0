@@ -106,6 +106,7 @@ public class SecurityConfig {
                         // Admin-only manager and plan management
                         .requestMatchers("/api/admin/managers/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/plans/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/document-share-links/**").hasRole("ADMIN")
 
                         // Admin-only revenue dashboard
                         .requestMatchers(

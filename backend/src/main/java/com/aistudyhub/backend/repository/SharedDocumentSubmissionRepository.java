@@ -16,9 +16,9 @@ import java.util.Optional;
 public interface SharedDocumentSubmissionRepository
         extends JpaRepository<SharedDocumentSubmission, Long> {
 
-    List<SharedDocumentSubmission> findByOwnerUserIdOrderBySubmittedAtDesc(Long ownerUserId);
+    List<SharedDocumentSubmission> findByOwnerUserIdAndDeletedAtIsNullOrderBySubmittedAtDesc(Long ownerUserId);
 
-    List<SharedDocumentSubmission> findByOwnerUserIdAndStatusOrderBySubmittedAtDesc(
+    List<SharedDocumentSubmission> findByOwnerUserIdAndStatusAndDeletedAtIsNullOrderBySubmittedAtDesc(
             Long ownerUserId, SharedSubmissionStatus status);
 
     @Query("""
@@ -27,6 +27,7 @@ public interface SharedDocumentSubmissionRepository
             JOIN FETCH link.owner owner
             WHERE s.id = :submissionId
               AND owner.id = :ownerUserId
+              AND s.deletedAt IS NULL
             """)
     Optional<SharedDocumentSubmission> findByIdAndOwnerUserId(
             @Param("submissionId") Long submissionId,
@@ -34,6 +35,10 @@ public interface SharedDocumentSubmissionRepository
     );
 
     List<SharedDocumentSubmission> findByShareLinkId(Long shareLinkId);
+
+    List<SharedDocumentSubmission> findByShareLinkIdAndDeletedAtIsNull(Long shareLinkId);
+
+    boolean existsByShareLinkId(Long shareLinkId);
 
     @Query("""
             SELECT COUNT(s) FROM SharedDocumentSubmission s

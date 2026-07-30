@@ -11,6 +11,7 @@ import {
   RefreshCcw,
   ShieldOff,
   UserRoundCog,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -98,7 +99,9 @@ const toDatetimeLocalValue = (date: Date) => {
 
 const toApiDatetime = (value: string) => {
   if (!value) return undefined;
-  return new Date(value).toISOString().slice(0, 19);
+  // datetime-local is already the time selected in the user's local timezone.
+  // The backend accepts LocalDateTime, so converting it to UTC would shift it.
+  return value.length === 16 ? `${value}:00` : value;
 };
 
 const formatDateTime = (value?: string | null) => {
@@ -386,6 +389,7 @@ export function DocumentSharesPage() {
   const [workingSubmissionId, setWorkingSubmissionId] = useState<number | null>(
     null,
   );
+  const [deletingSubmissionGroupLinkId, setDeletingSubmissionGroupLinkId] = useState<number | null>(null);
 
   const defaultExpiry = useMemo(() => {
     const date = new Date(Date.now() + SHARE_LINK_MAX_VALIDITY_MS);
@@ -507,7 +511,7 @@ export function DocumentSharesPage() {
       setLinks(
         normalizeList(
           linksRes.data as ListResponse<DocumentShareLinkResponse>,
-        ).filter((link) => isActiveShareLink(link.status)),
+        ).filter((link) => getShareLinkStatus(link.status) !== "DISABLED"),
       );
 
       setSubmissions(
@@ -865,6 +869,90 @@ export function DocumentSharesPage() {
           : String(link.maxTotalBytes / 1024 / 1024),
       allowedFileTypes: link.allowedFileTypes ?? "",
     });
+  };
+
+  const deleteSubmissionGroup = async (
+    linkId: number,
+    submissionsForLink: SharedDocumentSubmissionResponse[],
+  ) => {
+    const allReviewed = submissionsForLink.every(
+      (submission) => submission.status === "APPROVED" || submission.status === "REJECTED",
+    );
+    if (!allReviewed) {
+      toast.error("All submissions must be approved or rejected before deletion.");
+      return;
+    }
+    if (!window.confirm("Remove this submission group from your list? Approved documents will remain in your library.")) {
+<<<<<<< HEAD
+=======
+      return;
+    }
+
+    try {
+      setDeletingSubmissionGroupLinkId(linkId);
+      await sharedDocumentSubmissionApi.deleteSubmissionGroup(linkId);
+      setSubmissions((current) => current.filter((submission) => Number(submission.shareLinkId) !== linkId));
+      toast.success("Submission group removed from your list.");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.response?.data?.error || "Cannot delete submission group.");
+    } finally {
+      setDeletingSubmissionGroupLinkId(null);
+    }
+  };
+
+  const deleteSubmissionGroup = async (
+    linkId: number,
+    submissionsForLink: SharedDocumentSubmissionResponse[],
+  ) => {
+    const allReviewed = submissionsForLink.every(
+      (submission) => submission.status === "APPROVED" || submission.status === "REJECTED",
+    );
+    if (!allReviewed) {
+      toast.error("All submissions must be approved or rejected before deletion.");
+      return;
+    }
+    if (!window.confirm("Remove this submission group from your list? Approved documents will remain in your library.")) {
+      return;
+    }
+
+    try {
+      setDeletingSubmissionGroupLinkId(linkId);
+      await sharedDocumentSubmissionApi.deleteSubmissionGroup(linkId);
+      setSubmissions((current) => current.filter((submission) => Number(submission.shareLinkId) !== linkId));
+      toast.success("Submission group removed from your list.");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.response?.data?.error || "Cannot delete submission group.");
+    } finally {
+      setDeletingSubmissionGroupLinkId(null);
+    }
+  };
+
+  const closeAllowlistManager = () => {
+    if (isUpdatingAllowlist || isUpdatingLinkSettings) return;
+    setAllowlistLink(null);
+    setAllowlistForm({ emailsToAdd: "", emailsToRemove: "" });
+  };
+
+  const handleUpdateLinkSettings = async () => {
+    if (!allowlistLink) return;
+
+    const linkId = getShareLinkId(allowlistLink);
+    if (!linkId) {
+      toast.error("Cannot identify this shared upload link.");
+>>>>>>> 50539573 (Update share link feature)
+      return;
+    }
+
+    try {
+      setDeletingSubmissionGroupLinkId(linkId);
+      await sharedDocumentSubmissionApi.deleteSubmissionGroup(linkId);
+      setSubmissions((current) => current.filter((submission) => Number(submission.shareLinkId) !== linkId));
+      toast.success("Submission group removed from your list.");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.response?.data?.error || "Cannot delete submission group.");
+    } finally {
+      setDeletingSubmissionGroupLinkId(null);
+    }
   };
 
   const closeAllowlistManager = () => {
@@ -1725,7 +1813,7 @@ export function DocumentSharesPage() {
                           Manage
                         </button>
 
-                        {isActiveShareLink(link.status) && (
+                        {(isActiveShareLink(link.status) || getShareLinkStatus(link.status) === "EXPIRED") && (
                           <button
                             type="button"
                             onClick={() => setDisableConfirmLink(link)}
@@ -1818,23 +1906,38 @@ export function DocumentSharesPage() {
                       )}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setVisibleSubmissionsByGroup((current) => ({
-                          ...current,
-                          [group.key]:
-                            (current[group.key] ?? 0) > 0
-                              ? 0
-                              : initialSubmissionsPerGroup,
-                        }))
-                      }
-                      className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
-                    >
-                      {(visibleSubmissionsByGroup[group.key] ?? 0) > 0
-                        ? "Hide documents"
-                        : "Show documents"}
-                    </button>
+                    <div className="ml-auto flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVisibleSubmissionsByGroup((current) => ({
+                            ...current,
+                            [group.key]:
+                              (current[group.key] ?? 0) > 0
+                                ? 0
+                                : initialSubmissionsPerGroup,
+                          }))
+                        }
+                        className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                      >
+                        {(visibleSubmissionsByGroup[group.key] ?? 0) > 0
+                          ? "Hide documents"
+                          : "Show documents"}
+                      </button>
+                      {submissionStatusFilter === "ALL" && group.linkId && group.submissions.every(
+                        (submission) => submission.status === "APPROVED" || submission.status === "REJECTED",
+                      ) && (
+                        <button
+                          type="button"
+                          disabled={deletingSubmissionGroupLinkId === group.linkId}
+                          onClick={() => void deleteSubmissionGroup(group.linkId!, group.submissions)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-60 dark:border-red-900 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-950/30"
+                        >
+                          {deletingSubmissionGroupLinkId === group.linkId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          Delete group
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {(visibleSubmissionsByGroup[group.key] ?? 0) > 0 && (
@@ -1894,12 +1997,6 @@ export function DocumentSharesPage() {
 
                         <p>Email: {submission.uploaderEmail || "No email"}</p>
                       </div>
-
-                      {submission.approvedDocumentId && (
-                        <p className="mt-2 text-xs font-bold text-emerald-600 dark:text-emerald-300">
-                          Approved Document ID: {submission.approvedDocumentId}
-                        </p>
-                      )}
 
                       {submission.rejectReason && (
                         <p className="mt-2 text-xs font-bold text-red-600 dark:text-red-300">

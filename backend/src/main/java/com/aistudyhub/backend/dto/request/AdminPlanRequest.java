@@ -30,6 +30,10 @@ public class AdminPlanRequest {
 
     @NotNull
     @PositiveOrZero
+    private Integer maxShareLinksPerDay;
+
+    @NotNull
+    @PositiveOrZero
     private BigDecimal price;
 
     @PositiveOrZero

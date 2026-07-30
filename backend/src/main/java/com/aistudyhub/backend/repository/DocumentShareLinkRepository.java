@@ -3,6 +3,11 @@ package com.aistudyhub.backend.repository;
 import com.aistudyhub.backend.entity.DocumentShareLink;
 import com.aistudyhub.backend.entity.DocumentShareStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -27,4 +32,20 @@ public interface DocumentShareLinkRepository extends JpaRepository<DocumentShare
 
     /** Ownership check: find a specific link that belongs to a user. */
     Optional<DocumentShareLink> findByIdAndOwnerId(Long id, Long ownerId);
+
+    long countByOwnerIdAndCreatedAtGreaterThanEqual(Long ownerId, java.time.LocalDateTime startOfDay);
+
+    @EntityGraph(attributePaths = "owner")
+    @Query("""
+            select link from DocumentShareLink link
+            join link.owner owner
+            where (:status is null or link.status = :status)
+              and (lower(coalesce(link.title, '')) like :keywordPattern
+                   or lower(owner.fullName) like :keywordPattern
+                   or lower(owner.email) like :keywordPattern)
+            """)
+    Page<DocumentShareLink> searchForAdmin(
+            @Param("status") DocumentShareStatus status,
+            @Param("keywordPattern") String keywordPattern,
+            Pageable pageable);
 }

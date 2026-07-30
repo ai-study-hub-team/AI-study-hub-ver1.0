@@ -292,6 +292,7 @@ public class SubscriptionService {
                 .storageLimitMb(plan.getStorageLimitMb())
                 .maxUploadSizePerFileMb(plan.getMaxUploadSizePerFileMb())
                 .dailyTokenLimit(plan.getDailyTokenLimit())
+                .maxShareLinksPerDay(plan.getMaxShareLinksPerDay())
                 .price(plan.getPrice())
                 .durationDays(plan.getDurationDays())
                 .description(plan.getDescription())
