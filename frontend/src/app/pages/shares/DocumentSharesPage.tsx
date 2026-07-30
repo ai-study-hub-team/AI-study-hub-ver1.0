@@ -852,6 +852,36 @@ export function DocumentSharesPage() {
       return;
     }
     if (!window.confirm("Remove this submission group from your list? Approved documents will remain in your library.")) {
+<<<<<<< HEAD
+=======
+      return;
+    }
+
+    try {
+      setDeletingSubmissionGroupLinkId(linkId);
+      await sharedDocumentSubmissionApi.deleteSubmissionGroup(linkId);
+      setSubmissions((current) => current.filter((submission) => Number(submission.shareLinkId) !== linkId));
+      toast.success("Submission group removed from your list.");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.response?.data?.error || "Cannot delete submission group.");
+    } finally {
+      setDeletingSubmissionGroupLinkId(null);
+    }
+  };
+
+  const closeAllowlistManager = () => {
+    if (isUpdatingAllowlist || isUpdatingLinkSettings) return;
+    setAllowlistLink(null);
+    setAllowlistForm({ emailsToAdd: "", emailsToRemove: "" });
+  };
+
+  const handleUpdateLinkSettings = async () => {
+    if (!allowlistLink) return;
+
+    const linkId = getShareLinkId(allowlistLink);
+    if (!linkId) {
+      toast.error("Cannot identify this shared upload link.");
+>>>>>>> 50539573 (Update share link feature)
       return;
     }
 
