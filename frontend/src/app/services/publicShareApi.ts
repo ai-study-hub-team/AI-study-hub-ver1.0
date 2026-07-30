@@ -35,20 +35,25 @@ export interface PublicDocumentSubmissionResponse {
   shareLinkId: number;
   shareLinkTitle: string;
   ownerUserId: number;
-  uploaderUserId?: number;
+  uploaderUserId: number;
   uploaderName: string;
   uploaderEmail: string;
   originalFileName: string;
   fileType: string;
   fileSize: number;
+  cloudPublicId?: string | null;
+  cloudSecureUrl?: string | null;
+  cloudResourceType?: string | null;
   title: string;
   description: string;
   status: string;
-  approvedDocumentId?: number;
+  approvedDocumentId?: number | null;
   submittedAt: string;
-  reviewedAt?: string;
-  reviewedBy?: number;
-  rejectReason?: string;
+  reviewedAt?: string | null;
+  reviewedBy?: number | null;
+  rejectReason?: string | null;
+  deleteAfter?: string | null;
+  quotaReleasedAt?: string | null;
 }
 
 export const publicShareApi = {
