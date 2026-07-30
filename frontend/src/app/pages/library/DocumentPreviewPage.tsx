@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PptxViewer, RECOMMENDED_ZIP_LIMITS } from "@aiden0z/pptx-renderer";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import {
+  ArrowLeft,
   Bot,
   ChevronDown,
   Download,
@@ -35,6 +36,10 @@ import {
   documentNoteApi,
   type DocumentNoteResponse,
 } from "../../services/documentNoteApi";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+
+const SHARED_USERS_PAGE_SIZE = 5;
+const NOTES_PAGE_SIZE = 3;
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -322,6 +327,8 @@ type PreviewRouteState = {
   ownerName?: string;
   ownerEmail?: string;
   sharedDocument?: any;
+  returnTo?: string;
+  returnLabel?: string;
 };
 
 const splitEmails = (value: string) => {
@@ -337,6 +344,10 @@ const formatDateTimeForApi = (value: string) => {
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return `${value}T23:59:59`;
+  }
 
   return value.length === 16 ? `${value}:00` : value;
 };
@@ -407,6 +418,7 @@ export function DocumentPreviewPage() {
   const [sharedUsers, setSharedUsers] = useState<SharedDocumentUser[]>([]);
   const [isSharedUsersLoading, setIsSharedUsersLoading] = useState(false);
   const [isShareSubmitting, setIsShareSubmitting] = useState(false);
+  const [sharedUsersPage, setSharedUsersPage] = useState(1);
 
   const [pdfPageCount, setPdfPageCount] = useState(0);
   const [pdfScale, setPdfScale] = useState(1.15);
@@ -417,6 +429,7 @@ export function DocumentPreviewPage() {
   const [noteContent, setNoteContent] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [deleteNoteId, setDeleteNoteId] = useState<number | null>(null);
+  const [notesPage, setNotesPage] = useState(1);
 
   const [chatMode, setChatMode] = useState<ChatMode>("collapsed");
   const [activePanel, setActivePanel] = useState<StudyPanel>("split");
@@ -426,10 +439,40 @@ export function DocumentPreviewPage() {
 
   const documentId = Number(id);
   const currentUserId = getCurrentUserId();
+  const handleBack = () => {
+    navigate(routeState.returnTo || "/app/library");
+  };
 
   const highlightedDocxHtml = useMemo(() => {
     return highlightHtml(docxHtml, keyword);
   }, [docxHtml, keyword]);
+  const sharedUsersTotalPages = Math.max(
+    1,
+    Math.ceil(sharedUsers.length / SHARED_USERS_PAGE_SIZE),
+  );
+  const paginatedSharedUsers = useMemo(() => {
+    const startIndex = (sharedUsersPage - 1) * SHARED_USERS_PAGE_SIZE;
+    return sharedUsers.slice(
+      startIndex,
+      startIndex + SHARED_USERS_PAGE_SIZE,
+    );
+  }, [sharedUsers, sharedUsersPage]);
+  const notesTotalPages = Math.max(
+    1,
+    Math.ceil(notes.length / NOTES_PAGE_SIZE),
+  );
+  const paginatedNotes = useMemo(() => {
+    const startIndex = (notesPage - 1) * NOTES_PAGE_SIZE;
+    return notes.slice(startIndex, startIndex + NOTES_PAGE_SIZE);
+  }, [notes, notesPage]);
+
+  useEffect(() => {
+    setSharedUsersPage((page) => Math.min(page, sharedUsersTotalPages));
+  }, [sharedUsersTotalPages]);
+
+  useEffect(() => {
+    setNotesPage((page) => Math.min(page, notesTotalPages));
+  }, [notesTotalPages]);
 
   const loadSharedUsers = async () => {
     if (!documentId) return;
@@ -490,9 +533,9 @@ export function DocumentPreviewPage() {
       setSharePermission("VIEW");
       setShareExpiresAt("");
       await loadSharedUsers();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Cannot share document:", error);
-      toast.error("Cannot share document.");
+      toast.error(getErrorMessage(error, "Cannot share document."));
     } finally {
       setIsShareSubmitting(false);
     }
@@ -772,7 +815,10 @@ export function DocumentPreviewPage() {
       }
 
       resetNoteForm();
-      loadNotes();
+      if (!editingNoteId) {
+        setNotesPage(1);
+      }
+      await loadNotes();
     } catch (error) {
       console.error("Cannot save note:", error);
       toast.error("Cannot save note.");
@@ -802,7 +848,7 @@ export function DocumentPreviewPage() {
       }
 
       setDeleteNoteId(null);
-      loadNotes();
+      await loadNotes();
     } catch (error) {
       console.error("Cannot delete note:", error);
       toast.error("Cannot delete note.");
@@ -1213,33 +1259,32 @@ export function DocumentPreviewPage() {
     if (!isShareModalOpen) return null;
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 backdrop-blur-sm">
-        <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-2xl">
-          <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6">
+        <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-slate-900">
+          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
             <div>
-              <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-                <Share2 className="h-5 w-5" />
-              </div>
-              <h2 className="text-lg font-extrabold text-slate-950">
-                Share document
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Share this document to registered users by email.
+              <p className="text-xs font-bold uppercase tracking-widest text-blue-600">
+                Share Document
               </p>
+              <h2 className="mt-1 text-xl font-extrabold text-slate-950 dark:text-white">
+                {fileName}
+              </h2>
             </div>
 
             <button
               type="button"
               onClick={() => setIsShareModalOpen(false)}
-              className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              aria-label="Close"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
 
-          <div className="grid max-h-[calc(90vh-96px)] gap-0 overflow-auto md:grid-cols-[minmax(0,1fr)_minmax(280px,0.85fr)]">
-            <div className="border-b border-slate-200 p-6 md:border-b-0 md:border-r">
-              <label className="text-xs font-extrabold uppercase tracking-widest text-slate-500">
+          <div className="grid max-h-[calc(90vh-80px)] gap-6 overflow-y-auto p-6 lg:h-[calc(90vh-80px)] lg:max-h-[700px] lg:grid-cols-[1fr_1.2fr]">
+            <section className="space-y-4">
+              <div>
+              <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
                 Emails
               </label>
               <textarea
@@ -1247,15 +1292,16 @@ export function DocumentPreviewPage() {
                 onChange={(event) => setShareEmails(event.target.value)}
                 placeholder="receiver@example.com, student@example.com"
                 rows={5}
-                className="mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-900 outline-none focus:border-blue-500"
+                className="mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               />
-              <p className="mt-2 text-xs font-semibold text-slate-400">
-                You can separate emails by comma, space, semicolon, or new line.
+              <p className="mt-1 text-xs text-slate-500">
+                Separate emails with commas, semicolons, or new lines.
               </p>
+              </div>
 
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <div>
                 <div>
-                  <label className="text-xs font-extrabold uppercase tracking-widest text-slate-500">
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
                     Permission
                   </label>
                   <select
@@ -1263,23 +1309,28 @@ export function DocumentPreviewPage() {
                     onChange={(event) =>
                       setSharePermission(event.target.value as SharePermission)
                     }
-                    className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
                     <option value="VIEW">View only</option>
                     <option value="DOWNLOAD">Allow download</option>
                   </select>
                 </div>
+              </div>
 
+              <div>
                 <div>
-                  <label className="text-xs font-extrabold uppercase tracking-widest text-slate-500">
-                    Expires at
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                    Expiration date
                   </label>
                   <input
-                    type="datetime-local"
+                    type="date"
                     value={shareExpiresAt}
                     onChange={(event) => setShareExpiresAt(event.target.value)}
-                    className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Leave empty for no expiration.
+                  </p>
                 </div>
               </div>
 
@@ -1287,49 +1338,48 @@ export function DocumentPreviewPage() {
                 type="button"
                 disabled={isShareSubmitting}
                 onClick={handleSubmitDocumentShare}
-                className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-extrabold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-extrabold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Share2 className="h-4 w-4" />
                 {isShareSubmitting ? "Sharing..." : "Share document"}
               </button>
-            </div>
+            </section>
 
-            <div className="p-6">
-              <div className="mb-4 flex items-center justify-between gap-3">
+            <section className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
                 <div>
-                  <h3 className="text-sm font-extrabold text-slate-950">
+                  <h3 className="font-extrabold text-slate-950 dark:text-white">
                     Shared users
                   </h3>
-                  <p className="mt-1 text-xs font-semibold text-slate-400">
-                    Owner can revoke each active share.
-                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={loadSharedUsers}
-                  className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  disabled={isSharedUsersLoading}
+                  className="text-xs font-bold text-blue-600 disabled:opacity-60"
                 >
                   Refresh
                 </button>
               </div>
 
               {isSharedUsersLoading ? (
-                <p className="text-sm font-semibold text-slate-500">
+                <p className="p-6 text-sm font-semibold text-slate-500">
                   Loading shared users...
                 </p>
               ) : sharedUsers.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center">
+                <div className="m-4 rounded-2xl border border-dashed border-slate-300 p-6 text-center">
                   <ShieldCheck className="mx-auto mb-3 h-8 w-8 text-slate-400" />
                   <p className="text-sm font-bold text-slate-700">
                     This document has not been shared yet.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {sharedUsers.map((user) => (
+                <div className="flex h-[calc(100%-53px)] flex-col">
+                  <div className="flex-1 divide-y divide-slate-100 dark:divide-slate-800">
+                  {paginatedSharedUsers.map((user) => (
                     <div
                       key={`${user.shareId}-${user.userId}`}
-                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                      className="bg-white p-4 dark:bg-slate-900"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -1365,9 +1415,19 @@ export function DocumentPreviewPage() {
                       </div>
                     </div>
                   ))}
+                  </div>
+
+                  <div className="border-t border-slate-100 px-4 pb-4 dark:border-slate-800">
+                    <PaginationControls
+                      currentPage={sharedUsersPage}
+                      totalItems={sharedUsers.length}
+                      pageSize={SHARED_USERS_PAGE_SIZE}
+                      onPageChange={setSharedUsersPage}
+                    />
+                  </div>
                 </div>
               )}
-            </div>
+            </section>
           </div>
         </div>
       </div>
@@ -1517,14 +1577,7 @@ export function DocumentPreviewPage() {
     return (
       <div className="flex h-full min-h-0 flex-col bg-white">
         <div className="min-h-0 flex-1 overflow-auto px-8 py-6">
-          <button
-            type="button"
-            onClick={() => runAiAction("Generate bullet points summary for this document")}
-            className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-extrabold text-slate-800 hover:bg-slate-200"
-          >
-            Generate Notes
-          </button>
-          <p className="mt-4 text-sm font-semibold text-slate-400">
+          <p className="text-sm font-semibold text-slate-400">
             Take your own notes here
           </p>
 
@@ -1597,7 +1650,8 @@ export function DocumentPreviewPage() {
                   </p>
                 </div>
               ) : (
-                notes.map((note) => (
+                <>
+                {paginatedNotes.map((note) => (
                   <div
                     key={note.id}
                     className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
@@ -1641,7 +1695,15 @@ export function DocumentPreviewPage() {
                       {note.content}
                     </p>
                   </div>
-                ))
+                ))}
+
+                <PaginationControls
+                  currentPage={notesPage}
+                  totalItems={notes.length}
+                  pageSize={NOTES_PAGE_SIZE}
+                  onPageChange={setNotesPage}
+                />
+                </>
               )}
             </div>
           </div>
@@ -1676,7 +1738,7 @@ export function DocumentPreviewPage() {
   })();
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-white text-slate-900">
+    <div className="-mt-6 flex h-[calc(100vh-5.5rem)] flex-col overflow-hidden bg-white text-slate-900 md:-mt-8 md:h-[calc(100vh-6rem)]">
       <style>{`
         .docx-preview {
           font-family: "Times New Roman", Times, serif;
@@ -1717,6 +1779,33 @@ export function DocumentPreviewPage() {
           box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
         }
       `}</style>
+
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-extrabold text-slate-700 shadow-sm hover:bg-slate-50"
+          title={`Back to ${routeState.returnLabel || "Library"}`}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </button>
+
+        {canManageShare && (
+          <button
+            type="button"
+            onClick={() => {
+              setIsShareModalOpen(true);
+              loadSharedUsers();
+            }}
+            className="flex items-center gap-2 rounded-xl bg-blue-600 px-3.5 py-2.5 text-sm font-extrabold text-white shadow-lg shadow-blue-200/70 hover:bg-blue-700"
+            title="Share document"
+          >
+            <Share2 className="h-4 w-4" />
+            Share
+          </button>
+        )}
+      </div>
 
       <main
         className="min-h-0 flex-1 overflow-hidden"
@@ -1775,21 +1864,6 @@ export function DocumentPreviewPage() {
           ))}
         </div>
       </div>
-
-      {canManageShare && (
-        <button
-          type="button"
-          onClick={() => {
-            setIsShareModalOpen(true);
-            loadSharedUsers();
-          }}
-          className="fixed right-6 top-[78px] z-40 flex items-center gap-2 rounded-xl bg-blue-600 px-3.5 py-2.5 text-sm font-extrabold text-white shadow-lg shadow-blue-200/70 hover:bg-blue-700"
-          title="Share document"
-        >
-          <Share2 className="h-4 w-4" />
-          Share
-        </button>
-      )}
 
       {renderShareModal()}
 

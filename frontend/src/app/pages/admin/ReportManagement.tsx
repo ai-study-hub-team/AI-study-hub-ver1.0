@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Eye, Loader2, RefreshCw, Search } from "lucide-react";
+import { Loader2, Pencil, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -178,7 +178,7 @@ export function ReportManagement() {
                   <td className="p-4">{report.reason}</td>
                   <td className="p-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${badgeClass[report.status] ?? "bg-slate-100"}`}>{report.status}</span></td>
                   <td className="p-4">{formatDate(report.createdAt)}</td>
-                  <td className="p-4 text-right"><button onClick={() => void openDetail(report)} className="rounded-lg border p-2" title="View"><Eye className="h-4 w-4" /></button></td>
+                  <td className="p-4 text-right"><button onClick={() => void openDetail(report)} className="rounded-lg border p-2 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:hover:border-blue-800 dark:hover:bg-blue-950/30" title="Edit report" aria-label="Edit report"><Pencil className="h-4 w-4" /></button></td>
                 </tr>
               ))}</tbody>
             </table>

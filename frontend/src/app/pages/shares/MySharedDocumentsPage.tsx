@@ -39,6 +39,8 @@ type SharedFolderRow = {
   shares: FolderShareResponse[];
 };
 
+type SharedItemsTab = "folders" | "documents";
+
 const permissionLabels: Record<string, string> = {
   VIEW: "View only",
   DOWNLOAD: "Allow download",
@@ -92,11 +94,15 @@ export function MySharedDocumentsPage() {
   const [rows, setRows] = useState<SharedDocumentRow[]>([]);
   const [folderRows, setFolderRows] = useState<SharedFolderRow[]>([]);
   const [keyword, setKeyword] = useState("");
+  const [activeTab, setActiveTab] = useState<SharedItemsTab>("folders");
   const [isLoading, setIsLoading] = useState(false);
   const [revokingKey, setRevokingKey] = useState<string | null>(null);
+  const [expandedFolderIds, setExpandedFolderIds] = useState<
+    Record<number, boolean>
+  >({});
   const [folderPage, setFolderPage] = useState(1);
   const [documentPage, setDocumentPage] = useState(1);
-  const pageSize = 10;
+  const pageSize = 5;
 
   const loadSharedItems = useCallback(async () => {
     try {
@@ -194,22 +200,7 @@ export function MySharedDocumentsPage() {
 
     return rows.filter((row) => {
       const documentTitle = getDocumentTitle(row.document);
-
-      const shareValues = row.shares.flatMap((share) => [
-        share.fullName,
-        share.email,
-        share.permission,
-        share.status,
-      ]);
-
-      return [
-        documentTitle,
-        row.document.fileType,
-        row.document.folder,
-        ...shareValues,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(cleanKeyword));
+      return documentTitle.toLowerCase().includes(cleanKeyword);
     });
   }, [rows, keyword]);
 
@@ -219,22 +210,7 @@ export function MySharedDocumentsPage() {
 
     return folderRows.filter((row) => {
       const folderTitle = getFolderTitle(row.folder);
-
-      const shareValues = row.shares.flatMap((share) => [
-        share.fullName,
-        share.email,
-        share.permission,
-        share.status,
-      ]);
-
-      return [
-        folderTitle,
-        row.folder.description,
-        row.folder.parentFolderName,
-        ...shareValues,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(cleanKeyword));
+      return folderTitle.toLowerCase().includes(cleanKeyword);
     });
   }, [folderRows, keyword]);
 
@@ -245,6 +221,18 @@ export function MySharedDocumentsPage() {
   const totalSharedFolderUsers = useMemo(() => {
     return folderRows.reduce((total, row) => total + row.shares.length, 0);
   }, [folderRows]);
+
+  useEffect(() => {
+    setFolderPage((page) =>
+      Math.min(page, Math.max(1, Math.ceil(filteredFolderRows.length / pageSize))),
+    );
+  }, [filteredFolderRows.length]);
+
+  useEffect(() => {
+    setDocumentPage((page) =>
+      Math.min(page, Math.max(1, Math.ceil(filteredRows.length / pageSize))),
+    );
+  }, [filteredRows.length]);
 
   const handleOpenPreview = (documentId: number) => {
     navigate(`/app/library/${documentId}/preview`);
@@ -379,13 +367,39 @@ export function MySharedDocumentsPage() {
             <input
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
-              placeholder="Search document, folder, user..."
+              placeholder="Search document or folder..."
               className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-9 pr-3 text-sm outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
             />
           </div>
         </div>
       </section>
 
+      <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <button
+          type="button"
+          onClick={() => setActiveTab("folders")}
+          className={`rounded-xl px-4 py-2.5 text-sm font-bold transition-colors ${
+            activeTab === "folders"
+              ? "bg-blue-600 text-white"
+              : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          }`}
+        >
+          Shared folders ({filteredFolderRows.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("documents")}
+          className={`rounded-xl px-4 py-2.5 text-sm font-bold transition-colors ${
+            activeTab === "documents"
+              ? "bg-blue-600 text-white"
+              : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          }`}
+        >
+          Shared documents ({filteredRows.length})
+        </button>
+      </div>
+
+      {activeTab === "folders" && (
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
           <h2 className="text-lg font-extrabold text-slate-950 dark:text-white">
@@ -409,110 +423,131 @@ export function MySharedDocumentsPage() {
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+          <div className="space-y-4 p-5">
             {filteredFolderRows.slice((folderPage - 1) * pageSize, folderPage * pageSize).map((row) => {
               const folderTitle = getFolderTitle(row.folder);
+              const isExpanded = expandedFolderIds[row.folder.id] === true;
 
               return (
-                <div key={row.folder.id} className="px-5 py-5">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="flex min-w-0 gap-4">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300">
-                        <Folder className="h-6 w-6" />
-                      </div>
-
-                      <div className="min-w-0">
-                        <h3 className="truncate text-base font-extrabold text-slate-950 dark:text-white">
+                <section
+                  key={row.folder.id}
+                  className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700"
+                >
+                  <div
+                    className={`flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-5 py-4 dark:bg-slate-800/60 ${
+                      isExpanded
+                        ? "border-b border-slate-200 dark:border-slate-700"
+                        : ""
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="truncate font-extrabold text-slate-950 dark:text-white">
                           {folderTitle}
                         </h3>
-                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                          <span>
-                            {row.folder.documentCount ?? 0} documents
-                          </span>
-                          <span>
-                            {row.folder.childFolderCount ?? 0} subfolders
-                          </span>
-                          <span>
-                            Parent: {row.folder.parentFolderName || "Root"}
-                          </span>
-                          <span>
-                            Shared with {row.shares.length}{" "}
-                            {row.shares.length === 1 ? "user" : "users"}
-                          </span>
-                        </div>
+                        <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300">
+                          {row.shares.length}{" "}
+                          {row.shares.length === 1 ? "user" : "users"}
+                        </span>
                       </div>
+                      <p className="mt-1 text-xs font-semibold text-slate-400">
+                        {(row.folder.documentCount ?? 0)} documents
+                        {" · "}
+                        {(row.folder.childFolderCount ?? 0)} subfolders
+                        {" · "}
+                        Parent: {row.folder.parentFolderName || "Root"}
+                      </p>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleOpenFolder(row.folder.id)}
-                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700"
-                    >
-                      <Eye className="h-4 w-4" />
-                      Open folder
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenFolder(row.folder.id)}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-900 dark:bg-slate-900 dark:text-indigo-300 dark:hover:bg-indigo-950/30"
+                      >
+                        <Eye className="h-4 w-4" />
+                        Open folder
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedFolderIds((current) => ({
+                            ...current,
+                            [row.folder.id]: !isExpanded,
+                          }))
+                        }
+                        className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                      >
+                        {isExpanded ? "Hide shared users" : "Show shared users"}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100 dark:border-slate-800">
-                    {row.shares.map((share) => {
-                      const revokeKey = `folder-${row.folder.id}-${share.userId}`;
-                      const isRevoking = revokingKey === revokeKey;
+                  {isExpanded && (
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {row.shares.map((share) => {
+                        const revokeKey = `folder-${row.folder.id}-${share.userId}`;
+                        const isRevoking = revokingKey === revokeKey;
 
-                      return (
-                        <div
-                          key={`${row.folder.id}-${share.userId}-${share.shareId}`}
-                          className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 dark:border-slate-800 lg:flex-row lg:items-center lg:justify-between"
-                        >
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="inline-flex items-center gap-1 text-sm font-extrabold text-slate-800 dark:text-slate-100">
-                                <UserRound className="h-4 w-4 text-slate-400" />
-                                {share.fullName || share.email}
-                              </span>
-                              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                                {permissionLabels[share.permission] ||
-                                  share.permission}
-                              </span>
-                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                                {statusLabels[share.status] || share.status}
-                              </span>
-                            </div>
-
-                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                              <span>{share.email}</span>
-                              <span>
-                                Expires at: {formatDateTime(share.expiresAt)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleRevokeFolder(row.folder.id, share.userId)
-                            }
-                            disabled={isRevoking}
-                            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-60 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-950/30"
+                        return (
+                          <div
+                            key={`${row.folder.id}-${share.userId}-${share.shareId}`}
+                            className="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center lg:justify-between"
                           >
-                            {isRevoking ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                            Revoke
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="inline-flex items-center gap-1 text-sm font-extrabold text-slate-800 dark:text-slate-100">
+                                  <UserRound className="h-4 w-4 text-slate-400" />
+                                  {share.fullName || share.email}
+                                </span>
+                                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                                  {permissionLabels[share.permission] ||
+                                    share.permission}
+                                </span>
+                                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                  {statusLabels[share.status] || share.status}
+                                </span>
+                              </div>
+
+                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                                <span>{share.email}</span>
+                                <span>
+                                  Expires at: {formatDateTime(share.expiresAt)}
+                                </span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRevokeFolder(row.folder.id, share.userId)
+                              }
+                              disabled={isRevoking}
+                              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-60 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-950/30"
+                            >
+                              {isRevoking ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                              Revoke
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
               );
             })}
           </div>
         )}
         <div className="px-5 pb-5"><PaginationControls currentPage={folderPage} totalItems={filteredFolderRows.length} pageSize={pageSize} onPageChange={setFolderPage} /></div>
       </section>
+      )}
 
+      {activeTab === "documents" && (
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
           <h2 className="text-lg font-extrabold text-slate-950 dark:text-white">
@@ -639,6 +674,7 @@ export function MySharedDocumentsPage() {
         )}
         <div className="px-5 pb-5"><PaginationControls currentPage={documentPage} totalItems={filteredRows.length} pageSize={pageSize} onPageChange={setDocumentPage} /></div>
       </section>
+      )}
     </div>
   );
 }

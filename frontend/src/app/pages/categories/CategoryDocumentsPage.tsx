@@ -226,7 +226,12 @@ export function CategoryDocumentsPage() {
   };
 
   const handleViewFile = (documentId: number) => {
-    navigate(`/app/library/${documentId}/preview`);
+    navigate(`/app/library/${documentId}/preview`, {
+      state: {
+        returnTo: `/app/categories/${categoryId}`,
+        returnLabel: categoryName || "Category",
+      },
+    });
   };
 
   const handleOpenEdit = (document: DocumentListItemResponse) => {
@@ -328,9 +333,9 @@ export function CategoryDocumentsPage() {
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="min-w-[1120px]">
-          <div className="grid grid-cols-[320px_150px_150px_120px_150px_150px_72px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:border-slate-800 dark:bg-slate-950">
+      <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="w-full">
+          <div className="grid w-full grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)_72px] items-center border-b border-slate-100 bg-slate-50 px-4 py-3 text-[11px] font-extrabold uppercase text-slate-400 dark:border-slate-800 dark:bg-slate-950 [&>*]:min-w-0">
             <span>Document Name</span>
             <span>Category</span>
             <span>Date Added</span>
@@ -348,7 +353,7 @@ export function CategoryDocumentsPage() {
                 tabIndex={0}
                 onClick={() => handleViewFile(document.id)}
                 onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") handleViewFile(document.id); }}
-                className="grid cursor-pointer grid-cols-[320px_150px_150px_120px_150px_150px_72px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70"
+                className="grid w-full cursor-pointer grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)_72px] items-center border-t border-slate-100 bg-white px-4 py-4 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/70 [&>*]:min-w-0"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
