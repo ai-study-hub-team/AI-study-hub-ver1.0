@@ -3,6 +3,7 @@ import { apiClient } from "./apiClient";
 export interface PlanResponse {
   id: number;
   code: string;
+  version: number;
   name: string;
   storageLimitMb: number;
   maxUploadSizePerFileMb: number;
@@ -17,7 +18,21 @@ export interface PlanResponse {
   isActive: boolean;
 }
 
-export type AdminPlanPayload = Omit<PlanResponse, "id">;
+export interface AdminPlanPayload {
+  code: string;
+  name: string;
+  storageLimitMb: number;
+  maxUploadSizePerFileMb: number;
+  dailyTokenLimit: number;
+  price: number;
+  durationDays?: number | null;
+  description?: string | null;
+  allowImageUpload: boolean;
+  allowDocumentUpload: boolean;
+  allowVideoUpload: boolean;
+  allowAudioUpload: boolean;
+  isActive: boolean;
+}
 
 export const adminPlanApi = {
   getPlans: () => apiClient.get<PlanResponse[]>("/api/admin/plans"),

@@ -224,7 +224,7 @@ export function UserManagement() {
   const loadPlans = async () => {
     try {
       const response = await subscriptionApi.getActivePlans();
-      setPlans(response.data.filter((plan) => plan.isActive !== false));
+      setPlans(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error("Cannot load plans:", error);
       toast.error("Cannot load subscription plans.");
