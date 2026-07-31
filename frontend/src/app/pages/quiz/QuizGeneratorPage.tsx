@@ -44,8 +44,13 @@ import {
   type QuizSubmitAnswer,
 } from "../../services/aiApi";
 
-import { getCurrentUserId } from "../../services/apiClient";
-import { useCreatePublicLink } from "../../hooks/useCreatePublicLink";
+import {
+  getCurrentUserId,
+} from "../../services/apiClient";
+
+import {
+  useCreatePublicLink,
+} from "../../hooks/useCreatePublicLink";
 
 /* =========================================================
    TYPES
@@ -79,11 +84,44 @@ type HistoryItem = {
   attempt: QuizAttempt;
 };
 
+/*
+ * Progress đang làm.
+ *
+ * Vì backend hiện tại chưa có API lưu từng answer,
+ * FE lưu tạm vào localStorage.
+ */
+type SavedQuizProgress = {
+  quizId: number;
+  attemptId: number;
+
+  currentQuestionIndex: number;
+
+  selectedAnswers: SelectedAnswers;
+
+  selectedDocName: string;
+
+  savedAt: string;
+};
+
 /* =========================================================
    CONSTANTS
 ========================================================= */
 
 const DISPLAY_LIMIT = 6;
+
+const MIN_QUESTION_COUNT = 5;
+const MAX_QUESTION_COUNT = 20;
+const QUESTION_COUNT_STEP = 5;
+
+/*
+ * Dùng để lưu quiz đang làm.
+ *
+ * Key thực tế:
+ *
+ * ai-study-hub:quiz-progress:USER_ID:ATTEMPT_ID
+ */
+const QUIZ_PROGRESS_PREFIX =
+  "ai-study-hub:quiz-progress";
 
 const gradeColors: Record<
   string,
@@ -162,8 +200,8 @@ const isDocumentProcessed = (
     getProcessStatus(document);
 
   /*
-   * API AI-ready đôi lúc không trả status.
-   * Trường hợp này vẫn cho sử dụng.
+   * API AI-ready có thể không trả status.
+   * Trường hợp đó vẫn cho sử dụng.
    */
   if (!status) {
     return true;
@@ -193,6 +231,23 @@ const formatDate = (
   return date.toLocaleString();
 };
 
+const getDateTimestamp = (
+  value?: string | null,
+) => {
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp =
+    new Date(value).getTime();
+
+  return Number.isNaN(
+    timestamp,
+  )
+    ? 0
+    : timestamp;
+};
+
 const getGrade = (
   score: number,
 ) => {
@@ -216,8 +271,8 @@ const getGrade = (
 };
 
 /*
- * Backend đã trả questionOrder / optionOrder.
- * Sắp xếp lại để FE luôn hiển thị đúng thứ tự.
+ * Backend trả questionOrder / optionOrder.
+ * FE sort lại để luôn hiển thị đúng thứ tự.
  */
 const normalizeQuiz = (
   quiz: QuizResponse,
@@ -248,6 +303,143 @@ const normalizeQuiz = (
         }),
       ),
   };
+};
+
+/* =========================================================
+   LOCAL STORAGE HELPERS
+========================================================= */
+
+const getQuizProgressKey = (
+  attemptId: number,
+) => {
+  const userId =
+    getCurrentUserId();
+
+  return `${QUIZ_PROGRESS_PREFIX}:${
+    userId ?? "anonymous"
+  }:${attemptId}`;
+};
+
+const saveQuizProgress = (
+  progress: SavedQuizProgress,
+) => {
+  try {
+    localStorage.setItem(
+      getQuizProgressKey(
+        progress.attemptId,
+      ),
+      JSON.stringify(progress),
+    );
+  } catch (error) {
+    console.error(
+      "Cannot save quiz progress:",
+      error,
+    );
+  }
+};
+
+const loadQuizProgress = (
+  attemptId: number,
+): SavedQuizProgress | null => {
+  try {
+    const raw =
+      localStorage.getItem(
+        getQuizProgressKey(
+          attemptId,
+        ),
+      );
+
+    if (!raw) {
+      return null;
+    }
+
+    const parsed =
+      JSON.parse(
+        raw,
+      ) as SavedQuizProgress;
+
+    if (
+      !parsed ||
+      Number(
+        parsed.attemptId,
+      ) !== attemptId
+    ) {
+      return null;
+    }
+
+    return parsed;
+  } catch (error) {
+    console.error(
+      "Cannot load quiz progress:",
+      error,
+    );
+
+    return null;
+  }
+};
+
+const clearQuizProgress = (
+  attemptId: number,
+) => {
+  try {
+    localStorage.removeItem(
+      getQuizProgressKey(
+        attemptId,
+      ),
+    );
+  } catch (error) {
+    console.error(
+      "Cannot clear quiz progress:",
+      error,
+    );
+  }
+};
+
+/*
+ * Chỉ restore những answer thực sự còn tồn tại
+ * trong quiz hiện tại.
+ */
+const normalizeSavedAnswers = (
+  quiz: QuizResponse,
+  savedAnswers?: SelectedAnswers,
+): SelectedAnswers => {
+  const result:
+    SelectedAnswers = {};
+
+  if (!savedAnswers) {
+    return result;
+  }
+
+  quiz.questions.forEach(
+    (question) => {
+      const savedOptionId =
+        savedAnswers[
+          question.questionId
+        ];
+
+      if (
+        savedOptionId ===
+        undefined
+      ) {
+        return;
+      }
+
+      const optionExists =
+        question.options.some(
+          (option) =>
+            option.optionId ===
+            savedOptionId,
+        );
+
+      if (optionExists) {
+        result[
+          question.questionId
+        ] = savedOptionId;
+      }
+    },
+  );
+
+  return result;
 };
 
 /* =========================================================
@@ -356,8 +548,6 @@ export function QuizGeneratorPage() {
 
   /* =======================================================
      HISTORY
-
-     CHỈ KHAI BÁO 1 LẦN.
   ======================================================= */
 
   const [
@@ -390,6 +580,11 @@ export function QuizGeneratorPage() {
   const [
     isLoadingReview,
     setIsLoadingReview,
+  ] = useState(false);
+
+  const [
+    isResuming,
+    setIsResuming,
   ] = useState(false);
 
   const [
@@ -450,9 +645,6 @@ export function QuizGeneratorPage() {
       selectedAnswers,
     ]);
 
-  /*
-   * Chỉ tồn tại sau submit.
-   */
   const answerResultMap =
     useMemo(() => {
       const map = new Map<
@@ -482,16 +674,63 @@ export function QuizGeneratorPage() {
     );
 
   /* =======================================================
+     AUTO SAVE CURRENT ATTEMPT
+  ======================================================= */
+
+  /*
+   * Mỗi khi:
+   * - chọn đáp án
+   * - chuyển câu
+   * - quay lại câu trước
+   *
+   * FE sẽ ghi progress xuống localStorage.
+   */
+  useEffect(() => {
+    if (
+      view !== "quiz" ||
+      !currentQuiz ||
+      currentAttemptId ===
+        null ||
+      quizResult
+    ) {
+      return;
+    }
+
+    saveQuizProgress({
+      quizId:
+        currentQuiz.quizId,
+
+      attemptId:
+        currentAttemptId,
+
+      currentQuestionIndex,
+
+      selectedAnswers,
+
+      selectedDocName:
+        selectedDocName ||
+        currentQuiz.documentTitle ||
+        "Quiz",
+
+      savedAt:
+        new Date().toISOString(),
+    });
+  }, [
+    view,
+    currentQuiz,
+    currentAttemptId,
+    currentQuestionIndex,
+    selectedAnswers,
+    selectedDocName,
+    quizResult,
+  ]);
+
+  /* =======================================================
      LOAD DOCUMENTS
   ======================================================= */
 
   const fetchDocuments =
     async () => {
-      /*
-       * Document API hiện tại vẫn cần userId.
-       *
-       * Chỉ Quiz API đã chuyển ownership sang JWT.
-       */
       const userId =
         getCurrentUserId();
 
@@ -610,19 +849,28 @@ export function QuizGeneratorPage() {
   };
 
   /* =======================================================
+     QUESTION COUNT
+  ======================================================= */
+
+  const handleQuestionCountChange = (
+    value: number,
+  ) => {
+    const safeValue =
+      Math.min(
+        MAX_QUESTION_COUNT,
+        Math.max(
+          MIN_QUESTION_COUNT,
+          value,
+        ),
+      );
+
+    setQuestionCount(
+      safeValue,
+    );
+  };
+
+  /* =======================================================
      START QUIZ
-
-     Flow:
-
-     POST generate
-          ↓
-     lấy quizId
-          ↓
-     GET quiz/{quizId}
-          ↓
-     POST quiz/{quizId}/attempts
-          ↓
-     lấy attemptId
   ======================================================= */
 
   const handleStartQuiz =
@@ -633,6 +881,19 @@ export function QuizGeneratorPage() {
       ) {
         toast.error(
           "Please select a document first.",
+        );
+
+        return;
+      }
+
+      if (
+        questionCount <
+          MIN_QUESTION_COUNT ||
+        questionCount >
+          MAX_QUESTION_COUNT
+      ) {
+        toast.error(
+          `Number of questions must be between ${MIN_QUESTION_COUNT} and ${MAX_QUESTION_COUNT}.`,
         );
 
         return;
@@ -664,7 +925,7 @@ export function QuizGeneratorPage() {
 
       try {
         /*
-         * KHÔNG gửi userId.
+         * 1. Generate quiz
          */
         const generateResponse =
           await generateQuizApi({
@@ -696,12 +957,7 @@ export function QuizGeneratorPage() {
         }
 
         /*
-         * Lấy đề sạch.
-         *
-         * Backend không trả:
-         * - isCorrect
-         * - correctOptionId
-         * - explanation
+         * 2. Get quiz
          */
         const quizResponse =
           await getQuizByIdApi(
@@ -723,7 +979,7 @@ export function QuizGeneratorPage() {
         }
 
         /*
-         * Tạo lần làm bài.
+         * 3. Create attempt
          */
         const attemptResponse =
           await startQuizAttemptApi(
@@ -746,6 +1002,9 @@ export function QuizGeneratorPage() {
           );
         }
 
+        /*
+         * 4. Initialize state
+         */
         setCurrentQuiz(
           quiz,
         );
@@ -766,12 +1025,38 @@ export function QuizGeneratorPage() {
           null,
         );
 
-        setSelectedDocName(
+        const documentName =
           quiz.documentTitle ||
-            getDocumentName(
-              selectedDocument,
-            ),
+          getDocumentName(
+            selectedDocument,
+          );
+
+        setSelectedDocName(
+          documentName,
         );
+
+        /*
+         * 5. Save initial progress
+         */
+        saveQuizProgress({
+          quizId:
+            generatedQuizId,
+
+          attemptId:
+            newAttemptId,
+
+          currentQuestionIndex:
+            0,
+
+          selectedAnswers:
+            {},
+
+          selectedDocName:
+            documentName,
+
+          savedAt:
+            new Date().toISOString(),
+        });
 
         setView("quiz");
 
@@ -799,22 +1084,16 @@ export function QuizGeneratorPage() {
 
   /* =======================================================
      SELECT ANSWER
-
-     key   = questionId
-     value = optionId
-
-     Chưa submit => có thể đổi đáp án.
   ======================================================= */
 
   const handleAnswer = (
     questionId: number,
     optionId: number,
   ) => {
-    /*
-     * Đã submit thì tuyệt đối
-     * không cho chỉnh.
-     */
-    if (quizResult) {
+    if (
+      quizResult ||
+      isSubmitting
+    ) {
       return;
     }
 
@@ -836,7 +1115,8 @@ export function QuizGeneratorPage() {
     () => {
       if (
         !currentQuestion ||
-        quizResult
+        quizResult ||
+        isSubmitting
       ) {
         return;
       }
@@ -887,9 +1167,6 @@ export function QuizGeneratorPage() {
 
   const handleNextQuestion =
     () => {
-      /*
-       * Câu cuối → submit.
-       */
       if (
         currentQuestionIndex ===
         questions.length - 1
@@ -906,21 +1183,15 @@ export function QuizGeneratorPage() {
     };
 
   /* =======================================================
-     SUBMIT
-
-     BACKEND chấm điểm.
-
-     FE không:
-     - calculateScore()
-     - dùng isCorrect
-     - biết đáp án đúng trước submit
+     SUBMIT QUIZ
   ======================================================= */
 
   const handleSubmitQuiz =
     async () => {
       if (
         !currentQuiz ||
-        currentAttemptId === null
+        currentAttemptId ===
+          null
       ) {
         toast.error(
           "Quiz attempt was not initialized.",
@@ -929,9 +1200,6 @@ export function QuizGeneratorPage() {
         return;
       }
 
-      /*
-       * Chặn submit lần 2.
-       */
       if (quizResult) {
         toast.error(
           "This attempt has already been submitted.",
@@ -940,10 +1208,6 @@ export function QuizGeneratorPage() {
         return;
       }
 
-      /*
-       * Hiện tại bắt user
-       * trả lời đủ câu.
-       */
       if (
         answeredCount !==
         questions.length
@@ -987,6 +1251,14 @@ export function QuizGeneratorPage() {
             submitAnswers,
           );
 
+        /*
+         * Submit thành công.
+         * Không cần progress local nữa.
+         */
+        clearQuizProgress(
+          currentAttemptId,
+        );
+
         setQuizResult(
           response.data,
         );
@@ -1019,10 +1291,6 @@ export function QuizGeneratorPage() {
 
   /* =======================================================
      RETAKE
-
-     Không generate AI lại.
-
-     Chỉ tạo attempt mới.
   ======================================================= */
 
   const handleRetakeQuiz =
@@ -1075,6 +1343,28 @@ export function QuizGeneratorPage() {
           0,
         );
 
+        saveQuizProgress({
+          quizId:
+            currentQuiz.quizId,
+
+          attemptId:
+            newAttemptId,
+
+          currentQuestionIndex:
+            0,
+
+          selectedAnswers:
+            {},
+
+          selectedDocName:
+            selectedDocName ||
+            currentQuiz.documentTitle ||
+            "Quiz",
+
+          savedAt:
+            new Date().toISOString(),
+        });
+
         setView("quiz");
 
         toast.success(
@@ -1101,11 +1391,6 @@ export function QuizGeneratorPage() {
 
   /* =======================================================
      HISTORY
-
-     GET /api/quizzes
-
-     Sau đó:
-     GET /api/quizzes/{quizId}/attempts
   ======================================================= */
 
   const fetchQuizHistory =
@@ -1115,9 +1400,6 @@ export function QuizGeneratorPage() {
       );
 
       try {
-        /*
-         * KHÔNG gửi userId.
-         */
         const response =
           await getQuizzesApi();
 
@@ -1191,20 +1473,16 @@ export function QuizGeneratorPage() {
                     .startedAt;
 
                 return (
-                  new Date(
+                  getDateTimestamp(
                     dateB,
-                  ).getTime() -
-                  new Date(
+                  ) -
+                  getDateTimestamp(
                     dateA,
-                  ).getTime()
+                  )
                 );
               },
             );
 
-        /*
-         * historyData là HistoryItem[]
-         * KHÔNG phải boolean.
-         */
         setHistoryData(
           history,
         );
@@ -1238,6 +1516,12 @@ export function QuizGeneratorPage() {
   const handleChangeView = (
     nextView: View,
   ) => {
+    /*
+     * Không reset current quiz ở đây.
+     *
+     * Nếu user đang làm rồi bấm History/Create Quiz,
+     * progress vẫn còn để resume.
+     */
     setView(nextView);
 
     if (
@@ -1248,30 +1532,205 @@ export function QuizGeneratorPage() {
   };
 
   /* =======================================================
-     OPEN HISTORY ATTEMPT
-
-     Chỉ SUBMITTED attempt mới có:
-     - score
-     - correctOptionId
-     - correct
-     - explanation
+     RESUME IN-PROGRESS ATTEMPT
   ======================================================= */
 
-  const handleViewAttempt =
+  const handleResumeAttempt =
     async (
       item: HistoryItem,
     ) => {
+      const attemptId =
+        Number(
+          item.attempt
+            .attemptId,
+        );
+
+      const quizId =
+        Number(
+          item.quiz.quizId,
+        );
+
       if (
-        item.attempt.status !==
-        "SUBMITTED"
+        !Number.isFinite(
+          attemptId,
+        ) ||
+        !Number.isFinite(
+          quizId,
+        )
       ) {
         toast.error(
-          "This attempt has not been submitted yet.",
+          "Invalid quiz attempt.",
         );
 
         return;
       }
 
+      setIsResuming(true);
+
+      try {
+        /*
+         * RẤT QUAN TRỌNG:
+         *
+         * IN_PROGRESS không được gọi:
+         *
+         * getQuizAttemptResultApi()
+         *
+         * Vì result chỉ tồn tại sau submit.
+         *
+         * Chỉ cần lấy đề quiz.
+         */
+        const quizResponse =
+          await getQuizByIdApi(
+            quizId,
+          );
+
+        const quiz =
+          normalizeQuiz(
+            quizResponse.data,
+          );
+
+        if (
+          quiz.questions.length ===
+          0
+        ) {
+          throw new Error(
+            "Quiz does not contain any questions.",
+          );
+        }
+
+        /*
+         * Lấy progress đã lưu ở browser.
+         */
+        const saved =
+          loadQuizProgress(
+            attemptId,
+          );
+
+        let restoredAnswers:
+          SelectedAnswers = {};
+
+        let restoredQuestionIndex =
+          0;
+
+        let restoredDocumentName =
+          quiz.documentTitle ||
+          item.quiz.documentTitle ||
+          item.quiz.title ||
+          "Quiz";
+
+        /*
+         * Chỉ dùng local progress nếu đúng quiz.
+         */
+        if (
+          saved &&
+          saved.quizId === quizId
+        ) {
+          restoredAnswers =
+            normalizeSavedAnswers(
+              quiz,
+              saved.selectedAnswers,
+            );
+
+          restoredQuestionIndex =
+            Math.min(
+              Math.max(
+                saved.currentQuestionIndex ??
+                  0,
+                0,
+              ),
+              quiz.questions.length -
+                1,
+            );
+
+          restoredDocumentName =
+            saved.selectedDocName ||
+            restoredDocumentName;
+        }
+
+        setCurrentQuiz(
+          quiz,
+        );
+
+        setCurrentAttemptId(
+          attemptId,
+        );
+
+        setSelectedAnswers(
+          restoredAnswers,
+        );
+
+        setCurrentQuestionIndex(
+          restoredQuestionIndex,
+        );
+
+        setQuizResult(
+          null,
+        );
+
+        setSelectedDocName(
+          restoredDocumentName,
+        );
+
+        /*
+         * Nếu chưa từng có localStorage,
+         * tạo progress mới từ câu 1.
+         */
+        saveQuizProgress({
+          quizId,
+
+          attemptId,
+
+          currentQuestionIndex:
+            restoredQuestionIndex,
+
+          selectedAnswers:
+            restoredAnswers,
+
+          selectedDocName:
+            restoredDocumentName,
+
+          savedAt:
+            new Date().toISOString(),
+        });
+
+        setView("quiz");
+
+        if (saved) {
+          toast.success(
+            "Quiz progress restored.",
+          );
+        } else {
+          toast.success(
+            "Quiz resumed.",
+          );
+        }
+      } catch (error: any) {
+        console.error(
+          "Resume quiz failed:",
+          error,
+        );
+
+        toast.error(
+          getErrorMessage(
+            error,
+            "Cannot resume this quiz",
+          ),
+        );
+      } finally {
+        setIsResuming(
+          false,
+        );
+      }
+    };
+
+  /* =======================================================
+     OPEN SUBMITTED ATTEMPT
+  ======================================================= */
+
+  const handleReviewAttempt =
+    async (
+      item: HistoryItem,
+    ) => {
       setIsLoadingReview(
         true,
       );
@@ -1309,6 +1768,15 @@ export function QuizGeneratorPage() {
             ] =
               answer.selectedOptionId;
           },
+        );
+
+        /*
+         * Nếu backend nói submitted thì progress local
+         * của attempt này không còn cần nữa.
+         */
+        clearQuizProgress(
+          item.attempt
+            .attemptId,
         );
 
         setCurrentQuiz(
@@ -1357,6 +1825,56 @@ export function QuizGeneratorPage() {
     };
 
   /* =======================================================
+     OPEN HISTORY ATTEMPT
+  ======================================================= */
+
+  const handleViewAttempt =
+    async (
+      item: HistoryItem,
+    ) => {
+      const status =
+        String(
+          item.attempt
+            .status || "",
+        ).toUpperCase();
+
+      /*
+       * SUBMITTED
+       * => xem kết quả.
+       */
+      if (
+        status === "SUBMITTED"
+      ) {
+        await handleReviewAttempt(
+          item,
+        );
+
+        return;
+      }
+
+      /*
+       * IN_PROGRESS
+       * => quay lại làm tiếp.
+       */
+      if (
+        status ===
+        "IN_PROGRESS"
+      ) {
+        await handleResumeAttempt(
+          item,
+        );
+
+        return;
+      }
+
+      toast.error(
+        `Cannot open attempt with status: ${
+          status || "UNKNOWN"
+        }`,
+      );
+    };
+
+  /* =======================================================
      RESET CURRENT QUIZ STATE
   ======================================================= */
 
@@ -1388,13 +1906,48 @@ export function QuizGeneratorPage() {
   const handleQuitQuiz =
     () => {
       /*
-       * Nếu attempt chưa submit,
-       * backend vẫn giữ IN_PROGRESS
-       * vì hiện chưa có cancel API.
+       * KHÔNG clear localStorage.
+       *
+       * User quit khỏi giao diện nhưng attempt
+       * vẫn là IN_PROGRESS.
+       *
+       * Sau đó vào History -> Continue Quiz.
        */
+
+      if (
+        currentQuiz &&
+        currentAttemptId !==
+          null &&
+        !quizResult
+      ) {
+        saveQuizProgress({
+          quizId:
+            currentQuiz.quizId,
+
+          attemptId:
+            currentAttemptId,
+
+          currentQuestionIndex,
+
+          selectedAnswers,
+
+          selectedDocName:
+            selectedDocName ||
+            currentQuiz.documentTitle ||
+            "Quiz",
+
+          savedAt:
+            new Date().toISOString(),
+        });
+      }
+
       resetCurrentQuizState();
 
       setView("setup");
+
+      toast.success(
+        "Quiz progress saved. You can continue it from History.",
+      );
     };
 
   /* =======================================================
@@ -1414,9 +1967,7 @@ export function QuizGeneratorPage() {
 
   return (
     <div className="space-y-8">
-      {/* ===================================================
-          HEADER
-      =================================================== */}
+      {/* HEADER */}
 
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -1637,7 +2188,7 @@ export function QuizGeneratorPage() {
                         >
                           {showAllDocuments
                             ? "Thu gọn"
-                            : `Xem thêm `}
+                            : "Xem thêm"}
                         </button>
                       )}
                     </>
@@ -1683,10 +2234,18 @@ export function QuizGeneratorPage() {
                 {/* NUMBER QUESTIONS */}
 
                 <div className="mb-6">
-                  <div className="mb-2 flex justify-between">
-                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                      Number of Questions
-                    </label>
+                  <div className="mb-2 flex justify-between gap-4">
+                    <div>
+                      <label className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                        Number of Questions
+                      </label>
+
+                      <p className="mt-1 text-xs text-slate-400">
+                        Maximum{" "}
+                        {MAX_QUESTION_COUNT}{" "}
+                        questions per quiz.
+                      </p>
+                    </div>
 
                     <span className="text-sm font-extrabold text-blue-600">
                       {
@@ -1697,16 +2256,22 @@ export function QuizGeneratorPage() {
 
                   <input
                     type="range"
-                    min={5}
-                    max={25}
-                    step={5}
+                    min={
+                      MIN_QUESTION_COUNT
+                    }
+                    max={
+                      MAX_QUESTION_COUNT
+                    }
+                    step={
+                      QUESTION_COUNT_STEP
+                    }
                     value={
                       questionCount
                     }
                     onChange={(
                       event,
                     ) =>
-                      setQuestionCount(
+                      handleQuestionCountChange(
                         Number(
                           event
                             .target
@@ -1716,6 +2281,24 @@ export function QuizGeneratorPage() {
                     }
                     className="w-full accent-blue-600"
                   />
+
+                  <div className="mt-2 flex justify-between text-xs font-semibold text-slate-400">
+                    <span>
+                      {
+                        MIN_QUESTION_COUNT
+                      }
+                    </span>
+
+                    <span>10</span>
+
+                    <span>15</span>
+
+                    <span>
+                      {
+                        MAX_QUESTION_COUNT
+                      }
+                    </span>
+                  </div>
                 </div>
 
                 {/* START */}
@@ -1892,6 +2475,10 @@ export function QuizGeneratorPage() {
                     {answeredCount}/
                     {questions.length}
                   </p>
+
+                  <p className="mt-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                    Progress is saved automatically.
+                  </p>
                 </div>
 
                 {/* CONTROLS */}
@@ -1977,9 +2564,9 @@ export function QuizGeneratorPage() {
                   }
                   className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-700 disabled:opacity-40 dark:hover:text-slate-300"
                 >
-                  <RotateCcw className="h-4 w-4" />
+                  <ArrowLeft className="h-4 w-4" />
 
-                  Quit Quiz
+                  Save & Quit
                 </button>
               </div>
             </motion.div>
@@ -2016,16 +2603,12 @@ export function QuizGeneratorPage() {
                   }
                 </p>
 
-                {/* SCORE */}
-
                 <div className="mb-8 grid grid-cols-3 gap-4">
                   <div>
                     <div
                       className={`text-5xl font-extrabold md:text-6xl ${gradeColors[grade]}`}
                     >
-                      {
-                        grade
-                      }
+                      {grade}
                     </div>
 
                     <p className="text-sm text-slate-500">
@@ -2063,8 +2646,6 @@ export function QuizGeneratorPage() {
                   </div>
                 </div>
 
-                {/* TIME */}
-
                 <div className="mb-6 rounded-2xl bg-slate-50 p-4 text-left dark:bg-slate-800">
                   <p className="text-sm text-slate-500">
                     Started:{" "}
@@ -2084,8 +2665,6 @@ export function QuizGeneratorPage() {
                     </span>
                   </p>
                 </div>
-
-                {/* ACTIONS */}
 
                 <div className="space-y-3">
                   <div className="flex flex-col gap-3 sm:flex-row">
@@ -2219,8 +2798,6 @@ export function QuizGeneratorPage() {
                         }
                       </h3>
 
-                      {/* OPTIONS */}
-
                       <div className="space-y-2">
                         {question.options.map(
                           (
@@ -2281,8 +2858,6 @@ export function QuizGeneratorPage() {
                         )}
                       </div>
 
-                      {/* RESULT */}
-
                       {result ? (
                         <>
                           <div className="mt-4 space-y-2 rounded-2xl bg-slate-50 p-4 dark:bg-slate-800">
@@ -2339,8 +2914,6 @@ export function QuizGeneratorPage() {
                 },
               )}
 
-              {/* REVIEW ACTION */}
-
               <div className="flex flex-col gap-3 pt-2 sm:flex-row">
                 <button
                   type="button"
@@ -2392,14 +2965,17 @@ export function QuizGeneratorPage() {
             className="space-y-5"
           >
             {isLoadingHistory ||
-            isLoadingReview ? (
+            isLoadingReview ||
+            isResuming ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900">
                 <Loader2 className="mx-auto mb-3 h-7 w-7 animate-spin text-blue-600" />
 
                 <p className="text-slate-500">
-                  {isLoadingReview
-                    ? "Loading quiz result..."
-                    : "Loading quiz history..."}
+                  {isResuming
+                    ? "Restoring quiz..."
+                    : isLoadingReview
+                      ? "Loading quiz result..."
+                      : "Loading quiz history..."}
                 </p>
               </div>
             ) : historyData.length ===
@@ -2420,9 +2996,34 @@ export function QuizGeneratorPage() {
                   const attempt =
                     item.attempt;
 
+                  const status =
+                    String(
+                      attempt.status ||
+                        "",
+                    ).toUpperCase();
+
                   const submitted =
-                    attempt.status ===
+                    status ===
                     "SUBMITTED";
+
+                  const inProgress =
+                    status ===
+                    "IN_PROGRESS";
+
+                  const savedProgress =
+                    inProgress
+                      ? loadQuizProgress(
+                          attempt.attemptId,
+                        )
+                      : null;
+
+                  const savedAnsweredCount =
+                    savedProgress
+                      ? Object.keys(
+                          savedProgress.selectedAnswers ||
+                            {},
+                        ).length
+                      : 0;
 
                   return (
                     <button
@@ -2435,7 +3036,11 @@ export function QuizGeneratorPage() {
                           item,
                         )
                       }
-                      className="w-full rounded-2xl border border-slate-200 bg-white p-5 text-left transition hover:border-blue-500 dark:border-slate-700 dark:bg-slate-900"
+                      className={`w-full rounded-2xl border bg-white p-5 text-left transition dark:bg-slate-900 ${
+                        inProgress
+                          ? "border-amber-200 hover:border-blue-500 dark:border-amber-900/50"
+                          : "border-slate-200 hover:border-blue-500 dark:border-slate-700"
+                      }`}
                     >
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
@@ -2457,6 +3062,24 @@ export function QuizGeneratorPage() {
                             }{" "}
                             questions
                           </p>
+
+                          {inProgress && (
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-600 dark:bg-amber-500/10 dark:text-amber-300">
+                                IN PROGRESS
+                              </span>
+
+                              {savedProgress && (
+                                <span className="text-xs font-semibold text-slate-500">
+                                  {savedAnsweredCount}/
+                                  {
+                                    quiz.questionCount
+                                  }{" "}
+                                  answered
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         <div className="shrink-0 sm:text-right">
@@ -2476,10 +3099,21 @@ export function QuizGeneratorPage() {
                                   quiz.questionCount}{" "}
                                 correct
                               </p>
+
+                              <p className="mt-2 text-xs font-bold text-blue-600">
+                                Review Quiz
+                              </p>
                             </>
+                          ) : inProgress ? (
+                            <div className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white">
+                              Continue Quiz
+
+                              <ArrowRight className="h-4 w-4" />
+                            </div>
                           ) : (
-                            <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-600 dark:bg-amber-500/10">
-                              IN PROGRESS
+                            <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500 dark:bg-slate-800">
+                              {status ||
+                                "UNKNOWN"}
                             </span>
                           )}
                         </div>
@@ -2501,6 +3135,16 @@ export function QuizGeneratorPage() {
                             )}
                           </p>
                         )}
+
+                        {inProgress &&
+                          savedProgress?.savedAt && (
+                            <p className="mt-1">
+                              Progress saved:{" "}
+                              {formatDate(
+                                savedProgress.savedAt,
+                              )}
+                            </p>
+                          )}
                       </div>
                     </button>
                   );
