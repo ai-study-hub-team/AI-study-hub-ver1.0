@@ -33,13 +33,13 @@ const getUploadErrorMessage = (error: any) => {
 
   const normalizedMessage = rawMessage.toLowerCase();
 
+  if (normalizedMessage.includes("maximum number of uploads allowed for this link")) {
+    return "You have reached the maximum number of uploads permitted for one user on this link.";
+  }
+
   if (
-    status === 403 ||
     normalizedMessage.includes("allowlist") ||
-    normalizedMessage.includes("not allowed") ||
-    normalizedMessage.includes("not permitted") ||
-    normalizedMessage.includes("permission") ||
-    normalizedMessage.includes("access denied")
+    normalizedMessage.includes("not on the allowlist")
   ) {
     return "You are not allowed to upload through this link. Ask the owner to add your registered email to the allowlist.";
   }

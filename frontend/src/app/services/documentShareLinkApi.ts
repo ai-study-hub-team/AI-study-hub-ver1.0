@@ -49,13 +49,36 @@ export interface UpdateDocumentShareLinkAllowlistRequest {
   userEmailsToRemove: string[];
 }
 
+export interface UpdateDocumentShareLinkRequest {
+  expiresAt?: string | null;
+  maxUploads?: number | null;
+  maxUploadsPerUser?: number | null;
+  maxFileSizeBytes?: number | null;
+  maxTotalBytes?: number | null;
+  allowedFileTypes?: string | null;
+}
+
 export const documentShareLinkApi = {
   getDocumentShareLinks: () =>
     apiClient.get<DocumentShareLinkResponse[]>("/api/document-share-links"),
 
+  getDocumentShareLink: (id: number) =>
+    apiClient.get<DocumentShareLinkResponse>(
+      `/api/document-share-links/${id}`,
+    ),
+
   createDocumentShareLink: (data: CreateDocumentShareLinkRequest) =>
     apiClient.post<DocumentShareLinkResponse>(
       "/api/document-share-links",
+      data,
+    ),
+
+  updateDocumentShareLink: (
+    id: number,
+    data: UpdateDocumentShareLinkRequest,
+  ) =>
+    apiClient.patch<DocumentShareLinkResponse>(
+      `/api/document-share-links/${id}`,
       data,
     ),
 

@@ -137,6 +137,9 @@ public class PasswordResetService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setFailedLoginAttempts(0);
+        user.setLastFailedLoginAt(null);
+        user.setLockedUntil(null);
         user.setUpdatedAt(now);
         userRepository.save(user);
 

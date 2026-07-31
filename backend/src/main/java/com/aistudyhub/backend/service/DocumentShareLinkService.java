@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.dto.request.DocumentShareLinkCreateRequest;
+import com.aistudyhub.backend.dto.request.DocumentShareLinkUpdateRequest;
 import com.aistudyhub.backend.dto.request.ShareLinkAllowlistUpdateRequest;
 import com.aistudyhub.backend.dto.response.DocumentShareLinkResponse;
 import com.aistudyhub.backend.dto.response.PublicShareLinkResponse;
@@ -44,6 +45,8 @@ public class DocumentShareLinkService {
     private final FolderRepository folderRepository;
     private final CurrentUserService currentUserService;
     private final NotificationService notificationService;
+    private final StorageQuotaService storageQuotaService;
+    private final SubscriptionService subscriptionService;
 
     @Value("${app.frontend.base-url:http://localhost:5173}")
     private String frontendBaseUrl;
@@ -70,6 +73,8 @@ public class DocumentShareLinkService {
     @Transactional
     public DocumentShareLinkResponse createShareLink(DocumentShareLinkCreateRequest request) {
         User owner = currentUserService.getCurrentUser();
+        validateDailyShareLinkCreationLimit(owner.getId());
+        validateLinkMaxFileSize(owner.getId(), request.getMaxFileSizeBytes());
 
         // Resolve and validate access policy
         ShareLinkAccessPolicy policy = request.getAccessPolicy() != null
@@ -152,6 +157,88 @@ public class DocumentShareLinkService {
                 .orElseThrow(() -> new NotFoundException(
                         "Share link not found or does not belong to you: " + linkId));
         return toResponse(link);
+    }
+
+    // ─── Owner-controlled link settings ──────────────────────────────────────
+
+    /**
+     * Updates only the link settings that do not change its access policy.
+     */
+    @Transactional
+    public DocumentShareLinkResponse updateLinkSettings(
+            Long linkId, DocumentShareLinkUpdateRequest request) {
+        User owner = currentUserService.getCurrentUser();
+        DocumentShareLink link = shareLinkRepository.findByIdAndOwnerId(linkId, owner.getId())
+                .orElseThrow(() -> new NotFoundException(
+                        "Share link not found or does not belong to you: " + linkId));
+
+        if (request.getExpiresAt() != null && !request.getExpiresAt().isAfter(LocalDateTime.now())) {
+            throw new BadRequestException("expiresAt must be in the future");
+        }
+        if (request.getMaxUploads() != null && request.getMaxUploads() < 0) {
+            throw new BadRequestException("maxUploads must not be negative");
+        }
+        if (request.getMaxUploads() != null && request.getMaxUploads() < link.getCurrentUploads()) {
+            throw new BadRequestException(
+                    "maxUploads cannot be lower than the current upload count ("
+                            + link.getCurrentUploads() + ").");
+        }
+        if (request.getMaxUploadsPerUser() != null && request.getMaxUploadsPerUser() < 0) {
+            throw new BadRequestException("maxUploadsPerUser must not be negative");
+        }
+        if (request.getMaxFileSizeBytes() != null && request.getMaxFileSizeBytes() < 0) {
+            throw new BadRequestException("maxFileSizeBytes must not be negative");
+        }
+        validateLinkMaxFileSize(owner.getId(), request.getMaxFileSizeBytes());
+        if (request.getMaxTotalBytes() != null && request.getMaxTotalBytes() < 0) {
+            throw new BadRequestException("maxTotalBytes must not be negative");
+        }
+        if (request.getMaxTotalBytes() != null && request.getMaxTotalBytes() < link.getActiveStoredBytes()) {
+            throw new BadRequestException(
+                    "maxTotalBytes cannot be lower than the active stored bytes ("
+                            + link.getActiveStoredBytes() + ").");
+        }
+
+        link.setExpiresAt(request.getExpiresAt());
+        link.setMaxUploads(request.getMaxUploads());
+        link.setMaxUploadsPerUser(request.getMaxUploadsPerUser());
+        link.setMaxFileSizeBytes(request.getMaxFileSizeBytes());
+        link.setMaxTotalBytes(request.getMaxTotalBytes());
+        link.setAllowedFileTypes(request.getAllowedFileTypes());
+        link.setUpdatedAt(LocalDateTime.now());
+
+        DocumentShareLink saved = shareLinkRepository.save(link);
+        log.info("[ShareLink] Updated settings for link id={} by owner userId={}", linkId, owner.getId());
+        return toResponse(saved);
+    }
+
+    private void validateLinkMaxFileSize(Long ownerId, Long maxFileSizeBytes) {
+        if (maxFileSizeBytes == null) {
+            return;
+        }
+        if (maxFileSizeBytes <= 0) {
+            throw new BadRequestException("maxFileSizeBytes must be greater than zero");
+        }
+
+        long planFileSizeLimitBytes = storageQuotaService.getPlanFileSizeLimitBytes(ownerId);
+        if (maxFileSizeBytes > planFileSizeLimitBytes) {
+            throw new BadRequestException(
+                    "maxFileSizeBytes cannot exceed your plan limit of "
+                            + (planFileSizeLimitBytes / 1024 / 1024) + " MB.");
+        }
+    }
+
+    private void validateDailyShareLinkCreationLimit(Long ownerId) {
+        int dailyLimit = subscriptionService.getCurrentSubscription(ownerId)
+                .getPlan()
+                .getMaxShareLinksPerDay();
+        long createdToday = shareLinkRepository.countByOwnerIdAndCreatedAtGreaterThanEqual(
+                ownerId, LocalDateTime.now().toLocalDate().atStartOfDay());
+
+        if (createdToday >= dailyLimit) {
+            throw new ForbiddenException(
+                    "You have reached your daily share-link creation limit of " + dailyLimit + " links.");
+        }
     }
 
     // ─── Disable ───────────────────────────────────────────────────────────────

@@ -76,6 +76,17 @@ public class User {
     private LocalDateTime lastLoginAt;
 
     private LocalDateTime lastActiveAt;
+
+    @Column(name = "failed_login_attempts", nullable = false)
+    @Builder.Default
+    private Integer failedLoginAttempts = 0;
+
+    @Column(name = "last_failed_login_at")
+    private LocalDateTime lastFailedLoginAt;
+
+    @Column(name = "locked_until")
+    private LocalDateTime lockedUntil;
+
     @Column(name = "total_storage_used_bytes", nullable = false)
     @Builder.Default
     private Long totalStorageUsedBytes = 0L;
@@ -117,6 +128,10 @@ public class User {
 
         if (totalStorageUsedBytes == null) {
             totalStorageUsedBytes = 0L;
+        }
+
+        if (failedLoginAttempts == null) {
+            failedLoginAttempts = 0;
         }
     }
     @PreUpdate

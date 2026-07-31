@@ -222,7 +222,7 @@ const getCurrentRole = (): string => {
       ?.trim() ||
     storedUser?.role?.trim() ||
     getRoleFromToken() ||
-    "USER"
+    ""
   );
 };
 
@@ -606,6 +606,12 @@ export function DashboardLayout({
           to: "/admin/reports",
           icon: Flag,
           label: "Reports",
+        },
+        {
+          to: "/admin/share-links",
+          icon: Share2,
+          label: "Share Links",
+          adminOnly: true,
         },
         {
           to: "/admin/plans",

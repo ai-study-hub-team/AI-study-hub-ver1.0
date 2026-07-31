@@ -6,6 +6,7 @@ import com.aistudyhub.backend.dto.response.DocumentResponse;
 import com.aistudyhub.backend.dto.response.SharedDocumentSubmissionResponse;
 import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.exception.FileTooLargeException;
+import com.aistudyhub.backend.exception.ConflictException;
 import com.aistudyhub.backend.exception.ForbiddenException;
 import com.aistudyhub.backend.exception.NotFoundException;
 import com.aistudyhub.backend.repository.*;
@@ -110,9 +111,10 @@ public class SharedDocumentSubmissionService {
 
         // Step 5: size checks
         long fileSize = file.getSize();
+        long planFileSizeLimit = storageQuotaService.getPlanFileSizeLimitBytes(ownerId);
         long effectiveSizeLimit = (link.getMaxFileSizeBytes() != null)
-                ? link.getMaxFileSizeBytes()
-                : storageQuotaService.getPlanFileSizeLimitBytes(ownerId);
+                ? Math.min(link.getMaxFileSizeBytes(), planFileSizeLimit)
+                : planFileSizeLimit;
 
         if (fileSize > effectiveSizeLimit) {
             throw new FileTooLargeException(
@@ -371,6 +373,39 @@ public class SharedDocumentSubmissionService {
         return toResponse(saved);
     }
 
+    /**
+     * Soft-deletes all visible submissions for one owner-owned share link.
+     * The official Documents created by approved submissions are deliberately retained.
+     */
+    @Transactional
+    public void softDeleteSubmissionGroup(Long shareLinkId, Long ownerUserId) {
+        shareLinkRepository.findByIdAndOwnerId(shareLinkId, ownerUserId)
+                .orElseThrow(() -> new NotFoundException(
+                        "Share link not found or does not belong to you: " + shareLinkId));
+
+        List<SharedDocumentSubmission> submissions =
+                submissionRepository.findByShareLinkIdAndDeletedAtIsNull(shareLinkId);
+        if (submissions.isEmpty()) {
+            throw new NotFoundException("No active submission group found for share link: " + shareLinkId);
+        }
+        boolean hasNonTerminalSubmission = submissions.stream().anyMatch(submission ->
+                submission.getStatus() != SharedSubmissionStatus.APPROVED
+                        && submission.getStatus() != SharedSubmissionStatus.REJECTED);
+        if (hasNonTerminalSubmission) {
+            throw new ConflictException(
+                    "All submissions in this share link must be approved or rejected before deletion.");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        submissions.forEach(submission -> {
+            submission.setDeletedAt(now);
+            submission.setDeletedBy(ownerUserId);
+        });
+        submissionRepository.saveAll(submissions);
+        log.info("[SharedUpload] Soft-deleted {} submissions for linkId={} by ownerId={}",
+                submissions.size(), shareLinkId, ownerUserId);
+    }
+
     // ─── Expiration cleanup (called by scheduler) ──────────────────────────────
 
     /**
@@ -460,8 +495,9 @@ public class SharedDocumentSubmissionService {
     public List<SharedDocumentSubmissionResponse> getSubmissionsForOwner(
             Long ownerUserId, SharedSubmissionStatus statusFilter) {
         List<SharedDocumentSubmission> list = (statusFilter != null)
-                ? submissionRepository.findByOwnerUserIdAndStatusOrderBySubmittedAtDesc(ownerUserId, statusFilter)
-                : submissionRepository.findByOwnerUserIdOrderBySubmittedAtDesc(ownerUserId);
+                ? submissionRepository.findByOwnerUserIdAndStatusAndDeletedAtIsNullOrderBySubmittedAtDesc(
+                        ownerUserId, statusFilter)
+                : submissionRepository.findByOwnerUserIdAndDeletedAtIsNullOrderBySubmittedAtDesc(ownerUserId);
         return list.stream().map(this::toResponse).collect(Collectors.toList());
     }
 

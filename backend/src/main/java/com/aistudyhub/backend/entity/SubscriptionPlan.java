@@ -43,6 +43,10 @@ public class SubscriptionPlan {
     @Column(nullable = false)
     private Long dailyTokenLimit;
 
+    @Column(name = "max_share_links_per_day", nullable = false)
+    @Builder.Default
+    private Integer maxShareLinksPerDay = 5;
+
     @Column(nullable = false)
     private BigDecimal price;
 

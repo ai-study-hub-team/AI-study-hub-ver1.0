@@ -11,6 +11,8 @@ export interface SharedDocumentSubmissionResponse {
   id: number;
   shareLinkId?: number | null;
   shareLinkTitle?: string | null;
+  ownerUserId?: number | null;
+  uploaderUserId?: number | null;
   title?: string | null;
   description?: string | null;
   status: SharedDocumentSubmissionStatus;
@@ -26,7 +28,11 @@ export interface SharedDocumentSubmissionResponse {
   createdAt?: string | null;
 
   approvedDocumentId?: number | null;
+  reviewedAt?: string | null;
+  reviewedBy?: number | null;
   rejectReason?: string | null;
+  deleteAfter?: string | null;
+  quotaReleasedAt?: string | null;
 }
 
 export interface GetSubmissionsParams {
@@ -48,9 +54,10 @@ export interface RejectSubmissionPayload {
 
 export const sharedDocumentSubmissionApi = {
   getSubmissions: (params: GetSubmissionsParams) => {
-    return apiClient.get("/api/shared-document-submissions", {
-      params,
-    });
+    return apiClient.get<SharedDocumentSubmissionResponse[]>(
+      "/api/shared-document-submissions",
+      { params },
+    );
   },
 
   getSubmission: (id: number) => {
@@ -67,11 +74,13 @@ export const sharedDocumentSubmissionApi = {
   },
 
   rejectSubmission: (id: number, payload: RejectSubmissionPayload) => {
-    return apiClient.post(
+    return apiClient.post<SharedDocumentSubmissionResponse>(
       `/api/shared-document-submissions/${id}/reject`,
       payload,
     );
   },
+  deleteSubmissionGroup: (shareLinkId: number) =>
+    apiClient.delete(`/api/shared-document-submissions/share-links/${shareLinkId}`),
   viewSubmissionFile: async (id: number): Promise<Blob> => {
     const response = await apiClient.get(`/api/shared-document-submissions/${id}/preview`, {
       responseType: "blob",

@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.request.DocumentShareLinkCreateRequest;
+import com.aistudyhub.backend.dto.request.DocumentShareLinkUpdateRequest;
 import com.aistudyhub.backend.dto.request.ShareLinkAllowlistUpdateRequest;
 import com.aistudyhub.backend.dto.response.DocumentShareLinkResponse;
 import com.aistudyhub.backend.service.DocumentShareLinkService;
@@ -19,6 +20,7 @@ import java.util.List;
  * POST   /api/document-share-links                         Create a new share link
  * GET    /api/document-share-links                         List own links
  * GET    /api/document-share-links/{id}                    Get one own link
+ * PATCH  /api/document-share-links/{id}                    Update owner-controlled link settings
  * PATCH  /api/document-share-links/{id}/disable            Disable a link
  * PATCH  /api/document-share-links/{id}/allowlist          Update allowlist
  * </pre>
@@ -47,6 +49,13 @@ public class DocumentShareLinkController {
     @GetMapping("/{id}")
     public ResponseEntity<DocumentShareLinkResponse> getDetails(@PathVariable Long id) {
         return ResponseEntity.ok(shareLinkService.getLinkDetailsForCurrentUser(id));
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<DocumentShareLinkResponse> update(
+            @PathVariable Long id,
+            @Valid @RequestBody DocumentShareLinkUpdateRequest request) {
+        return ResponseEntity.ok(shareLinkService.updateLinkSettings(id, request));
     }
 
     @PatchMapping("/{id}/disable")

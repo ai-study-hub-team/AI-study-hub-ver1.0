@@ -8,6 +8,7 @@ import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.enums.UserRole;
 import com.aistudyhub.backend.enums.UserStatus;
 import com.aistudyhub.backend.exception.EmailAlreadyUsedException;
+import com.aistudyhub.backend.exception.TooManyLoginAttemptsException;
 import com.aistudyhub.backend.exception.UnauthorizedException;
 import com.aistudyhub.backend.repository.RefreshTokenRepository;
 import com.aistudyhub.backend.repository.UserRepository;
@@ -19,15 +20,26 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
-    private static final String INVALID_CREDENTIALS = "Incorrect email or password";
+    private static final String INVALID_CREDENTIALS = "Email hoặc mật khẩu không chính xác.";
+
+    private static final String TOO_MANY_LOGIN_ATTEMPTS =
+            "Có quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau.";
 
     private static final String INVALID_REFRESH = "Refresh token is invalid or has expired";
+
+    private static final int MAX_FAILED_LOGIN_ATTEMPTS = 5;
+
+    private static final Duration FAILED_LOGIN_WINDOW = Duration.ofMinutes(15);
+
+    private static final Duration TEMPORARY_LOCK_DURATION = Duration.ofMinutes(15);
 
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -78,25 +90,43 @@ public class AuthService {
     // Dang nhap bang email/password.
     // Neu thong tin hop le, user ACTIVE va da verify email,
     // thi cap nhat thoi gian hoat dong va tao cap access/refresh token.
-    @Transactional
+    @Transactional(noRollbackFor = {
+            UnauthorizedException.class,
+            TooManyLoginAttemptsException.class
+    })
     public AuthResponse login(LoginRequest request) {
         String email = normalizeEmail(request.getEmail());
 
-        User user = userRepository.findByEmail(email)
+        User user = userRepository.findByEmailForLogin(email)
                 .orElseThrow(() ->
                         new UnauthorizedException(INVALID_CREDENTIALS)
                 );
+
+        /*
+         * Uses one generic response for invalid credentials and inactive
+         * accounts to avoid account enumeration.
+         */
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new UnauthorizedException(INVALID_CREDENTIALS);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        clearExpiredTemporaryLock(user, now);
+        rejectIfTemporarilyLocked(user, now);
 
         boolean passwordMatches = passwordEncoder.matches(
                 request.getPassword(),
                 user.getPassword()
         );
 
-        /*
-         * Uses one generic response for invalid credentials and inactive
-         * accounts to avoid account enumeration.
-         */
-        if (!passwordMatches || user.getStatus() != UserStatus.ACTIVE) {
+        if (!passwordMatches) {
+            recordFailedLogin(user, now);
+            userRepository.save(user);
+
+            if (isTemporarilyLocked(user, now)) {
+                throwTooManyLoginAttempts(user, now);
+            }
+
             throw new UnauthorizedException(INVALID_CREDENTIALS);
         }
 
@@ -104,8 +134,9 @@ public class AuthService {
             throw new UnauthorizedException("Please verify your email before logging in");
         }
 
-        user.setLastLoginAt(java.time.LocalDateTime.now());
-        user.setLastActiveAt(java.time.LocalDateTime.now());
+        resetFailedLoginState(user);
+        user.setLastLoginAt(now);
+        user.setLastActiveAt(now);
         userRepository.save(user);
 
         return issueTokenPair(user);
@@ -198,6 +229,69 @@ public class AuthService {
                 .role(user.getRole().name())
                 .emailVerified(user.isEmailVerified())
                 .build();
+    }
+
+    private void clearExpiredTemporaryLock(User user, LocalDateTime now) {
+        LocalDateTime lockedUntil = user.getLockedUntil();
+        if (lockedUntil != null && !lockedUntil.isAfter(now)) {
+            resetFailedLoginState(user);
+            userRepository.save(user);
+        }
+    }
+
+    private void rejectIfTemporarilyLocked(User user, LocalDateTime now) {
+        if (isTemporarilyLocked(user, now)) {
+            throwTooManyLoginAttempts(user, now);
+        }
+    }
+
+    private boolean isTemporarilyLocked(User user, LocalDateTime now) {
+        LocalDateTime lockedUntil = user.getLockedUntil();
+        return lockedUntil != null && lockedUntil.isAfter(now);
+    }
+
+    private void throwTooManyLoginAttempts(User user, LocalDateTime now) {
+        long retryAfterSeconds = Math.max(
+                1,
+                Duration.between(now, user.getLockedUntil()).getSeconds()
+        );
+        throw new TooManyLoginAttemptsException(
+                TOO_MANY_LOGIN_ATTEMPTS,
+                retryAfterSeconds
+        );
+    }
+
+    private void recordFailedLogin(User user, LocalDateTime now) {
+        LocalDateTime lastFailedAt = user.getLastFailedLoginAt();
+        boolean insideWindow = lastFailedAt != null
+                && !lastFailedAt.plus(FAILED_LOGIN_WINDOW).isBefore(now);
+
+        int attempts = insideWindow
+                ? safeFailedLoginAttempts(user) + 1
+                : 1;
+
+        user.setFailedLoginAttempts(Math.min(attempts, MAX_FAILED_LOGIN_ATTEMPTS));
+        user.setLastFailedLoginAt(now);
+
+        if (!insideWindow) {
+            user.setLockedUntil(null);
+        }
+
+        if (attempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
+            user.setLockedUntil(now.plus(TEMPORARY_LOCK_DURATION));
+        }
+    }
+
+    private int safeFailedLoginAttempts(User user) {
+        return user.getFailedLoginAttempts() == null
+                ? 0
+                : user.getFailedLoginAttempts();
+    }
+
+    private void resetFailedLoginState(User user) {
+        user.setFailedLoginAttempts(0);
+        user.setLastFailedLoginAt(null);
+        user.setLockedUntil(null);
     }
 
 }

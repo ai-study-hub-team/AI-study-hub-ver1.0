@@ -11,6 +11,7 @@ import {
   RefreshCcw,
   ShieldOff,
   UserRoundCog,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -98,7 +99,9 @@ const toDatetimeLocalValue = (date: Date) => {
 
 const toApiDatetime = (value: string) => {
   if (!value) return undefined;
-  return new Date(value).toISOString().slice(0, 19);
+  // datetime-local is already the time selected in the user's local timezone.
+  // The backend accepts LocalDateTime, so converting it to UTC would shift it.
+  return value.length === 16 ? `${value}:00` : value;
 };
 
 const formatDateTime = (value?: string | null) => {
@@ -110,14 +113,19 @@ const formatDateTime = (value?: string | null) => {
     return value;
   }
 
-  return date.toLocaleString("en-US", {
+  return date
+    .toLocaleString("en-US", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  });
+    })
+    .replace(",", "");
 };
+
+const formatSizeNumber = (value: number) =>
+  Number.isInteger(value) ? String(value) : value.toFixed(1);
 
 const formatFileSize = (value?: number | null) => {
   const size = Number(value ?? 0);
@@ -131,10 +139,10 @@ const formatFileSize = (value?: number | null) => {
   }
 
   if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
+    return `${formatSizeNumber(size / 1024)} KB`;
   }
 
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  return `${formatSizeNumber(size / 1024 / 1024)} MB`;
 };
 
 const getFileTypeLabel = (
@@ -355,6 +363,7 @@ export function DocumentSharesPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [isPro, setIsPro] = useState(isAdmin);
+  const [planMaxFileSizeMb, setPlanMaxFileSizeMb] = useState<number | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [disablingLinkId, setDisablingLinkId] = useState<number | null>(null);
@@ -366,11 +375,21 @@ export function DocumentSharesPage() {
     emailsToAdd: "",
     emailsToRemove: "",
   });
+  const [linkSettingsForm, setLinkSettingsForm] = useState({
+    expiresAt: "",
+    maxUploads: "",
+    maxUploadsPerUser: "",
+    maxFileSizeMb: "",
+    maxTotalSizeMb: "",
+    allowedFileTypes: "",
+  });
   const [isUpdatingAllowlist, setIsUpdatingAllowlist] = useState(false);
+  const [isUpdatingLinkSettings, setIsUpdatingLinkSettings] = useState(false);
 
   const [workingSubmissionId, setWorkingSubmissionId] = useState<number | null>(
     null,
   );
+  const [deletingSubmissionGroupLinkId, setDeletingSubmissionGroupLinkId] = useState<number | null>(null);
 
   const defaultExpiry = useMemo(() => {
     const date = new Date(Date.now() + SHARE_LINK_MAX_VALIDITY_MS);
@@ -492,7 +511,7 @@ export function DocumentSharesPage() {
       setLinks(
         normalizeList(
           linksRes.data as ListResponse<DocumentShareLinkResponse>,
-        ).filter((link) => isActiveShareLink(link.status)),
+        ).filter((link) => getShareLinkStatus(link.status) !== "DISABLED"),
       );
 
       setSubmissions(
@@ -550,6 +569,17 @@ export function DocumentSharesPage() {
 
         if (isMounted) {
           setIsPro(isAdmin || data.adminAccess === true || hasActiveProPlan);
+
+          const maxFileSizeMb = Number(data.plan?.maxUploadSizePerFileMb);
+          if (Number.isFinite(maxFileSizeMb) && maxFileSizeMb > 0) {
+            setPlanMaxFileSizeMb(maxFileSizeMb);
+            setLinkForm((current) => {
+              const selectedMaxFileSizeMb = Number(current.maxFileSizeMb);
+              return Number.isFinite(selectedMaxFileSizeMb) && selectedMaxFileSizeMb > maxFileSizeMb
+                ? { ...current, maxFileSizeMb: String(maxFileSizeMb) }
+                : current;
+            });
+          }
         }
       })
       .catch((error) => {
@@ -666,6 +696,14 @@ export function DocumentSharesPage() {
 
     if (maxFileSizeBytes <= 0 || maxTotalBytes <= 0 || maxFileSizeBytes > maxTotalBytes) {
       toast.error("File size limits are invalid.");
+      return;
+    }
+
+    if (
+      planMaxFileSizeMb !== null &&
+      Number(linkForm.maxFileSizeMb) > planMaxFileSizeMb
+    ) {
+      toast.error(`Your plan allows a maximum file size of ${planMaxFileSizeMb} MB.`);
       return;
     }
 
@@ -814,12 +852,154 @@ export function DocumentSharesPage() {
   const openAllowlistManager = (link: DocumentShareLinkResponse) => {
     setAllowlistLink(link);
     setAllowlistForm({ emailsToAdd: "", emailsToRemove: "" });
+    setLinkSettingsForm({
+      expiresAt: link.expiresAt
+        ? toDatetimeLocalValue(new Date(link.expiresAt))
+        : "",
+      maxUploads: link.maxUploads == null ? "" : String(link.maxUploads),
+      maxUploadsPerUser:
+        link.maxUploadsPerUser == null ? "" : String(link.maxUploadsPerUser),
+      maxFileSizeMb:
+        link.maxFileSizeBytes == null
+          ? ""
+          : String(link.maxFileSizeBytes / 1024 / 1024),
+      maxTotalSizeMb:
+        link.maxTotalBytes == null
+          ? ""
+          : String(link.maxTotalBytes / 1024 / 1024),
+      allowedFileTypes: link.allowedFileTypes ?? "",
+    });
+  };
+
+  const deleteSubmissionGroup = async (
+    linkId: number,
+    submissionsForLink: SharedDocumentSubmissionResponse[],
+  ) => {
+    const allReviewed = submissionsForLink.every(
+      (submission) => submission.status === "APPROVED" || submission.status === "REJECTED",
+    );
+    if (!allReviewed) {
+      toast.error("All submissions must be approved or rejected before deletion.");
+      return;
+    }
+    if (!window.confirm("Remove this submission group from your list? Approved documents will remain in your library.")) {
+      return;
+    }
+
+    try {
+      setDeletingSubmissionGroupLinkId(linkId);
+      await sharedDocumentSubmissionApi.deleteSubmissionGroup(linkId);
+      setSubmissions((current) => current.filter((submission) => Number(submission.shareLinkId) !== linkId));
+      toast.success("Submission group removed from your list.");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.response?.data?.error || "Cannot delete submission group.");
+    } finally {
+      setDeletingSubmissionGroupLinkId(null);
+    }
   };
 
   const closeAllowlistManager = () => {
-    if (isUpdatingAllowlist) return;
+    if (isUpdatingAllowlist || isUpdatingLinkSettings) return;
     setAllowlistLink(null);
     setAllowlistForm({ emailsToAdd: "", emailsToRemove: "" });
+  };
+
+  const handleUpdateLinkSettings = async () => {
+    if (!allowlistLink) return;
+
+    const linkId = getShareLinkId(allowlistLink);
+    if (!linkId) {
+      toast.error("Cannot identify this shared upload link.");
+      return;
+    }
+
+    const parsePositiveInteger = (value: string, label: string) => {
+      if (!value.trim()) return null;
+      const parsed = Number(value);
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        throw new Error(`${label} must be a positive integer.`);
+      }
+      return parsed;
+    };
+
+    const parsePositiveMb = (value: string, label: string) => {
+      if (!value.trim()) return null;
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw new Error(`${label} must be greater than 0 MB.`);
+      }
+      return Math.round(parsed * 1024 * 1024);
+    };
+
+    try {
+      const maxUploads = parsePositiveInteger(
+        linkSettingsForm.maxUploads,
+        "Maximum uploads",
+      );
+      const maxUploadsPerUser = parsePositiveInteger(
+        linkSettingsForm.maxUploadsPerUser,
+        "Per-user limit",
+      );
+      const maxFileSizeBytes = parsePositiveMb(
+        linkSettingsForm.maxFileSizeMb,
+        "Maximum file size",
+      );
+      const maxTotalBytes = parsePositiveMb(
+        linkSettingsForm.maxTotalSizeMb,
+        "Maximum total size",
+      );
+
+      if (
+        maxUploads != null &&
+        maxUploads < (allowlistLink.currentUploads ?? 0)
+      ) {
+        toast.error("Maximum uploads cannot be lower than current uploads.");
+        return;
+      }
+
+      if (
+        maxFileSizeBytes != null &&
+        maxTotalBytes != null &&
+        maxFileSizeBytes > maxTotalBytes
+      ) {
+        toast.error("Maximum file size cannot exceed maximum total size.");
+        return;
+      }
+
+      setIsUpdatingLinkSettings(true);
+      const response = await documentShareLinkApi.updateDocumentShareLink(
+        linkId,
+        {
+          expiresAt: linkSettingsForm.expiresAt
+            ? toApiDatetime(linkSettingsForm.expiresAt)
+            : null,
+          maxUploads,
+          maxUploadsPerUser,
+          maxFileSizeBytes,
+          maxTotalBytes,
+          allowedFileTypes:
+            linkSettingsForm.allowedFileTypes.trim() || null,
+        },
+      );
+
+      setLinks((current) =>
+        current.map((link) =>
+          getShareLinkId(link) === linkId ? response.data : link,
+        ),
+      );
+      setAllowlistLink(response.data);
+      toast.success("Shared upload link settings updated.");
+    } catch (error: any) {
+      console.error(error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          error?.message ||
+          "Cannot update shared upload link.",
+      );
+    } finally {
+      setIsUpdatingLinkSettings(false);
+    }
   };
 
   const handleUpdateAllowlist = async () => {
@@ -1193,8 +1373,14 @@ export function DocumentSharesPage() {
                   }
                   type="number"
                   min={1}
+                  max={planMaxFileSizeMb ?? undefined}
                   className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
+                {planMaxFileSizeMb !== null && (
+                  <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                    Your plan allows up to {planMaxFileSizeMb} MB per file.
+                  </span>
+                )}
               </label>
 
               <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
@@ -1570,7 +1756,7 @@ export function DocumentSharesPage() {
                           Manage
                         </button>
 
-                        {isActiveShareLink(link.status) && (
+                        {(isActiveShareLink(link.status) || getShareLinkStatus(link.status) === "EXPIRED") && (
                           <button
                             type="button"
                             onClick={() => setDisableConfirmLink(link)}
@@ -1663,23 +1849,38 @@ export function DocumentSharesPage() {
                       )}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setVisibleSubmissionsByGroup((current) => ({
-                          ...current,
-                          [group.key]:
-                            (current[group.key] ?? 0) > 0
-                              ? 0
-                              : initialSubmissionsPerGroup,
-                        }))
-                      }
-                      className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
-                    >
-                      {(visibleSubmissionsByGroup[group.key] ?? 0) > 0
-                        ? "Hide documents"
-                        : "Show documents"}
-                    </button>
+                    <div className="ml-auto flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVisibleSubmissionsByGroup((current) => ({
+                            ...current,
+                            [group.key]:
+                              (current[group.key] ?? 0) > 0
+                                ? 0
+                                : initialSubmissionsPerGroup,
+                          }))
+                        }
+                        className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                      >
+                        {(visibleSubmissionsByGroup[group.key] ?? 0) > 0
+                          ? "Hide documents"
+                          : "Show documents"}
+                      </button>
+                      {submissionStatusFilter === "ALL" && group.linkId && group.submissions.every(
+                        (submission) => submission.status === "APPROVED" || submission.status === "REJECTED",
+                      ) && (
+                        <button
+                          type="button"
+                          disabled={deletingSubmissionGroupLinkId === group.linkId}
+                          onClick={() => void deleteSubmissionGroup(group.linkId!, group.submissions)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-60 dark:border-red-900 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-950/30"
+                        >
+                          {deletingSubmissionGroupLinkId === group.linkId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          Delete group
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {(visibleSubmissionsByGroup[group.key] ?? 0) > 0 && (
@@ -1739,12 +1940,6 @@ export function DocumentSharesPage() {
 
                         <p>Email: {submission.uploaderEmail || "No email"}</p>
                       </div>
-
-                      {submission.approvedDocumentId && (
-                        <p className="mt-2 text-xs font-bold text-emerald-600 dark:text-emerald-300">
-                          Approved Document ID: {submission.approvedDocumentId}
-                        </p>
-                      )}
 
                       {submission.rejectReason && (
                         <p className="mt-2 text-xs font-bold text-red-600 dark:text-red-300">
@@ -1939,7 +2134,7 @@ export function DocumentSharesPage() {
               <button
                 type="button"
                 onClick={closeAllowlistManager}
-                disabled={isUpdatingAllowlist}
+                disabled={isUpdatingAllowlist || isUpdatingLinkSettings}
                 className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 Close
@@ -2042,6 +2237,188 @@ export function DocumentSharesPage() {
                   </div>
                 </div>
 
+                {isActiveShareLink(allowlistLink.status) && (
+                  <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
+                    <h3 className="text-base font-extrabold text-slate-950 dark:text-white">
+                      Link settings
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                      Leave a limit blank to make it unlimited.
+                    </p>
+
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                        Expires
+                        <input
+                          type="datetime-local"
+                          value={linkSettingsForm.expiresAt}
+                          min={expirationMin}
+                          max={expirationMax}
+                          onChange={(event) =>
+                            setLinkSettingsForm((current) => ({
+                              ...current,
+                              expiresAt: event.target.value,
+                            }))
+                          }
+                          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                        />
+                      </label>
+
+                      <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                        Maximum uploads
+                        <input
+                          type="number"
+                          min={Math.max(1, allowlistLink.currentUploads ?? 0)}
+                          value={linkSettingsForm.maxUploads}
+                          placeholder="Unlimited"
+                          onChange={(event) =>
+                            setLinkSettingsForm((current) => ({
+                              ...current,
+                              maxUploads: event.target.value,
+                            }))
+                          }
+                          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                        />
+                      </label>
+
+                      <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                        Per-user limit
+                        <input
+                          type="number"
+                          min={1}
+                          value={linkSettingsForm.maxUploadsPerUser}
+                          placeholder="Unlimited"
+                          onChange={(event) =>
+                            setLinkSettingsForm((current) => ({
+                              ...current,
+                              maxUploadsPerUser: event.target.value,
+                            }))
+                          }
+                          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                        />
+                      </label>
+
+                      <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                        Maximum file size (MB)
+                        <input
+                          type="number"
+                          min={0.01}
+                          step="0.01"
+                          value={linkSettingsForm.maxFileSizeMb}
+                          placeholder="Plan limit"
+                          onChange={(event) =>
+                            setLinkSettingsForm((current) => ({
+                              ...current,
+                              maxFileSizeMb: event.target.value,
+                            }))
+                          }
+                          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                        />
+                      </label>
+
+                      <label className="grid gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                        Maximum total size (MB)
+                        <input
+                          type="number"
+                          min={0.01}
+                          step="0.01"
+                          value={linkSettingsForm.maxTotalSizeMb}
+                          placeholder="Unlimited"
+                          onChange={(event) =>
+                            setLinkSettingsForm((current) => ({
+                              ...current,
+                              maxTotalSizeMb: event.target.value,
+                            }))
+                          }
+                          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-normal outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                        />
+                      </label>
+
+                      <fieldset className="grid gap-2 sm:col-span-2">
+                        <legend className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                          Accepted file types
+                        </legend>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            ...MIME_OPTIONS,
+                            ...(isPro ? PRO_MIME_OPTIONS : []),
+                          ].map((option) => {
+                            const selectedTypes = linkSettingsForm.allowedFileTypes
+                              .split(",")
+                              .map((type) => type.trim())
+                              .filter(Boolean);
+                            const isSelected = option.mimeTypes.every((type) =>
+                              selectedTypes.includes(type),
+                            );
+
+                            return (
+                              <button
+                                key={option.label}
+                                type="button"
+                                aria-pressed={isSelected}
+                                onClick={() =>
+                                  setLinkSettingsForm((current) => {
+                                    const currentTypes = current.allowedFileTypes
+                                      .split(",")
+                                      .map((type) => type.trim())
+                                      .filter(Boolean);
+                                    const nextTypes = isSelected
+                                      ? currentTypes.filter(
+                                          (type) =>
+                                            !option.mimeTypes.some(
+                                              (optionType) =>
+                                                optionType === type,
+                                            ),
+                                        )
+                                      : Array.from(
+                                          new Set([
+                                            ...currentTypes,
+                                            ...option.mimeTypes,
+                                          ]),
+                                        );
+
+                                    return {
+                                      ...current,
+                                      allowedFileTypes: nextTypes.join(","),
+                                    };
+                                  })
+                                }
+                                className={`rounded-full border px-3 py-2 text-xs font-bold transition ${
+                                  isSelected
+                                    ? "border-blue-600 bg-blue-600 text-white"
+                                    : "border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                          Select no type to allow every file type supported by
+                          your plan.
+                        </p>
+                      </fieldset>
+                    </div>
+
+                    <div className="mt-4 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleUpdateLinkSettings}
+                        disabled={isUpdatingLinkSettings || isUpdatingAllowlist}
+                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isUpdatingLinkSettings && (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        )}
+                        {isUpdatingLinkSettings
+                          ? "Saving settings..."
+                          : "Save settings"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {getUsableShareUrl(allowlistLink) && (
                   <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                     <input
@@ -2142,7 +2519,7 @@ export function DocumentSharesPage() {
               <button
                 type="button"
                 onClick={closeAllowlistManager}
-                disabled={isUpdatingAllowlist}
+                disabled={isUpdatingAllowlist || isUpdatingLinkSettings}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 {isPrivateAllowlistLink(allowlistLink) ? "Cancel" : "Close"}
@@ -2151,7 +2528,7 @@ export function DocumentSharesPage() {
                 <button
                   type="button"
                   onClick={handleUpdateAllowlist}
-                  disabled={isUpdatingAllowlist}
+                  disabled={isUpdatingAllowlist || isUpdatingLinkSettings}
                   className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isUpdatingAllowlist && (

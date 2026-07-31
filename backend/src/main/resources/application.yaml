@@ -67,6 +67,8 @@ app:
 # ── Frontend URL (used to build share links returned to User A) ──────────────
   frontend:
     base-url: http://localhost:5173
+  mail:
+    from-email: ${SMTP_FROM_EMAIL}
 
 Cloudinary:
   cloud-name: ${CLOUDINARY_CLOUD_NAME:}
@@ -91,3 +93,6 @@ payment:
     pay-url: "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"
     return-url: "http://localhost:8080/api/payments/vnpay-return"
     api-url: "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction"
+
+
+

@@ -8,6 +8,7 @@ export type PlanResponse = {
   storageLimitMb?: number;
   maxUploadSizePerFileMb?: number;
   dailyTokenLimit?: number;
+  maxShareLinksPerDay?: number;
   price?: number | string;
   description?: string;
   allowImageUpload?: boolean;

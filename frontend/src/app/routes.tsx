@@ -70,30 +70,15 @@ import { TokenAnalyticsPage } from "./pages/admin/TokenAnalyticsPage";
 import { StorageAnalyticsPage } from "./pages/admin/StorageAnalyticsPage";
 import { PricingAnalyticsPage } from "./pages/admin/PricingAnalyticsPage";
 import { PlanManagement } from "./pages/admin/PlanManagement";
+import { ShareLinkManagement } from "./pages/admin/ShareLinkManagement";
+import { RequireAuth, RequireRole } from "./components/auth/RequireAuth";
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
-  let role = localStorage.getItem("role") || "";
-  try {
-    role ||= JSON.parse(localStorage.getItem("user") || "{}").role || "";
-  } catch {
-    // Invalid cached user data is treated as a non-admin session.
-  }
-  return role.toUpperCase().replace("ROLE_", "") === "ADMIN"
-    ? children
-    : <Navigate to="/admin" replace />;
-}
-
-function ManagementOnly({ children }: { children: React.ReactNode }) {
-  let role = localStorage.getItem("role") || "";
-  try {
-    role = JSON.parse(localStorage.getItem("user") || "null")?.role || role;
-  } catch {
-    // Invalid cached user data is treated as a regular user session.
-  }
-  const normalizedRole = role.toUpperCase().replace("ROLE_", "");
-  return normalizedRole === "ADMIN" || normalizedRole === "MANAGER"
-    ? children
-    : <Navigate to="/app/dashboard" replace />;
+  return (
+    <RequireRole allowedRoles={["ADMIN"]} redirectTo="/admin">
+      {children}
+    </RequireRole>
+  );
 }
 
 export const router = createBrowserRouter([
@@ -160,7 +145,11 @@ export const router = createBrowserRouter([
       // User application routes
       {
         path: "app",
-        element: <DashboardLayout />,
+        element: (
+          <RequireAuth>
+            <DashboardLayout />
+          </RequireAuth>
+        ),
         children: [
           {
             index: true,
@@ -307,7 +296,11 @@ export const router = createBrowserRouter([
       // Admin routes
       {
         path: "admin",
-        element: <ManagementOnly><DashboardLayout isAdmin /></ManagementOnly>,
+        element: (
+          <RequireAuth allowedRoles={["ADMIN", "MANAGER"]}>
+            <DashboardLayout isAdmin />
+          </RequireAuth>
+        ),
         children: [
           {
             index: true,
@@ -328,6 +321,10 @@ export const router = createBrowserRouter([
           {
             path: "plans",
             element: <AdminOnly><PlanManagement /></AdminOnly>,
+          },
+          {
+            path: "share-links",
+            element: <AdminOnly><ShareLinkManagement /></AdminOnly>,
           },
           { path: "pricing", element: <AdminOnly><PricingAnalyticsPage /></AdminOnly> },
           { path: "tokens", element: <TokenAnalyticsPage /> },
