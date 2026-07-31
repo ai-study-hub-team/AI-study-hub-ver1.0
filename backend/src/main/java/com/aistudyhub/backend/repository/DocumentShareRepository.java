@@ -16,6 +16,10 @@ import java.util.Optional;
 @Repository
 public interface DocumentShareRepository extends JpaRepository<DocumentShare, Long> {
 
+    @Modifying
+    @Query("DELETE FROM DocumentShare s WHERE s.document.id = :documentId")
+    void deleteByDocumentId(@Param("documentId") Long documentId);
+
     long countBySharedWithIdAndStatus(Long sharedWithUserId, DocumentShareStatus status);
 
     Optional<DocumentShare> findByDocumentIdAndSharedWithId(

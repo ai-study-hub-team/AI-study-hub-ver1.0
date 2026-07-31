@@ -14,6 +14,18 @@ import com.aistudyhub.backend.repository.UserRepository;
 import com.aistudyhub.backend.repository.AiCitationRepository;
 import com.aistudyhub.backend.repository.ChatSessionDocumentRepository;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
+import com.aistudyhub.backend.repository.DocumentNoteRepository;
+import com.aistudyhub.backend.repository.DocumentPublicLinkRepository;
+import com.aistudyhub.backend.repository.DocumentReportHistoryRepository;
+import com.aistudyhub.backend.repository.DocumentReportRepository;
+import com.aistudyhub.backend.repository.DocumentShareRepository;
+import com.aistudyhub.backend.repository.DocumentSummaryRepository;
+import com.aistudyhub.backend.repository.FavoriteRepository;
+import com.aistudyhub.backend.repository.QuizAttemptAnswerRepository;
+import com.aistudyhub.backend.repository.QuizAttemptRepository;
+import com.aistudyhub.backend.repository.QuizOptionRepository;
+import com.aistudyhub.backend.repository.QuizQuestionRepository;
+import com.aistudyhub.backend.repository.QuizRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -57,6 +69,18 @@ public class DocumentService {
     private final CurrentUserService currentUserService;
     private final AiCitationRepository aiCitationRepository;
     private final ChatSessionDocumentRepository chatSessionDocumentRepository;
+    private final DocumentNoteRepository documentNoteRepository;
+    private final DocumentPublicLinkRepository documentPublicLinkRepository;
+    private final DocumentReportHistoryRepository documentReportHistoryRepository;
+    private final DocumentReportRepository documentReportRepository;
+    private final DocumentShareRepository documentShareRepository;
+    private final DocumentSummaryRepository documentSummaryRepository;
+    private final FavoriteRepository favoriteRepository;
+    private final QuizAttemptAnswerRepository quizAttemptAnswerRepository;
+    private final QuizAttemptRepository quizAttemptRepository;
+    private final QuizOptionRepository quizOptionRepository;
+    private final QuizQuestionRepository quizQuestionRepository;
+    private final QuizRepository quizRepository;
     private final PgvectorSearchService pgvectorSearchService;
 
     private final FolderAccessService folderAccessService;
@@ -379,7 +403,8 @@ public class DocumentService {
 
     /**
      * Internal permanent delete — shared by explicit delete endpoint and nightly scheduler.
-     * Deletes in FK-safe order: chat document links → citations → chunks → pgvector → file → document record.
+     * Deletes every relational record that depends on the document in FK-safe order,
+     * then removes its chunks, embeddings, file, and record.
      * Chat sessions and their messages are retained; only their reference to the
      * permanently deleted document is removed.
      */
@@ -400,22 +425,30 @@ public class DocumentService {
         log.info("[Trash] Removed chat-session document links for document id={}", id);
 
         // 2. Delete AI citations referencing this document
-        try {
-            aiCitationRepository.deleteByDocumentId(id);
-            log.info("[Trash] Deleted citations for document id={}", id);
-        } catch (Exception e) {
-            log.warn("[Trash] Could not delete citations for document id={}: {}", id, e.getMessage());
-        }
+        aiCitationRepository.deleteByDocumentId(id);
 
-        // 3. Delete document chunks from PostgreSQL
-        try {
-            documentChunkRepository.deleteByDocumentId(id);
-            log.info("[Trash] Deleted chunks for document id={}", id);
-        } catch (Exception e) {
-            log.warn("[Trash] Could not delete chunks for document id={}: {}", id, e.getMessage());
-        }
+        // 3. Delete document-owned records and their FK-dependent history.
+        documentReportHistoryRepository.deleteByDocumentId(id);
+        documentReportRepository.deleteByDocumentId(id);
+        documentNoteRepository.deleteByDocumentId(id);
+        documentPublicLinkRepository.deleteByDocumentId(id);
+        documentShareRepository.deleteByDocumentId(id);
+        documentSummaryRepository.deleteByDocumentId(id);
+        favoriteRepository.deleteByDocumentId(id);
 
-        // 4. Delete pgvector embeddings
+        // 4. Delete quiz data bottom-up (answers → attempts/options → questions → quizzes).
+        quizAttemptAnswerRepository.deleteByDocumentId(id);
+        quizAttemptRepository.deleteByDocumentId(id);
+        quizOptionRepository.deleteByDocumentId(id);
+        quizQuestionRepository.deleteByDocumentId(id);
+        quizRepository.deleteByDocumentId(id);
+        log.info("[Trash] Deleted all relational records for document id={}", id);
+
+        // 5. Delete document chunks from PostgreSQL.
+        documentChunkRepository.deleteByDocumentId(id);
+        log.info("[Trash] Deleted chunks for document id={}", id);
+
+        // 6. Delete pgvector embeddings.
         try {
             pgvectorSearchService.deleteEmbeddingsByDocumentId(id);
             log.info("[Trash] Deleted pgvector embeddings for document id={}", id);
@@ -423,7 +456,7 @@ public class DocumentService {
             log.warn("[Trash] Could not delete pgvector embeddings for document id={}: {}", id, e.getMessage());
         }
 
-        // 5. Delete the file from disk
+        // 7. Delete the file from disk
         if (document.getCloudFile() != null && document.getCloudFile().getFileName() != null) {
             try {
                 fileStorageService.deleteFile(document.getCloudFile().getFileName());
@@ -434,10 +467,10 @@ public class DocumentService {
             }
         }
 
-        // 6. Delete document record (CloudFile deleted via CascadeType.ALL)
+        // 8. Delete document record (CloudFile deleted via CascadeType.ALL)
         documentRepository.delete(document);
         log.info("[Trash] Document id={} permanently deleted.", id);
-        // 7. Update storage quota only after permanent deletion
+        // 9. Update storage quota only after permanent deletion
         if (ownerId != null && fileSize != null) {
             storageQuotaService.subtractStorageUsage(ownerId, fileSize);
 

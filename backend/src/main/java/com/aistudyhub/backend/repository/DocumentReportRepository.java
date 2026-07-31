@@ -6,6 +6,7 @@ import com.aistudyhub.backend.entity.DocumentReportStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -14,6 +15,10 @@ import java.util.Collection;
 
 @Repository
 public interface DocumentReportRepository extends JpaRepository<DocumentReport, Long> {
+
+    @Modifying
+    @Query("DELETE FROM DocumentReport r WHERE r.document.id = :documentId")
+    void deleteByDocumentId(@Param("documentId") Long documentId);
 
     long countByReporterId(Long reporterId);
 

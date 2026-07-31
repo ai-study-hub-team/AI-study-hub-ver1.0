@@ -26,6 +26,10 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
     @Modifying
     void deleteByUserIdAndDocumentId(Long userId, Long documentId);
 
+    @Modifying
+    @Query("DELETE FROM Favorite f WHERE f.document.id = :documentId")
+    void deleteByDocumentId(@Param("documentId") Long documentId);
+
     @Query("""
             select f.document.id
             from Favorite f
