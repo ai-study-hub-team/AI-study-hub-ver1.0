@@ -836,6 +836,9 @@ export function MyLibrary() {
     null,
   );
   const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>("root");
+  const [moveTargetCategoryId, setMoveTargetCategoryId] =
+    useState<string>("current");
+  const [isMovingDocument, setIsMovingDocument] = useState(false);
 
   const resetDragState = () => {
     setDraggingFolderId(null);
@@ -1067,6 +1070,11 @@ export function MyLibrary() {
         ? "root"
         : String(document.folderId),
     );
+    setMoveTargetCategoryId(
+      document.categoryId === null || document.categoryId === undefined
+        ? "current"
+        : String(document.categoryId),
+    );
   };
 
   const handleMoveDocument = async () => {
@@ -1091,12 +1099,45 @@ export function MyLibrary() {
     const targetFolder = folders.find(
       (folder) => Number(folder.id) === Number(folderId),
     );
+    const categoryId =
+      moveTargetCategoryId === "current"
+        ? movingDocument.categoryId
+        : Number(moveTargetCategoryId);
+
+    if (
+      categoryId !== null &&
+      categoryId !== undefined &&
+      !Number.isInteger(categoryId)
+    ) {
+      toast.error("Invalid category selected.");
+      return;
+    }
+
+    const targetCategory = allCategories.find(
+      (category) => Number(category.id) === Number(categoryId),
+    );
 
     try {
-      await documentApi.moveDocumentToFolder(movingDocument.id, {
-        userId,
-        folderId,
-      });
+      setIsMovingDocument(true);
+
+      const requests: Promise<unknown>[] = [
+        documentApi.moveDocumentToFolder(movingDocument.id, {
+          userId,
+          folderId,
+        }),
+      ];
+
+      if (
+        categoryId !== null &&
+        categoryId !== undefined &&
+        categoryId !== movingDocument.categoryId
+      ) {
+        requests.push(
+          documentApi.updateDocument(movingDocument.id, { categoryId }),
+        );
+      }
+
+      await Promise.all(requests);
 
       setDocuments((current) =>
         current.map((document) =>
@@ -1106,6 +1147,9 @@ export function MyLibrary() {
                 folderId,
                 folderName: targetFolder?.name || "Root",
                 folder: targetFolder?.name || "Root",
+                categoryId: categoryId ?? document.categoryId,
+                categoryName:
+                  targetCategory?.name || document.categoryName,
               }
             : document,
         ),
@@ -1119,6 +1163,7 @@ export function MyLibrary() {
 
       setMovingDocument(null);
       setMoveTargetFolderId("root");
+      setMoveTargetCategoryId("current");
       await loadFolders();
     } catch (error: any) {
       console.error("Cannot move document:", error);
@@ -1127,6 +1172,8 @@ export function MyLibrary() {
           error?.response?.data?.error ||
           "Cannot move document.",
       );
+    } finally {
+      setIsMovingDocument(false);
     }
   };
 
@@ -2144,7 +2191,7 @@ export function MyLibrary() {
             </h2>
 
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Choose a folder or move this document back to Root.
+              Choose a destination folder and category for this document.
             </p>
 
             <div className="mt-5">
@@ -2167,13 +2214,38 @@ export function MyLibrary() {
               </select>
             </div>
 
+            <div className="mt-4">
+              <label className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                Category
+              </label>
+
+              <select
+                value={moveTargetCategoryId}
+                onChange={(event) => setMoveTargetCategoryId(event.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-800"
+              >
+                {movingDocument.categoryId === null ||
+                movingDocument.categoryId === undefined ? (
+                  <option value="current">Keep uncategorized</option>
+                ) : null}
+
+                {allCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => {
                   setMovingDocument(null);
                   setMoveTargetFolderId("root");
+                  setMoveTargetCategoryId("current");
                 }}
+                disabled={isMovingDocument}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 Cancel
@@ -2182,9 +2254,10 @@ export function MyLibrary() {
               <button
                 type="button"
                 onClick={handleMoveDocument}
-                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+                disabled={isMovingDocument}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Move
+                {isMovingDocument ? "Moving..." : "Move"}
               </button>
             </div>
           </div>

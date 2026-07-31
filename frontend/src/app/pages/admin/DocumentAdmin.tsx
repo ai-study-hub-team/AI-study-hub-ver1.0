@@ -7,7 +7,6 @@ import {
   RotateCcw,
   Save,
   Search,
-  Trash2,
   X,
 } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
@@ -197,7 +196,6 @@ export function DocumentAdmin() {
   const [actionMenuPosition, setActionMenuPosition] =
     useState<ActionMenuPosition | null>(null);
 
-  const [deleteId, setDeleteId] = useState<number | null>(null);
   const [informationDoc, setInformationDoc] = useState<AdminDocument | null>(null);
   const [previewDoc, setPreviewDoc] = useState<AdminDocument | null>(null);
 
@@ -476,22 +474,6 @@ export function DocumentAdmin() {
       toast.error("Cannot update document.");
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const deleteDoc = async (id: number): Promise<boolean> => {
-    try {
-      await documentApi.deleteDocument(id);
-
-      setDocs((current) => current.filter((document) => document.id !== id));
-      toast.success("Document deleted successfully.");
-      closeActionMenu();
-
-      return true;
-    } catch (error) {
-      console.error(error);
-      toast.error("Cannot delete document.");
-      return false;
     }
   };
 
@@ -785,18 +767,6 @@ export function DocumentAdmin() {
                 Reprocess AI
               </button>
 
-              <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
-
-              <button
-                onClick={() => {
-                  setDeleteId(selectedDocument.id);
-                  closeActionMenu();
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold text-red-600 transition-colors hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete
-              </button>
             </motion.div>
           </>
         )}
@@ -885,44 +855,6 @@ export function DocumentAdmin() {
         </div>
       )}
 
-      {deleteId !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-            <h2 className="text-xl font-extrabold text-slate-950 dark:text-white">
-              Delete Document
-            </h2>
-
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Are you sure you want to delete this document? This action cannot
-              be undone.
-            </p>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={() => setDeleteId(null)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                Cancel
-              </button>
-
-              <button
-                onClick={async () => {
-                  if (deleteId === null) return;
-
-                  const success = await deleteDoc(deleteId);
-
-                  if (success) {
-                    setDeleteId(null);
-                  }
-                }}
-                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
