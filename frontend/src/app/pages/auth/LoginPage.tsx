@@ -277,10 +277,12 @@ export function LoginPage() {
         const storedRedirect = sessionStorage.getItem("postLoginRedirect");
         const redirect = stateRedirect || queryRedirect || storedRedirect;
 
-        if (
-          redirect?.startsWith("/shared-upload/") &&
-          !redirect.startsWith("//")
-        ) {
+        const isSafePublicRedirect =
+          redirect?.startsWith("/shared-upload/") ||
+          redirect?.startsWith("/public/documents/") ||
+          redirect?.startsWith("/share/");
+
+        if (isSafePublicRedirect && !redirect?.startsWith("//")) {
           sessionStorage.removeItem("postLoginRedirect");
           navigate(redirect, { replace: true });
           return;

@@ -72,6 +72,7 @@ import { PricingAnalyticsPage } from "./pages/admin/PricingAnalyticsPage";
 import { PlanManagement } from "./pages/admin/PlanManagement";
 import { ShareLinkManagement } from "./pages/admin/ShareLinkManagement";
 import { RequireAuth, RequireRole } from "./components/auth/RequireAuth";
+import { PublicLinkDialogProvider } from "./components/sharing/PublicLinkDialogProvider";
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
   return (
@@ -147,7 +148,9 @@ export const router = createBrowserRouter([
         path: "app",
         element: (
           <RequireAuth>
-            <DashboardLayout />
+            <PublicLinkDialogProvider>
+              <DashboardLayout />
+            </PublicLinkDialogProvider>
           </RequireAuth>
         ),
         children: [
