@@ -717,11 +717,6 @@ export function SubscriptionDashboard() {
                 </span>
               )}
             </div>
-
-            <p className="mt-3 max-w-xl text-sm leading-6 text-white/80">
-              {currentPlan?.description ||
-                "Plan information is loaded from GET /api/subscriptions/current."}
-            </p>
           </div>
 
           <div className="rounded-2xl border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
