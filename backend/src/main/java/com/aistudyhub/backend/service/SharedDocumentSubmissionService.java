@@ -112,6 +112,7 @@ public class SharedDocumentSubmissionService {
         // Step 5: size checks
         long fileSize = file.getSize();
         long planFileSizeLimit = storageQuotaService.getPlanFileSizeLimitBytes(ownerId);
+        //ktra tổng dung lượng link
         long effectiveSizeLimit = (link.getMaxFileSizeBytes() != null)
                 ? Math.min(link.getMaxFileSizeBytes(), planFileSizeLimit)
                 : planFileSizeLimit;
@@ -128,6 +129,7 @@ public class SharedDocumentSubmissionService {
         }
 
         // Step 6: atomic quota reservation — before any external I/O
+        //tính dung lượng cho chủ link
         storageQuotaService.reserveStorageForSharedUpload(ownerId, fileSize);
 
         // Step 7: upload directly to Cloudinary — compensate quota on failure

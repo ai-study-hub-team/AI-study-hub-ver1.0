@@ -12,6 +12,7 @@ import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.FolderRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import com.aistudyhub.backend.repository.AiCitationRepository;
+import com.aistudyhub.backend.repository.ChatSessionDocumentRepository;
 import com.aistudyhub.backend.repository.DocumentChunkRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -55,6 +56,7 @@ public class DocumentService {
     private final StorageQuotaService storageQuotaService;
     private final CurrentUserService currentUserService;
     private final AiCitationRepository aiCitationRepository;
+    private final ChatSessionDocumentRepository chatSessionDocumentRepository;
     private final PgvectorSearchService pgvectorSearchService;
 
     private final FolderAccessService folderAccessService;
@@ -377,7 +379,9 @@ public class DocumentService {
 
     /**
      * Internal permanent delete — shared by explicit delete endpoint and nightly scheduler.
-     * Deletes in FK-safe order: citations → chunks → pgvector → file → document record.
+     * Deletes in FK-safe order: chat document links → citations → chunks → pgvector → file → document record.
+     * Chat sessions and their messages are retained; only their reference to the
+     * permanently deleted document is removed.
      */
     @Transactional
     public void permanentDeleteInternal(Document document) {
@@ -391,7 +395,11 @@ public class DocumentService {
                 : null;
         log.info("[Trash] Permanently deleting document id={}, title='{}'", id, document.getTitle());
 
-        // 1. Delete AI citations referencing this document
+        // 1. Remove this document from any chat sessions, preserving chat history.
+        chatSessionDocumentRepository.deleteByDocumentId(id);
+        log.info("[Trash] Removed chat-session document links for document id={}", id);
+
+        // 2. Delete AI citations referencing this document
         try {
             aiCitationRepository.deleteByDocumentId(id);
             log.info("[Trash] Deleted citations for document id={}", id);
@@ -399,7 +407,7 @@ public class DocumentService {
             log.warn("[Trash] Could not delete citations for document id={}: {}", id, e.getMessage());
         }
 
-        // 2. Delete document chunks from PostgreSQL
+        // 3. Delete document chunks from PostgreSQL
         try {
             documentChunkRepository.deleteByDocumentId(id);
             log.info("[Trash] Deleted chunks for document id={}", id);
@@ -407,7 +415,7 @@ public class DocumentService {
             log.warn("[Trash] Could not delete chunks for document id={}: {}", id, e.getMessage());
         }
 
-        // 3. Delete pgvector embeddings
+        // 4. Delete pgvector embeddings
         try {
             pgvectorSearchService.deleteEmbeddingsByDocumentId(id);
             log.info("[Trash] Deleted pgvector embeddings for document id={}", id);
@@ -415,7 +423,7 @@ public class DocumentService {
             log.warn("[Trash] Could not delete pgvector embeddings for document id={}: {}", id, e.getMessage());
         }
 
-        // 4. Delete the file from disk
+        // 5. Delete the file from disk
         if (document.getCloudFile() != null && document.getCloudFile().getFileName() != null) {
             try {
                 fileStorageService.deleteFile(document.getCloudFile().getFileName());
@@ -426,10 +434,10 @@ public class DocumentService {
             }
         }
 
-        // 5. Delete document record (CloudFile deleted via CascadeType.ALL)
+        // 6. Delete document record (CloudFile deleted via CascadeType.ALL)
         documentRepository.delete(document);
         log.info("[Trash] Document id={} permanently deleted.", id);
-        // 6. Update storage quota only after permanent deletion
+        // 7. Update storage quota only after permanent deletion
         if (ownerId != null && fileSize != null) {
             storageQuotaService.subtractStorageUsage(ownerId, fileSize);
 

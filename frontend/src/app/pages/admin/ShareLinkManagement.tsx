@@ -137,7 +137,6 @@ export function ShareLinkManagement() {
             <option value="ACTIVE">Active</option>
             <option value="DISABLED">Disabled</option>
             <option value="EXPIRED">Expired</option>
-            <option value="REVOKED">Revoked</option>
           </select>
           <button type="submit" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Search</button>
         </form>

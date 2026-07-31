@@ -234,12 +234,6 @@ public class ChatSessionService {
                     break;
 
                 case TOOL_SUMMARY:
-                case TOOL_QUIZ:
-                    // TODO: route to existing Summary/Quiz services in a future task.
-                    log.info("[Chat] intent={} — tool routing not yet implemented; " +
-                            "falling back to semantic search.", intent);
-                    contextChunks = retrieveSemanticChunks(retrievalQuery, activeDocumentIds, CHAT_TOP_K);
-                    break;
 
                 default: // DOCUMENT_QA, FOLLOW_UP_QA, OUT_OF_SCOPE
                     log.info("[Chat] intent={} → Multi-Query RAG. originalQuestion='{}', rewrittenQuestion='{}', plannerSearchQueries={}",
