@@ -1,7 +1,7 @@
 {
     "rewrites": [{
-            "source": "/tiktok.*\\.txt",
-            "destination": "/tiktok.*\\.txt"
+            "source": "/tiktokKAfMFJqqgZ9qtr9w025jx28xZ1un7zbB.txt",
+            "destination": "/tiktokKAfMFJqqgZ9qtr9w025jx28xZ1un7zbB.txt"
         },
         {
             "source": "/((?!api/).*)",
